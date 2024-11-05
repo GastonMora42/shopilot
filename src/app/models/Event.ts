@@ -43,7 +43,26 @@ const EventSchema = new mongoose.Schema({
     default: false
   }
 }, {
-  timestamps: true
+  timestamps: true,
+
+  seatingChart: {
+    rows: { type: Number, required: true },
+    columns: { type: Number, required: true },
+    sections: [{
+      name: String,
+      type: {
+        type: String,
+        enum: ['REGULAR', 'VIP', 'DISABLED'],
+        default: 'REGULAR'
+      },
+      price: Number,
+      rowStart: Number,
+      rowEnd: Number,
+      columnStart: Number,
+      columnEnd: Number
+    }]
+  }
 });
+
 
 export const Event = mongoose.models.Event || mongoose.model<IEvent>('Event', EventSchema);

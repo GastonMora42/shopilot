@@ -6,6 +6,7 @@ import { SessionProvider } from 'next-auth/react';
 import { headers } from 'next/headers';
 import { NextAuthProvider } from '@/components/providers/NextAuthProvider';
 
+
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",

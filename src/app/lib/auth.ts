@@ -1,68 +1,62 @@
-// src/lib/auth.ts
-import { NextAuthOptions } from 'next-auth';
-import CredentialsProvider from 'next-auth/providers/credentials'; // Corregido aquí
-import bcrypt from 'bcryptjs';
-import { User } from '@/app/models/User';
-import dbConnect from './mongodb';
+// lib/auth.ts
+import NextAuth, { NextAuthOptions } from 'next-auth';
+import GoogleProvider from 'next-auth/providers/google';
+import { MongoDBAdapter } from '@next-auth/mongodb-adapter';
+import clientPromise from './mongodb-adapter';
 
-export const authOptions: NextAuthOptions = {
-  providers: [
-    CredentialsProvider({
-      name: 'Credentials',
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          return null;
-        }
-
-        await dbConnect();
-
-        const user = await User.findOne({ email: credentials.email });
-        if (!user) {
-          return null;
-        }
-
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password,
-          user.password
-        );
-
-        if (!isPasswordValid) {
-          return null;
-        }
-
-        return {
-          id: user._id.toString(),
-          email: user.email,
-          name: user.name,
-          mercadopago: user.mercadopago
-        };
-      }
-    })
-  ],
-  session: {
-    strategy: 'jwt'
-  },
-  pages: {
-    signIn: '/login',
-  },
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.mercadopago = user.mercadopago;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (token && session.user) {
-        session.user.id = token.id as string;
-        session.user.mercadopago = token.mercadopago;
-      }
-      return session;
+declare module 'next-auth' {
+  interface Session {
+    user: {
+      id: string;
+      name: string | null;
+      email: string | null;
+      image: string | null;
+      role: 'ORGANIZER' | 'ADMIN';
+      mercadopago?: {
+        accessToken?: string;
+        userId?: string;
+      };
     }
   }
+
+  interface User {
+    role: 'ORGANIZER' | 'ADMIN';
+    mercadopago?: {
+      accessToken?: string;
+      userId?: string;
+    };
+  }
+}
+
+export const authOptions: NextAuthOptions = {
+  adapter: MongoDBAdapter(clientPromise),
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      profile(profile) {
+        return {
+          id: profile.sub,
+          name: profile.name,
+          email: profile.email,
+          image: profile.picture,
+          role: 'ORGANIZER', // Por defecto, todos son organizadores
+          verified: true,
+        };
+      },
+    }),
+  ],
+  callbacks: {
+    async session({ session, user }) {
+      if (session.user) {
+        session.user.id = user.id;
+        session.user.role = user.role;
+        session.user.mercadopago = user.mercadopago;
+      }
+      return session;
+    },
+  },
+  pages: {
+    signIn: '/auth/login',
+  },
 };

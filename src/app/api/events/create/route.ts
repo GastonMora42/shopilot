@@ -1,4 +1,3 @@
-// src/app/api/events/create/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Event } from '@/app/models/Event';
@@ -7,13 +6,29 @@ import { User } from '@/app/models/User';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/lib/auth';
 
-async function generateSeatsForEvent(eventId: string, seatingChart: { rows: number; columns: number; sections: any[]; }) {
+// Definir tipos para la estructura de seatingChart
+interface Section {
+  rowStart: number;
+  rowEnd: number;
+  columnStart: number;
+  columnEnd: number;
+  price: number;
+  type: string; // O ajusta el tipo si es necesario
+}
+
+interface SeatingChart {
+  rows: number;
+  columns: number;
+  sections: Section[];
+}
+
+async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart) {
   const seats = [];
   
   for (let row = 0; row < seatingChart.rows; row++) {
     for (let col = 0; col < seatingChart.columns; col++) {
       const section = seatingChart.sections.find(
-        (        s: { rowStart: number; rowEnd: number; columnStart: number; columnEnd: number; }) => 
+        (s: Section) => 
           row >= s.rowStart && 
           row <= s.rowEnd && 
           col >= s.columnStart && 
@@ -58,7 +73,12 @@ export async function POST(req: Request) {
     const data = await req.json();
 
     // Validamos la data del seatingChart
-    if (!data.seatingChart?.rows || !data.seatingChart?.columns || !data.seatingChart?.sections) {
+    if (
+      !data.seatingChart?.rows ||
+      !data.seatingChart?.columns ||
+      !Array.isArray(data.seatingChart.sections) ||
+      data.seatingChart.sections.length === 0
+    ) {
       return NextResponse.json(
         { error: 'Configuración de asientos inválida' },
         { status: 400 }

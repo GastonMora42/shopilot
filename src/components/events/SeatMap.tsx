@@ -12,19 +12,14 @@ interface SeatMapProps {
 export default function SeatMap({ eventId, onSeatSelect }: SeatMapProps) {
   const [seats, setSeats] = useState<ISeat[][]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     const fetchSeats = async () => {
       try {
         const response = await fetch(`/api/events/${eventId}/seats`);
         const data = await response.json();
-        
         if (!response.ok) throw new Error(data.error);
-        
         setSeats(data.seats);
-      } catch (error) {
-        setError;
       } finally {
         setLoading(false);
       }
@@ -34,7 +29,6 @@ export default function SeatMap({ eventId, onSeatSelect }: SeatMapProps) {
   }, [eventId]);
 
   if (loading) return <div>Cargando mapa de asientos...</div>;
-  if (error) return <div>Error: {error}</div>;
 
   return (
     <div className="overflow-x-auto">

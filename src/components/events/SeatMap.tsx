@@ -1,62 +1,81 @@
-// components/events/SeatMap.tsx
+// components/SeatMap.tsx
 'use client';
 
-import { useState } from 'react';
-import { ISeat } from '@/app/models/Seat';
+import { useEffect, useState } from 'react';
+import { ISeat } from '@/types';
 
 interface SeatMapProps {
   eventId: string;
-  rows: number;
-  columns: number;
-  seats: ISeat[];
-  onSeatSelect: (seat: ISeat) => void;
+  onSeatSelect?: (seat: ISeat) => void;
 }
 
-export default function SeatMap({ eventId, rows, columns, seats, onSeatSelect }: SeatMapProps) {
-  const [selectedSeats, setSelectedSeats] = useState<ISeat[]>([]);
+export default function SeatMap({ eventId, onSeatSelect }: SeatMapProps) {
+  const [seats, setSeats] = useState<ISeat[][]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const handleSeatClick = (seat: ISeat) => {
-    if (seat.status !== 'AVAILABLE') return;
+  useEffect(() => {
+    const fetchSeats = async () => {
+      try {
+        const response = await fetch(`/api/events/${eventId}/seats`);
+        const data = await response.json();
+        
+        if (!response.ok) throw new Error(data.error);
+        
+        setSeats(data.seats);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    if (selectedSeats.find(s => s.number === seat.number)) {
-      setSelectedSeats(prev => prev.filter(s => s.number !== seat.number));
-    } else {
-      setSelectedSeats(prev => [...prev, seat]);
-    }
-    onSeatSelect(seat);
-  };
+    fetchSeats();
+  }, [eventId]);
+
+  if (loading) return <div>Cargando mapa de asientos...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
-    <div className="grid gap-2 p-4">
-      {Array.from({ length: rows }).map((_, row) => (
-        <div key={row} className="flex gap-2 justify-center">
-          {Array.from({ length: columns }).map((_, col) => {
-            const seat = seats.find(s => s.row === row && s.column === col);
-            if (!seat) return null;
-
-            const isSelected = selectedSeats.find(s => s.number === seat.number);
-            const isAvailable = seat.status === 'AVAILABLE';
-
-            return (
+    <div className="overflow-x-auto">
+      <div className="grid gap-1 p-4">
+        {seats.map((row, rowIndex) => (
+          <div key={rowIndex} className="flex gap-1 justify-center">
+            <span className="w-6 text-center">
+              {String.fromCharCode(65 + rowIndex)}
+            </span>
+            {row.map((seat) => (
               <button
-                key={`${row}-${col}`}
-                onClick={() => handleSeatClick(seat)}
-                disabled={!isAvailable}
+                key={seat._id.toString()}
+                onClick={() => onSeatSelect?.(seat)}
+                disabled={seat.status !== 'AVAILABLE'}
                 className={`
-                  w-8 h-8 rounded
-                  ${isAvailable ? 'hover:bg-blue-200' : 'cursor-not-allowed'}
-                  ${isSelected ? 'bg-blue-500 text-white' : ''}
-                  ${seat.status === 'SOLD' ? 'bg-gray-500' : ''}
-                  ${seat.status === 'RESERVED' ? 'bg-yellow-500' : ''}
-                  ${seat.type === 'VIP' ? 'border-2 border-gold' : ''}
+                  w-8 h-8 rounded 
+                  ${getSeatStyle(seat.type, seat.status)}
                 `}
+                title={`${seat.number} - ${seat.type} - $${seat.price}`}
               >
-                {seat.number}
+                {seat.column + 1}
               </button>
-            );
-          })}
-        </div>
-      ))}
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
+}
+
+function getSeatStyle(type: string, status: string): string {
+  if (status !== 'AVAILABLE') {
+    return 'bg-gray-300 cursor-not-allowed';
+  }
+  
+  switch (type) {
+    case 'VIP':
+      return 'bg-purple-500 hover:bg-purple-600 text-white';
+    case 'DISABLED':
+      return 'bg-blue-500 hover:bg-blue-600 text-white';
+    default:
+      return 'bg-green-500 hover:bg-green-600 text-white';
+  }
 }

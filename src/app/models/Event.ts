@@ -2,6 +2,7 @@
 import mongoose from 'mongoose';
 import { IEvent } from '@/types';
 
+// models/Event.ts
 const EventSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -20,31 +21,25 @@ const EventSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  price: {
-    type: Number,
-    required: true,
-    min: 0
-  },
-  totalSeats: {
-    type: Number,
-    required: true,
-    min: 1
-  },
-  availableSeats: {
-    type: Number,
-    required: true
-  },
-  slug: {
-    type: String,
-    unique: true
-  },
   published: {
     type: Boolean,
     default: false
-  }
-}, {
-  timestamps: true,
-
+  },
+  organizerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  mercadopago: {
+    accessToken: {
+      type: String,
+      required: true
+    },
+    userId: {
+      type: String,
+      required: true
+    }
+  },
   seatingChart: {
     rows: { type: Number, required: true },
     columns: { type: Number, required: true },
@@ -62,7 +57,8 @@ const EventSchema = new mongoose.Schema({
       columnEnd: Number
     }]
   }
+}, {
+  timestamps: true
 });
-
 
 export const Event = mongoose.models.Event || mongoose.model<IEvent>('Event', EventSchema);

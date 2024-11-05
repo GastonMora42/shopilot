@@ -1,76 +1,91 @@
-//src/app/(dashboard)/admin/events/page.tsx
-import { Card } from '@/components/ui/Card'
-import { Calendar, Ticket, DollarSign } from 'lucide-react'
+// app/(dashboard)/eventos/page.tsx
+'use client';
 
-export default function DashboardPage() {
+import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/Button';
+import { IEvent } from '@/types';
+import Link from 'next/link';
+
+export default function EventosPage() {
+  const [events, setEvents] = useState<IEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+
+  const fetchEvents = async () => {
+    try {
+      const response = await fetch('/api/events');
+      const data = await response.json();
+      setEvents(data.events);
+    } catch (error) {
+      console.error('Error fetching events:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (date: Date) => {
+    return new Date(date).toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const toggleEventStatus = async (eventId: string, published: boolean) => {
+    try {
+      await fetch(`/api/events/${eventId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ published })
+      });
+      
+      fetchEvents(); // Recargar lista
+    } catch (error) {
+      console.error('Error updating event:', error);
+    }
+  };
+
+  if (loading) return <div>Cargando...</div>;
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Panel de Control</h1>
-        <p className="text-gray-500 mt-2">
-          Bienvenido al panel de administración de eventos.
-        </p>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Mis Eventos</h1>
+        <Link href="/admin/events/nuevo">
+          <Button>Crear Evento</Button>
+        </Link>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <Card>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Eventos Activos</p>
-                <h3 className="text-2xl font-semibold mt-1">12</h3>
-              </div>
-              <Calendar className="h-8 w-8 text-gray-400" />
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {events.map((event) => (
+          <div key={event._id.toString()} className="border rounded-lg p-4">
+            <h3 className="font-semibold">{event.name}</h3>
+            <p className="text-sm text-gray-600">{formatDate(event.date)}</p>
+            <p className="text-sm text-gray-600">{event.location}</p>
+            
+            <div className="mt-4 flex justify-between items-center">
+              <Link href={`/eventos/${event._id}/edit`}>
+                <Button variant="outline" size="sm">
+                  Editar
+                </Button>
+              </Link>
+              
+              <Button
+                variant={event.published ? "destructive" : "default"}
+                size="sm"
+                onClick={() => toggleEventStatus(event._id.toString(), !event.published)}
+              >
+                {event.published ? 'Despublicar' : 'Publicar'}
+              </Button>
             </div>
           </div>
-        </Card>
-
-        <Card>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Tickets Vendidos</p>
-                <h3 className="text-2xl font-semibold mt-1">248</h3>
-              </div>
-              <Ticket className="h-8 w-8 text-gray-400" />
-            </div>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Ingresos</p>
-                <h3 className="text-2xl font-semibold mt-1">$15,240</h3>
-              </div>
-              <DollarSign className="h-8 w-8 text-gray-400" />
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card>
-          <div className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Próximos Eventos</h3>
-            <div className="space-y-4">
-              {/* Lista de eventos próximos */}
-              <p className="text-gray-500 text-sm">No hay eventos próximos</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Últimas Ventas</h3>
-            <div className="space-y-4">
-              {/* Lista de últimas ventas */}
-              <p className="text-gray-500 text-sm">No hay ventas recientes</p>
-            </div>
-          </div>
-        </Card>
+        ))}
       </div>
     </div>
-  )
+  );
 }

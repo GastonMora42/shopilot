@@ -58,32 +58,82 @@ export default function EventForm() {
    }
  });
 
- const handleSubmit = async (e: React.FormEvent) => {
-   e.preventDefault();
-   setIsLoading(true);
 
-   try {
-     const response = await fetch('/api/events/create', {
-       method: 'POST',
-       headers: {
-         'Content-Type': 'application/json',
-       },
-       body: JSON.stringify(eventData),
-     });
+// Agregar esta función para generar los asientos
+const generateSeats = async (eventId: string, seatingChart: any) => {
+  const seats = [];
+  for (let row = 0; row < seatingChart.rows; row++) {
+    for (let col = 0; col < seatingChart.columns; col++) {
+      // Encontrar la sección a la que pertenece este asiento
+      const section = seatingChart.sections.find(
+        (s: any) => 
+          row >= s.rowStart && 
+          row <= s.rowEnd && 
+          col >= s.columnStart && 
+          col <= s.columnEnd
+      );
 
-     if (!response.ok) {
-       throw new Error('Error al crear el evento');
-     }
+      if (section) {
+        seats.push({
+          eventId,
+          row,
+          column: col,
+          number: `${String.fromCharCode(65 + row)}${col + 1}`,
+          status: 'AVAILABLE',
+          price: section.price,
+          type: section.type
+        });
+      }
+    }
+  }
+  
+  return seats;
+};
 
-     const event = await response.json();
-     router.push(`/admin/events/${event._id}`);
-   } catch (error) {
-     console.error('Error:', error);
-     // Aquí podrías agregar un toast o notificación de error
-   } finally {
-     setIsLoading(false);
-   }
- };
+// Modificar el handleSubmit
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsLoading(true);
+
+  try {
+    // 1. Crear el evento
+    const eventResponse = await fetch('/api/events/create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(eventData),
+    });
+
+    if (!eventResponse.ok) {
+      throw new Error('Error al crear el evento');
+    }
+
+    const event = await eventResponse.json();
+
+    // 2. Generar y crear los asientos
+    const seats = await generateSeats(event._id, eventData.seatingChart);
+    
+    const seatsResponse = await fetch('/api/seats/create-bulk', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ seats }),
+    });
+
+    if (!seatsResponse.ok) {
+      throw new Error('Error al crear los asientos');
+    }
+
+    router.push(`/admin/events/${event._id}`);
+  } catch (error) {
+    console.error('Error:', error);
+    // Mostrar error al usuario
+  } finally {
+    setIsLoading(false);
+  }
+};
 
  const handleSectionChange = (index: number, field: string, value: any) => {
    setEventData(prev => ({

@@ -24,6 +24,16 @@ interface EventFormData {
  };
 }
 
+interface Section {
+  rowStart: number;
+  rowEnd: number;
+  columnStart: number;
+  columnEnd: number;
+  price: number;  // Si se usa esta propiedad
+  type: string;   // Si se usa esta propiedad
+}
+
+
 export default function EventForm() {
  const router = useRouter();
  const [isLoading, setIsLoading] = useState(false);
@@ -58,15 +68,13 @@ export default function EventForm() {
    }
  });
 
-
-// Agregar esta función para generar los asientos
-const generateSeats = async (eventId: string, seatingChart: { rows: number; columns: number; sections: any; }) => {
+ const generateSeats = async (eventId: string, seatingChart: { rows: number; columns: number; sections: Section[] }) => {
   const seats = [];
   for (let row = 0; row < seatingChart.rows; row++) {
     for (let col = 0; col < seatingChart.columns; col++) {
       // Encontrar la sección a la que pertenece este asiento
       const section = seatingChart.sections.find(
-        (s: { rowStart: number; rowEnd: number; columnStart: number; columnEnd: number; }) => 
+        (s: Section) => 
           row >= s.rowStart && 
           row <= s.rowEnd && 
           col >= s.columnStart && 

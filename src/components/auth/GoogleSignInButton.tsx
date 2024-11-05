@@ -7,7 +7,10 @@ import { Button } from '@/components/ui/Button'
 export function GoogleSignInButton() {
   return (
     <Button
-      onClick={() => signIn('google', { callbackUrl: '/admin/events' })}
+      onClick={() => signIn('google', { 
+        callbackUrl: '/admin',
+        redirect: true,
+      })}
       className="w-full flex items-center justify-center gap-2"
       variant="outline"
     >

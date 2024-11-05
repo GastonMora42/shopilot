@@ -1,4 +1,4 @@
-// lib/auth.ts
+// src/lib/auth.ts
 import NextAuth, { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import { MongoDBAdapter } from '@next-auth/mongodb-adapter';
@@ -20,6 +20,7 @@ declare module 'next-auth' {
   }
 
   interface User {
+    id: string;
     role: 'ORGANIZER' | 'ADMIN';
     mercadopago?: {
       accessToken?: string;
@@ -40,23 +41,43 @@ export const authOptions: NextAuthOptions = {
           name: profile.name,
           email: profile.email,
           image: profile.picture,
-          role: 'ORGANIZER', // Por defecto, todos son organizadores
+          role: 'ORGANIZER',
           verified: true,
         };
       },
     }),
   ],
   callbacks: {
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
-        session.user.role = user.role;
-        session.user.mercadopago = user.mercadopago;
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.role = user.role;
+        token.mercadopago = user.mercadopago;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user && token) {
+        session.user.id = token.id as string;
+        session.user.role = token.role as 'ORGANIZER' | 'ADMIN';
+        session.user.mercadopago = token.mercadopago as any;
       }
       return session;
     },
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith(baseUrl)) {
+        return url;
+      }
+      return `${baseUrl}/admin`;
+    },
+  },
+  session: {
+    strategy: "jwt",
   },
   pages: {
-    signIn: '/auth/login',
+    signIn: '/',
   },
+  secret: process.env.NEXTAUTH_SECRET,
 };
+
+export default NextAuth(authOptions);

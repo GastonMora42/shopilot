@@ -60,7 +60,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user && token) {
         session.user.id = token.id as string;
         session.user.role = token.role as 'ORGANIZER' | 'ADMIN';
-        session.user.mercadopago = token.mercadopago as any;
+        session.user.mercadopago = token.mercadopago;
       }
       return session;
     },

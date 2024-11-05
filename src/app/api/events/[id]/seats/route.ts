@@ -32,10 +32,10 @@ export async function GET(
       seats: seatingMatrix 
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching seats:', error);
     return NextResponse.json(
-      { error: error.message || 'Error al obtener los asientos' }, 
+      { error: error || 'Error al obtener los asientos' }, 
       { status: 500 }
     );
   }

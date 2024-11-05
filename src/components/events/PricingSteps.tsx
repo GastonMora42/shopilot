@@ -1,19 +1,22 @@
 // components/events/PricingStep.tsx
+interface Section {
+  name: string;
+  type: 'REGULAR' | 'VIP' | 'DISABLED';
+  price: number;
+  rowStart: number;
+  rowEnd: number;
+  columnStart: number;
+  columnEnd: number;
+}
+
 interface PricingStepProps {
-    sections: Array<{
-      name: string;
-      type: 'REGULAR' | 'VIP' | 'DISABLED';
-      price: number;
-      rowStart: number;
-      rowEnd: number;
-      columnStart: number;
-      columnEnd: number;
-    }>;
-    onChange: (sections: any) => void;
-  }
-  
+  sections: Section[];
+  onChange: (sections: Section[]) => void; // Usa el tipo `Section[]` en lugar de `any`
+}
+
+
   export function PricingStep({ sections, onChange }: PricingStepProps) {
-    const handleSectionChange = (index: number, field: string, value: any) => {
+    const handleSectionChange = (index: number, field: string, value: string | number) => {
       const newSections = sections.map((section, i) =>
         i === index ? { ...section, [field]: value } : section
       );

@@ -7,7 +7,7 @@ import { User } from '@/app/models/User';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/lib/auth';
 
-async function generateSeatsForEvent(eventId: string, seatingChart: any) {
+async function generateSeatsForEvent(eventId: string, seatingChart: { rows: number; columns: number; sections: any[]; }) {
   const seats = [];
   
   for (let row = 0; row < seatingChart.rows; row++) {

@@ -23,8 +23,8 @@ export default function SeatMap({ eventId, onSeatSelect }: SeatMapProps) {
         if (!response.ok) throw new Error(data.error);
         
         setSeats(data.seats);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (error) {
+        setError;
       } finally {
         setLoading(false);
       }

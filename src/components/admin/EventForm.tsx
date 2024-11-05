@@ -60,13 +60,13 @@ export default function EventForm() {
 
 
 // Agregar esta función para generar los asientos
-const generateSeats = async (eventId: string, seatingChart: any) => {
+const generateSeats = async (eventId: string, seatingChart: { rows: number; columns: number; sections: any; }) => {
   const seats = [];
   for (let row = 0; row < seatingChart.rows; row++) {
     for (let col = 0; col < seatingChart.columns; col++) {
       // Encontrar la sección a la que pertenece este asiento
       const section = seatingChart.sections.find(
-        (s: any) => 
+        (s: { rowStart: number; rowEnd: number; columnStart: number; columnEnd: number; }) => 
           row >= s.rowStart && 
           row <= s.rowEnd && 
           col >= s.columnStart && 
@@ -135,7 +135,7 @@ const handleSubmit = async (e: React.FormEvent) => {
   }
 };
 
- const handleSectionChange = (index: number, field: string, value: any) => {
+ const handleSectionChange = (index: number, field: string, value: string | number) => {
    setEventData(prev => ({
      ...prev,
      seatingChart: {

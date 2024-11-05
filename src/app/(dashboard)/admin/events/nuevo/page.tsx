@@ -13,6 +13,12 @@ import { StepIndicator } from '@/components/events/StepIndicator';
 
 type StepType = 'info' | 'seating' | 'pricing' | 'review';
 
+
+interface Seating {
+  rows: number;
+  columns: number;
+}
+
 export default function NewEventPage() {
   const router = useRouter();
   const [step, setStep] = useState<StepType>('info');
@@ -45,34 +51,50 @@ export default function NewEventPage() {
           columnEnd: 10
         }
       ]
-    }
+    },
+    orderTotal: 3000 // Agregar un valor para orderTotal
   });
 
-  const handleBasicInfoChange = (info: any) => {
-    setEventData(prev => ({ ...prev, ...info }));
+  const handleBasicInfoChange = (info: unknown) => {
+    if (typeof info === "object" && info !== null) {
+      setEventData(prev => ({ ...prev, ...info }));
+    } else {
+      console.error("Invalid info format");
+    }
   };
+  
 
-  const handleSeatingChange = (seating: any) => {
-    setEventData(prev => ({
-      ...prev,
-      seatingChart: {
-        ...prev.seatingChart,
-        rows: seating.rows,
-        columns: seating.columns
-      }
-    }));
+  const handleSeatingChange = (seating: unknown) => {
+    if (typeof seating === "object" && seating !== null && "rows" in seating && "columns" in seating) {
+      const validSeating = seating as Seating;
+      setEventData(prev => ({
+        ...prev,
+        seatingChart: {
+          ...prev.seatingChart,
+          rows: validSeating.rows,
+          columns: validSeating.columns
+        }
+      }));
+    } else {
+      console.error("Invalid seating format");
+    }
   };
+  
 
-  const handleSectionsChange = (sections: any) => {
-    setEventData(prev => ({
-      ...prev,
-      seatingChart: {
-        ...prev.seatingChart,
-        sections
-      }
-    }));
+  const handleSectionsChange = (sections: unknown) => {
+    if (Array.isArray(sections)) {
+      setEventData(prev => ({
+        ...prev,
+        seatingChart: {
+          ...prev.seatingChart,
+          sections,
+        },
+      }));
+    } else {
+      console.error("Invalid sections format");
+    }
   };
-
+  
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
@@ -96,9 +118,9 @@ export default function NewEventPage() {
   
       alert('¡Evento creado exitosamente!');
       router.push(`/eventos/${data._id}`);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error:', error);
-      alert(error.message || 'Ocurrió un error al crear el evento');
+      alert(error || 'Ocurrió un error al crear el evento');
     } finally {
       setIsSubmitting(false);
     }

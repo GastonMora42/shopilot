@@ -1,9 +1,14 @@
 // components/ui/card.tsx
-import { cn } from "@/app/lib/utils"
+import { cn } from "@/app/lib/utils";
+import { ReactNode } from "react"; // Importar ReactNode
 
-interface CardProps extends React.HTMLAttributes<HTMLDivElement> {}
+interface CardProps {
+  className?: string;  // className opcional
+  children: ReactNode; // Permitir hijos de tipo ReactNode
+  [key: string]: any;  // Esto permite otras propiedades no tipadas
+}
 
-export function Card({ className, ...props }: CardProps) {
+export function Card({ className, children, ...props }: CardProps) {
   return (
     <div
       className={cn(
@@ -11,6 +16,8 @@ export function Card({ className, ...props }: CardProps) {
         className
       )}
       {...props}
-    />
-  )
+    >
+      {children} {/* Renderizar los hijos */}
+    </div>
+  );
 }

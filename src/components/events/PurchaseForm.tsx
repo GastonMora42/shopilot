@@ -2,9 +2,16 @@
 'use client'
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 
-export default function PurchaseForm({ event }: { event: any }) {
+interface Event {
+  _id: string;
+  name: string;
+  price: number;
+  date: string;
+  location: string;
+}
+
+export default function PurchaseForm({ event }: { event: Event }) {
   const [isLoading, setIsLoading] = useState(false);
   const [buyerInfo, setBuyerInfo] = useState({
     name: '',

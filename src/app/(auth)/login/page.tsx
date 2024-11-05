@@ -32,7 +32,7 @@ export default function LoginPage() {
       }
 
       router.push('/admin/events');
-    } catch (error) {
+    } catch {
       setError('Ocurrió un error al iniciar sesión');
     } finally {
       setIsLoading(false);

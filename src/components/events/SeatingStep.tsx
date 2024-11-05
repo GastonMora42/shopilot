@@ -2,21 +2,23 @@ import { useState } from "react";
 import { Button } from "../ui/Button";
   
   // components/SeatingStep.tsx
+  interface SeatingStepData {
+    rows: number;
+    columns: number;
+    sections: Array<{
+      name: string;
+      type: 'REGULAR' | 'VIP' | 'DISABLED';
+      price: number;
+      rowStart: number;
+      rowEnd: number;
+      columnStart: number;
+      columnEnd: number;
+    }>;
+  }
+  
   interface SeatingStepProps {
-    data: {
-      rows: number;
-      columns: number;
-      sections: Array<{
-        name: string;
-        type: 'REGULAR' | 'VIP' | 'DISABLED';
-        price: number;
-        rowStart: number;
-        rowEnd: number;
-        columnStart: number;
-        columnEnd: number;
-      }>;
-    };
-    onChange: (data: any) => void;
+    data: SeatingStepData;
+    onChange: (data: SeatingStepData) => void; // Usamos el tipo SeatingStepData aquí
   }
   
   export function SeatingStep({ data, onChange }: SeatingStepProps) {

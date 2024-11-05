@@ -2,7 +2,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useSession } from 'next-auth/react'
 import { Button } from "@/components/ui/Button"
 import {
   Sheet,
@@ -10,12 +9,10 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetClose,
 } from "@/components/ui/sheet"
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton'
 
 export default function LandingPage() {
-  const { data: session } = useSession()
   const [isLoginOpen, setIsLoginOpen] = useState(false)
 
   return (

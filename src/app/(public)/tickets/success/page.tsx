@@ -2,6 +2,7 @@
 import { redirect } from 'next/navigation';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
+import Image from 'next/image';
 
 export default async function SuccessPage({
   searchParams
@@ -33,7 +34,7 @@ export default async function SuccessPage({
           </p>
 
           <div className="mt-8">
-            <img
+            <Image
               src={ticket.qrCode}
               alt="Código QR de entrada"
               className="mx-auto"

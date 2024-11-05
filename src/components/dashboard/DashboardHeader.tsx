@@ -10,12 +10,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { User } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { DropdownMenuLabel, DropdownMenuSeparator } from '@radix-ui/react-dropdown-menu'
 
 export function DashboardHeader() {
   const { data: session } = useSession()
-  const router = useRouter()
 
   const handleSignOut = async () => {
     await signOut({ redirect: true, callbackUrl: '/' });

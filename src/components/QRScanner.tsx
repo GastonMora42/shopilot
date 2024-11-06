@@ -1,7 +1,7 @@
 // src/components/QrScanner.tsx
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useParams } from 'next/navigation';
 
@@ -16,53 +16,7 @@ export function QrScanner() {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [scanStatus, setScanStatus] = useState<ScanStatus>({ isScanning: false });
 
-  useEffect(() => {
-    const handleQrCodeScan = (decodedText: string) => {
-      setScanStatus({
-        isScanning: true,
-        data: decodedText
-      });
-
-      handleScanData(decodedText);
-    };
-
-    const initializeScanner = async () => {
-      try {
-        scannerRef.current = new Html5Qrcode("qr-reader");
-        
-        await scannerRef.current.start(
-          { facingMode: "environment" },
-          {
-            fps: 10,
-            qrbox: { width: 250, height: 250 }
-          },
-          handleQrCodeScan,
-          () => {} // Ignoramos los errores de escaneo
-        );
-
-        setScanStatus({ isScanning: true });
-      } catch (error) {
-        setScanStatus({
-          isScanning: false,
-          error: 'Error al iniciar la cámara'
-        });
-      }
-    };
-
-    initializeScanner();
-
-    return () => {
-      if (scannerRef.current?.isScanning) {
-        scannerRef.current
-          .stop()
-          .catch(() => {
-            console.error("Error al detener el scanner");
-          });
-      }
-    };
-  }, []);
-
-  const handleScanData = async (qrData: string) => {
+  const handleScanData = useCallback(async (qrData: string) => {
     try {
       const response = await fetch('/api/tickets/validate', {
         method: 'POST',
@@ -93,14 +47,67 @@ export function QrScanner() {
     } catch (error) {
       setScanStatus({
         isScanning: true,
-        error: 'Error al validar el ticket'
+        error: error instanceof Error ? error.message : 'Error al validar el ticket'
       });
 
       setTimeout(() => {
         setScanStatus({ isScanning: true });
       }, 3000);
     }
-  };
+  }, [params.id]);
+
+  useEffect(() => {
+    const handleQrCodeScan = (decodedText: string) => {
+      setScanStatus({
+        isScanning: true,
+        data: decodedText
+      });
+
+      handleScanData(decodedText);
+    };
+
+    const initializeScanner = async () => {
+      try {
+        scannerRef.current = new Html5Qrcode("qr-reader");
+        
+        await scannerRef.current.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 250 }
+          },
+          handleQrCodeScan,
+          (errorMessage: string) => {
+            // Solo registrar errores no relacionados con el escaneo continuo
+            if (!errorMessage.includes('No QR code found')) {
+              console.error('Error de escaneo:', errorMessage);
+            }
+          }
+        );
+
+        setScanStatus({ isScanning: true });
+      } catch (error) {
+        setScanStatus({
+          isScanning: false,
+          error: error instanceof Error ? error.message : 'Error al iniciar la cámara'
+        });
+      }
+    };
+
+    initializeScanner();
+
+    return () => {
+      if (scannerRef.current?.isScanning) {
+        scannerRef.current
+          .stop()
+          .catch((error) => {
+            console.error("Error al detener el scanner:", 
+              error instanceof Error ? error.message : 'Error desconocido'
+            );
+          });
+      }
+    };
+  }, [handleScanData]);
 
   return (
     <div className="space-y-4">

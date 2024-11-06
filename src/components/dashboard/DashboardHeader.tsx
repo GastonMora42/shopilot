@@ -9,10 +9,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { User } from 'lucide-react'
+import { Menu, User } from 'lucide-react'
 import { DropdownMenuLabel, DropdownMenuSeparator } from '@radix-ui/react-dropdown-menu'
 
-export function DashboardHeader() {
+interface DashboardHeaderProps {
+  onMenuClick: () => void;
+}
+
+export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
   const { data: session } = useSession()
 
   const handleSignOut = async () => {
@@ -20,13 +24,21 @@ export function DashboardHeader() {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b z-50">
+    <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b z-30">
       <div className="h-full max-w-screen-2xl mx-auto px-4 flex items-center justify-between">
-        <span className="text-xl font-semibold">EventosPro</span>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onMenuClick}
+            className="lg:hidden p-2 hover:bg-gray-100 rounded-md"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <span className="text-xl font-semibold">EventosPro</span>
+        </div>
 
         <div className="flex items-center gap-4">
           <DropdownMenu>
-            <DropdownMenuTrigger >
+            <DropdownMenuTrigger>
               <Button variant="ghost" size="icon" className="relative h-8 w-8 rounded-full">
                 <User className="h-4 w-4" />
               </Button>
@@ -39,7 +51,7 @@ export function DashboardHeader() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem >
+              <DropdownMenuItem>
                 <button
                   className="w-full text-left cursor-pointer"
                   onClick={handleSignOut}
@@ -54,3 +66,4 @@ export function DashboardHeader() {
     </header>
   )
 }
+

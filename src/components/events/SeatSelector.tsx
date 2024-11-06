@@ -1,7 +1,6 @@
 // components/SeatSelector.tsx
 'use client';
 
-import { useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/app/lib/utils';
 

@@ -52,7 +52,7 @@ export default function NewEventPage() {
         }
       ]
     },
-    orderTotal: 3000 // Agregar un valor para orderTotals
+    orderTotal: 3000 // Agregar un valor para orderTotalss
   });
 
   const handleBasicInfoChange = (info: unknown) => {

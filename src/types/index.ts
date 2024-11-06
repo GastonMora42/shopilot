@@ -1,7 +1,7 @@
 // types/index.ts
 import { ObjectId } from 'mongoose';
 
-// types/index.ts
+// types/index.tss
 export interface IEvent {
   _id: string;
   name: string;

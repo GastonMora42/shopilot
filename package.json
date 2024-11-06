@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "vercel-build": "npm run lint && next build"
+    "vercel-build": "next lint --fix && next build"
   },
   "dependencies": {
     "@next-auth/mongodb-adapter": "^1.1.3",

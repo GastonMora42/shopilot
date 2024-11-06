@@ -132,4 +132,4 @@ export default function PurchaseForm({ event }: { event: Event }) {
       </form>
     </div>
   );
-};
+}

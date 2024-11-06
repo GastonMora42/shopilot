@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Obtener tokens de MP
+    // Obtener token de MP
     const response = await fetch('https://api.mercadopago.com/oauth/token', {
       method: 'POST',
       headers: {

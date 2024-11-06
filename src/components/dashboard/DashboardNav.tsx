@@ -3,7 +3,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Calendar, LayoutDashboard, Settings, Ticket } from 'lucide-react'
+import { Calendar, LayoutDashboard, QrCode, Settings, Ticket } from 'lucide-react'
 import { cn } from '@/app/lib/utils'
 
 const navigation = [
@@ -21,6 +21,10 @@ const navigation = [
     name: 'Tickets',
     href: '/admin/tickets',
     icon: Ticket
+  },
+  { name: 'Scanner', 
+    icon: QrCode, 
+    href: '/admin/scanner' 
   },
   {
     name: 'Configuración',

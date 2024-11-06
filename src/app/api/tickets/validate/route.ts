@@ -1,4 +1,4 @@
-// src/app/api/tickets/validate/route.ts
+// app/api/tickets/validate/route.ts
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/lib/auth';
@@ -9,51 +9,60 @@ export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-
-    const { eventId, qrCode } = await req.json();
-
-    if (!eventId || !qrCode) {
       return NextResponse.json(
-        { error: 'Faltan datos requeridos' },
-        { status: 400 }
+        { error: 'No autorizado' },
+        { status: 401 }
       );
     }
 
     await dbConnect();
+    
+    const { qrCode } = await req.json();
 
     // Buscar el ticket
-    const ticket = await Ticket.findOne({
-      eventId,
-      qrCode,
-      status: 'PAID'
-    });
-
+    const ticket = await Ticket.findOne({ qrCode }).populate('eventId');
+    
     if (!ticket) {
       return NextResponse.json(
-        { error: 'Ticket ya utilizado o no es valido' },
+        { error: 'Ticket no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    // Verificar estado del ticket
+    if (ticket.status !== 'PAID') {
+      return NextResponse.json(
+        { error: 'Ticket no pagado' },
         { status: 400 }
       );
     }
 
-    // Marcar el ticket como usado
+    if (ticket.status === 'USED') {
+      return NextResponse.json(
+        { error: 'Ticket ya utilizado' },
+        { status: 400 }
+      );
+    }
+
+    // Marcar ticket como usado
     ticket.status = 'USED';
     await ticket.save();
 
+    // Devolver información para mostrar
     return NextResponse.json({
       success: true,
       ticket: {
+        eventName: ticket.eventId.name,
         buyerName: ticket.buyerInfo.name,
-        buyerEmail: ticket.buyerInfo.email,
-        seatNumber: ticket.seatNumber
+        seatNumber: ticket.seats.join(', '),
+        status: 'USED'
       }
     });
 
   } catch (error) {
     console.error('Error validando ticket:', error);
     return NextResponse.json(
-      { error: 'Error al validar el ticket' },
+      { error: 'Error al validar ticket' },
       { status: 500 }
     );
   }

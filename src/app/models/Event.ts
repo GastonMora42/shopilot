@@ -1,13 +1,17 @@
 // models/Event.ts
 import mongoose from 'mongoose';
 import { IEvent } from '@/types';
+import slugify from 'slugify';
 
-// models/Event.ts
 const EventSchema = new mongoose.Schema({
   name: {
     type: String,
     required: true,
     trim: true
+  },
+  slug: {
+    type: String,
+    unique: true
   },
   description: {
     type: String,
@@ -59,6 +63,24 @@ const EventSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
+});
+
+// Generar slug antes de guardar
+EventSchema.pre('save', async function(next) {
+  if (this.isModified('name')) {
+    let baseSlug = slugify(this.name, { lower: true, strict: true });
+    let slug = baseSlug;
+    let counter = 1;
+    
+    // Verificar si el slug existe y agregar contador si es necesario
+    while (await mongoose.models.Event.findOne({ slug, _id: { $ne: this._id } })) {
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+    
+    this.slug = slug;
+  }
+  next();
 });
 
 export const Event = mongoose.models.Event || mongoose.model<IEvent>('Event', EventSchema);

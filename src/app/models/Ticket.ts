@@ -1,29 +1,23 @@
+// models/Ticket.ts
 import mongoose from "mongoose";
 
-// models/Ticket.ts
 const TicketSchema = new mongoose.Schema({
   eventId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Event',
     required: true
   },
-  seatNumber: {
+  seats: [{
     type: String,
     required: true
-  },
+  }],
   buyerInfo: {
-    name: {
-      type: String,
-      required: true
-    },
+    name: String,
     email: {
       type: String,
       required: true
     },
-    dni: {
-      type: String,
-      required: true
-    },
+    dni: String,
     phone: String
   },
   qrCode: {
@@ -33,14 +27,14 @@ const TicketSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['PENDING', 'PAID', 'USED'],
+    enum: ['PENDING', 'PAID', 'USED', 'CANCELLED'],
     default: 'PENDING'
   },
-  paymentId: String,
   price: {
     type: Number,
     required: true
-  }
+  },
+  paymentId: String
 }, {
   timestamps: true
 });

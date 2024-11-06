@@ -1,8 +1,7 @@
 // lib/utils.ts
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-import QRCode from 'qrcode'
-import { v4 as uuidv4 } from 'uuid'
+import crypto from 'crypto';
 
 // Para combinar clases de Tailwind
 export function cn(...inputs: ClassValue[]) {
@@ -23,14 +22,17 @@ export function formatDate(date: string | Date) {
 
 // Para generar códigos QR
 export async function generateQRCode(): Promise<string> {
-  const uniqueId = uuidv4()
-  try {
-    const qrCode = await QRCode.toDataURL(uniqueId)
-    return qrCode
-  } catch (err) {
-    console.error('Error generating QR code:', err)
-    throw new Error('Error generating QR code')
-  }
+  // Generar un string aleatorio único
+  const randomString = crypto.randomBytes(32).toString('hex');
+  
+  // Agregar timestamp para mayor unicidad
+  const timestamp = Date.now().toString();
+  
+  // Combinar y hacer hash
+  return crypto
+    .createHash('sha256')
+    .update(randomString + timestamp)
+    .digest('hex');
 }
 
 // Para generar un slug único
@@ -41,3 +43,11 @@ export function generateSlug(text: string): string {
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
 }
+
+// lib/utils.ts
+export const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS'
+  }).format(amount);
+};

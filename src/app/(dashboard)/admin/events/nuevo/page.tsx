@@ -117,7 +117,7 @@ export default function NewEventPage() {
       }
   
       alert('¡Evento creado exitosamente!');
-      router.push(`/eventos/${data._id}`);
+      router.push(`/events/${data._id}`);
     } catch (error) {
       console.error('Error:', error);
       alert(error || 'Ocurrió un error al crear el evento');

@@ -1,14 +1,16 @@
 // types/index.ts
 import { ObjectId } from 'mongoose';
 
+// types/index.ts
 export interface IEvent {
-  _id: ObjectId;
-  organizerId: ObjectId;
+  _id: string;
   name: string;
+  slug: string; // Agregado
   description: string;
   date: Date;
   location: string;
   published: boolean;
+  organizerId: string;
   mercadopago: {
     accessToken: string;
     userId: string;
@@ -16,7 +18,15 @@ export interface IEvent {
   seatingChart: {
     rows: number;
     columns: number;
-    sections: ISection[];
+    sections: Array<{
+      name: string;
+      type: 'REGULAR' | 'VIP' | 'DISABLED';
+      price: number;
+      rowStart: number;
+      rowEnd: number;
+      columnStart: number;
+      columnEnd: number;
+    }>;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -61,4 +71,15 @@ export interface ITicket {
   price: number;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface TicketValidation {
+  success: boolean;
+  ticket?: {
+    eventName: string;
+    buyerName: string;
+    seatNumber: string;
+    status: string;
+  };
+  error?: string;
 }

@@ -1,31 +1,38 @@
-// src/lib/mongodb-adapter.ts
-import { MongoClient } from 'mongodb'
+// src/app/lib/mongodb-adapter.ts
+import { MongoClient } from 'mongodb';
 
-declare global {
-  var _mongoClientPromise: Promise<MongoClient> | undefined
+// Definimos nuestro tipo global sin depender de NodeJS.Global
+interface GlobalMongo {
+  _mongoClientPromise?: Promise<MongoClient>;
+  [key: string]: any;
 }
 
-if (!process.env.MONGODB_URI) {
-  throw new Error('Please add your Mongodb URI to .env.local')
+// Declaramos el global con nuestro tipo
+declare const global: GlobalMongo;
+
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  throw new Error('Please add your MongoDB URI to .env.local');
 }
 
-const uri = process.env.MONGODB_URI
-const options = {}
+const options: Record<string, any> = {
+  useUnifiedTopology: true,
+  useNewUrlParser: true,
+};
 
-let client: MongoClient
-let clientPromise: Promise<MongoClient>
+let client: MongoClient;
+let clientPromise: Promise<MongoClient>;
 
 if (process.env.NODE_ENV === 'development') {
-  // En desarrollo, usa una variable global para preservar la conexión
   if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options)
-    global._mongoClientPromise = client.connect()
+    client = new MongoClient(MONGODB_URI, options);
+    global._mongoClientPromise = client.connect();
   }
-  clientPromise = global._mongoClientPromise
+  clientPromise = global._mongoClientPromise;
 } else {
-  // En producción, es mejor no usar una variable global
-  client = new MongoClient(uri, options)
-  clientPromise = client.connect()
+  client = new MongoClient(MONGODB_URI, options);
+  clientPromise = client.connect();
 }
 
-export default clientPromise
+export default clientPromise;

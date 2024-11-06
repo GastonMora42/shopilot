@@ -5,34 +5,46 @@ export const mpClient = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN ?? '',
 });
 
-interface TicketData {
+// lib/mercadopago.ts
+interface PreferenceData {
   _id: string;
   eventName: string;
   price: number;
+  description?: string;
 }
 
-export async function createPreference(ticket: TicketData) {
+export async function createPreference({
+  _id,
+  eventName,
+  price,
+  description
+}: PreferenceData) {
+  const mpClient = new MercadoPagoConfig({
+    accessToken: process.env.MP_ACCESS_TOKEN ?? '',
+  });
+
   const preference = new Preference(mpClient);
   
   const preferenceData = {
     body: {
       items: [
         {
-          id: ticket._id,
-          title: `Entrada para ${ticket.eventName}`,
+          id: _id,
+          title: `Entrada para ${eventName}`,
+          description: description || `Entrada para ${eventName}`,
           quantity: 1,
           currency_id: "ARS",
-          unit_price: Number(ticket.price),
+          unit_price: Number(price),
         }
       ],
       back_urls: {
-        success: `${process.env.NEXT_PUBLIC_BASE_URL}/api/payments/success`,
-        failure: `${process.env.NEXT_PUBLIC_BASE_URL}/api/payments/failure`,
-        pending: `${process.env.NEXT_PUBLIC_BASE_URL}/api/payments/pending`
+        success: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/success`,
+        failure: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/failure`,
+        pending: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/pending`
       },
-      auto_return: "approved" as const,
-      external_reference: ticket._id,
-      notification_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/payments/webhook`
+      auto_return: "approved",
+      external_reference: _id,
+      notification_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/mercadopago`
     }
   };
 

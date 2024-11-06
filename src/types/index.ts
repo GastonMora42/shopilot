@@ -5,7 +5,7 @@ import { ObjectId } from 'mongoose';
 export interface IEvent {
   _id: string;
   name: string;
-  slug: string; // Agregado
+  slug: string;
   description: string;
   date: Date;
   location: string;
@@ -82,4 +82,15 @@ export interface TicketValidation {
     status: string;
   };
   error?: string;
+}
+
+export interface CreateTicketRequest {
+  eventId: string;
+  seats: string[];
+  buyerInfo: {
+    name: string;
+    email: string;
+    dni: string;
+    phone?: string;
+  };
 }

@@ -24,6 +24,7 @@
     "next": "14.0.3",
     "next-auth": "^4.24.5",
     "qrcode": "^1.5.4",
+    "qrcode.react": "^4.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "slugify": "^1.6.6",

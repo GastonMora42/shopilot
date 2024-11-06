@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 import { ISeat } from '@/types';
 
 export async function GET(
-  req: Request,
+  _req: Request,
   { params }: { params: { eventId: string } }
 ) {
   try {

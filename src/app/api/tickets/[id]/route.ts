@@ -2,16 +2,16 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
-import { Event } from '@/app/models/Event';
 
+// app/api/tickets/[id]/route.ts
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } }
 ) {
   try {
     await dbConnect();
 
-    const ticket = await Ticket.findById(params.id);
+    const ticket = await Ticket.findById(params.id).populate('eventId');
     if (!ticket) {
       return NextResponse.json(
         { error: 'Ticket no encontrado' },
@@ -19,23 +19,17 @@ export async function GET(
       );
     }
 
-    const event = await Event.findById(ticket.eventId);
-    if (!event) {
-      return NextResponse.json(
-        { error: 'Evento no encontrado' },
-        { status: 404 }
-      );
-    }
-
     return NextResponse.json({
-      ...ticket.toObject(),
-      eventName: event.name,
-      eventDate: event.date,
-      eventLocation: event.location
+      eventName: ticket.eventId.name,
+      date: ticket.eventId.date,
+      location: ticket.eventId.location,
+      seats: ticket.seats,
+      qrCode: ticket.qrCode,
+      buyerInfo: ticket.buyerInfo
     });
 
   } catch (error) {
-    console.error('Error obteniendo ticket:', error);
+    console.error('Error:', error);
     return NextResponse.json(
       { error: 'Error al obtener el ticket' },
       { status: 500 }

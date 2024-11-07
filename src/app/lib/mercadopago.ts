@@ -38,9 +38,9 @@ export async function createPreference({
         }
       ],
       back_urls: {
-        success: `${process.env.NEXT_PUBLIC_BASE_URL}/admin/payment/success?ticketId=${_id}`,
-        failure: `${process.env.NEXT_PUBLIC_BASE_URL}/admin/payment/failure?ticketId=${_id}`,
-        pending: `${process.env.NEXT_PUBLIC_BASE_URL}/admin/payment/pending?ticketId=${_id}`
+        success: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/success?ticketId=${_id}`,
+        failure: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/failure?ticketId=${_id}`,
+        pending: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/pending?ticketId=${_id}`
       },
       auto_return: "approved",
       external_reference: _id,

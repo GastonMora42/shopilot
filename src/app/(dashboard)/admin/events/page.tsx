@@ -126,12 +126,9 @@ export default function EventosPage() {
               <p className="text-sm text-gray-600">{event.location}</p>
               
               <div className="mt-4 space-x-2 flex justify-end">
-                <Link href={`/admin/events/${event._id}/edit`}>
                   <Button variant="outline" size="sm">
                     Editar
                   </Button>
-                </Link>
-                
                 <Button
                   variant={event.published ? "destructive" : "default"}
                   size="sm"

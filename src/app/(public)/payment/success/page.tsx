@@ -6,10 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
-import { PDFDownloadLink } from '@react-pdf/renderer';
-import { TicketPDF } from '@/components/TicketPDF';
 import { usePDFDownload } from '@/app/hooks/usePDFDownload';
-
 
 interface TicketData {
   eventName: string;
@@ -103,24 +100,19 @@ export default function PaymentSuccessPage() {
           </div>
 
           <div className="flex flex-col gap-3">
-          <PDFDownloadLink
-        document={<TicketPDF ticket={ticket} />}
-        fileName={`ticket-${ticket.eventName}.pdf`}>
-<Button
-            onClick={() => ticket && downloadPDF(ticket)}
-            disabled={pdfLoading}
-            className="w-full"
-          >
-            {pdfLoading ? 'Generando PDF...' : 'Descargar PDF'}
-          </Button>
-      </PDFDownloadLink>
+            <Button
+              onClick={() => ticket && downloadPDF(ticket)}
+              disabled={pdfLoading}
+              className="w-full"
+            >
+              {pdfLoading ? 'Generando PDF...' : 'Descargar PDF'}
+            </Button>
             <Button asChild>
               <Link href="/admin/tickets">Ver mis tickets</Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/admin/events">Ver más eventos</Link>
             </Button>
-            
           </div>
         </div>
       </div>

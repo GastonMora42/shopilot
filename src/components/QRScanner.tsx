@@ -1,5 +1,4 @@
 // components/QrScanner.tsx
-'use client';
 
 import { useState, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -22,6 +21,7 @@ export function QrScanner() {
   const [scanner, setScanner] = useState<Html5Qrcode | null>(null);
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     const html5QrCode = new Html5Qrcode("qr-reader");
@@ -60,45 +60,48 @@ export function QrScanner() {
     }
   };
 
-const handleScanSuccess = async (decodedText: string) => {
-  try {
-    const response = await fetch('/api/tickets/validate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ qrCode: decodedText })
-    });
+  const handleScanSuccess = async (decodedText: string) => {
+    try {
+      // Detener el scanner inmediatamente después de leer un código
+      await stopScanning();
 
-    const data = await response.json();
+      const response = await fetch('/api/tickets/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ qrCode: decodedText })
+      });
 
-    setResult({
-      success: data.success, // Usar data.success en lugar de response.ok
-      message: data.message, // Usar el mensaje de la respuesta
-      ticket: data.ticket
-    });
+      const data = await response.json();
 
-    // Pausar el scanner temporalmente
-    await stopScanning();
+      setResult({
+        success: data.success,
+        message: data.message,
+        ticket: data.ticket
+      });
 
-    // Reiniciar después de 5 segundos
-    setTimeout(async () => {
-      setResult(null);
-      await startScanning();
-    }, 5000);
+      setShowModal(true);
 
-  } catch (error) {
-    setResult({
-      success: false,
-      message: 'Error al validar el ticket'
-    });
-  }
-};
+    } catch (error) {
+      setResult({
+        success: false,
+        message: 'Error al validar el ticket'
+      });
+      setShowModal(true);
+    }
+  };
 
   const handleScanError = (error: string) => {
     if (!error.includes('No QR code found')) {
       console.error(error);
     }
+  };
+
+  const handleCloseResult = () => {
+    setShowModal(false);
+    setResult(null);
+    startScanning(); // Reiniciar el scanner solo después de que el usuario cierre el resultado
   };
 
   useEffect(() => {
@@ -110,64 +113,77 @@ const handleScanSuccess = async (decodedText: string) => {
 
   return (
     <div className="space-y-4">
+      {/* Scanner */}
       <Card className="p-4">
         <div id="qr-reader" className="w-full max-w-sm mx-auto" />
         <div className="mt-4 text-center text-sm text-gray-500">
           Apunta la cámara al código QR del ticket
         </div>
       </Card>
-  
-      {result && (
-        <Card className={`p-4 ${
-          result.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
-        }`}>
-          <div className="flex items-center gap-3">
-            {result.success ? (
-              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                <Check className="w-8 h-8 text-green-600" />
+
+      {/* Modal de Resultado */}
+      {showModal && result && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <Card className={`w-full max-w-md p-6 ${
+            result.success ? 'bg-green-50' : 'bg-red-50'
+          }`}>
+            <div className="text-center">
+              {/* Icono */}
+              <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4">
+                {result.success ? (
+                  <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
+                    <Check className="w-10 h-10 text-green-600" />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+                    <X className="w-10 h-10 text-red-600" />
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                <X className="w-8 h-8 text-red-600" />
-              </div>
-            )}
-            <div className="flex-1">
-              <h3 className={`text-lg font-semibold ${
+
+              {/* Mensaje Principal */}
+              <h2 className={`text-2xl font-bold mb-4 ${
                 result.success ? 'text-green-800' : 'text-red-800'
               }`}>
-                {result.success ? '¡ACCESO PERMITIDO!' : result.message}
-              </h3>
+                {result.success ? '¡ACCESO PERMITIDO!' : 'NO PUEDE PASAR'}
+              </h2>
+
+              {/* Detalles del Ticket */}
               {result.success && result.ticket && (
-                <>
-                  <div className="mt-2 space-y-2 text-sm text-gray-600">
+                <div className="mb-6 text-left">
+                  <div className="bg-white rounded-lg p-4 space-y-2">
                     <p><strong>Evento:</strong> {result.ticket.eventName}</p>
                     <p><strong>Comprador:</strong> {result.ticket.buyerName}</p>
                     <p><strong>Asientos:</strong> {result.ticket.seatNumber}</p>
                   </div>
-                  <div className="mt-4 text-center">
-                    <span className="inline-block px-4 py-2 bg-green-600 text-white rounded-full font-bold text-lg animate-pulse">
-                      PUEDE PASAR
-                    </span>
-                  </div>
-                </>
+                </div>
               )}
+
+              {/* Mensaje de Error */}
+              {!result.success && (
+                <p className="text-red-600 mb-6">{result.message}</p>
+              )}
+
+              {/* Botón de Cierre */}
+              <Button 
+                onClick={handleCloseResult}
+                className="w-full text-lg py-6"
+                variant={result.success ? "default" : "destructive"}
+              >
+                {result.success ? 'CONTINUAR' : 'CERRAR'}
+              </Button>
             </div>
-          </div>
-          {!result.success && (
-            <div className="mt-4 text-center">
-              <span className="inline-block px-4 py-2 bg-red-600 text-white rounded-full font-bold text-lg">
-                NO PUEDE PASAR
-              </span>
-            </div>
-          )}
-        </Card>
+          </Card>
+        </div>
       )}
-  
+
+      {/* Botón de Control del Scanner */}
       <div className="flex justify-center">
         <Button
           variant={scanning ? "destructive" : "default"}
           onClick={scanning ? stopScanning : startScanning}
           className="w-full max-w-sm"
+          disabled={showModal} // Deshabilitar mientras se muestra el resultado
         >
           {scanning ? 'Detener Scanner' : 'Iniciar Scanner'}
         </Button>

@@ -21,38 +21,7 @@ type ScanResult = {
 export default function ScannerPage() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [scanning, setScanning] = useState(true);
-
-  const handleScan = async (qrData: string) => {
-    try {
-      setScanning(false);
-      
-      const response = await fetch('/api/tickets/validate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ qrCode: qrData })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Error validando ticket');
-      }
-
-      setResult({
-        success: true,
-        ticket: data.ticket
-      });
-
-    } catch (error) {
-      setResult({
-        success: false,
-        error: error instanceof Error ? error.message : 'Error desconocido'
-      });
-    }
-  };
-
+  
   return (
     <div className="max-w-lg mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6">Scanner de Tickets</h1>
@@ -77,7 +46,6 @@ export default function ScannerPage() {
               )}
             </Alert>
           )}
-
           <Button 
             className="w-full" 
             onClick={() => {

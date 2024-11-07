@@ -61,7 +61,7 @@ export function SeatSelector({ seatingChart, selectedSeats, onSeatSelect }: Seat
     );
   };
 
-  const handleSeatClick = (seatId: string, section: any) => {
+  const handleSeatClick = (seatId: string, _section: any) => {
     if (selectedSeats.includes(seatId)) {
       onSeatSelect(selectedSeats.filter(id => id !== seatId));
     } else {

@@ -6,9 +6,6 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Check, X } from 'lucide-react';
-const successSound = new Audio('/sounds/success.mp3');
-const errorSound = new Audio('/sounds/error.mp3');
-
 
 interface ScanResult {
   success: boolean;
@@ -80,12 +77,6 @@ export function QrScanner() {
         message: response.ok ? '¡Ticket válido!' : data.error,
         ticket: data.ticket
       });
-
-      if (response.ok) {
-        successSound.play();
-      } else {
-        errorSound.play();
-      }
 
       // Pausar el scanner temporalmente
       await stopScanning();

@@ -25,7 +25,7 @@ interface TicketSummary {
 
 export default function TicketsPage() {
   const [ticketSummaries, setTicketSummaries] = useState<TicketSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
 
   useEffect(() => {
     fetchTicketSummaries();

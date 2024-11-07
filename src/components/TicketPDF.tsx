@@ -1,4 +1,4 @@
-// components/TicketPDF.tsx
+// components/TicketPDF.tsxs
 'use client';
 
 import { Page, Text, View, Document, StyleSheet, Image } from '@react-pdf/renderer';

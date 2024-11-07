@@ -3,6 +3,10 @@ const nextConfig = {
   images: {
     domains: ['localhost']
   },
+  webpack: (config) => {
+    config.resolve.alias.canvas = false;
+    return config;
+  },
   async redirects() {
     return []  // Ya no necesitamos redirecciones ya que las rutas son públicas
   },

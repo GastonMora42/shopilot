@@ -61,24 +61,22 @@ export async function POST(req: Request) {
           }
         }, { status: 400 });
 
-      case 'PAID':
-        // Marcar ticket como usado
-        ticket.status = 'USED';
-        ticket.usedAt = new Date();
-        await ticket.save();
-
-        return NextResponse.json({
-          success: true,
-          message: '¡Ticket válido!',
-          code: 'TICKET_VALID',
-          ticket: {
-            eventName: ticket.eventId.name,
-            buyerName: ticket.buyerInfo.name,
-            seatNumber: ticket.seats.join(', '),
-            status: 'USED',
-            usedAt: ticket.usedAt
-          }
-        });
+        case 'PAID':
+          // Marcar ticket como usado
+          ticket.status = 'USED';
+          ticket.usedAt = new Date();
+          await ticket.save();
+  
+          return NextResponse.json({
+            success: true,
+            message: '¡ACCESO PERMITIDO!', // Cambiar mensaje para que coincida
+            ticket: {
+              eventName: ticket.eventId.name,
+              buyerName: ticket.buyerInfo.name,
+              seatNumber: ticket.seats.join(', '),
+              status: 'USED'
+            }
+          });
 
       default:
         return NextResponse.json({

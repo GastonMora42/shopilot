@@ -24,7 +24,6 @@ export default function DashboardPage() {
             </div>
           </div>
         </Card>
-
         <Card>
           <div className="p-6">
             <div className="flex items-center justify-between">

@@ -1,26 +1,41 @@
 // lib/email.ts
 import { Resend } from 'resend';
+import { TicketEmail } from '@/components/email/TicketEmail';
+import QRCode from 'qrcode';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export async function sendTicketEmail(ticket: any, pdfBuffer: Buffer) {
+interface SendTicketEmailParams {
+  ticket: {
+    eventName: string;
+    date: string;
+    location: string;
+    seats: string[];
+  };
+  qrCode: string;
+  email: string;
+}
+
+export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmailParams) {
   try {
-    await resend.emails.send({
-      from: 'tickets@shopilot.xyz',
-      to: ticket.buyerInfo.email,
+    // Generar imagen QR
+    const qrUrl = await QRCode.toDataURL(qrCode);
+
+    const { data, error } = await resend.emails.send({
+      from: 'Shopilot <tickets@shopilot.xyz>',
+      to: email,
       subject: `Tus entradas para ${ticket.eventName}`,
-      html: `
-        <h1>¡Gracias por tu compra!</h1>
-        <p>Adjuntamos tus entradas para ${ticket.eventName}</p>
-      `,
-      attachments: [
-        {
-          filename: `ticket-${ticket.eventName}.pdf`,
-          content: pdfBuffer
-        }
-      ]
+      react: TicketEmail({ ticket, qrUrl }),
     });
+
+    if (error) {
+      console.error('Error Resend:', error);
+      throw error;
+    }
+
+    return data;
   } catch (error) {
     console.error('Error sending email:', error);
+    throw error;
   }
 }

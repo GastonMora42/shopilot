@@ -60,40 +60,40 @@ export function QrScanner() {
     }
   };
 
-  const handleScanSuccess = async (decodedText: string) => {
-    try {
-      const response = await fetch('/api/tickets/validate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ qrCode: decodedText })
-      });
+const handleScanSuccess = async (decodedText: string) => {
+  try {
+    const response = await fetch('/api/tickets/validate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ qrCode: decodedText })
+    });
 
-      const data = await response.json();
+    const data = await response.json();
 
-      setResult({
-        success: response.ok,
-        message: response.ok ? '¡Ticket válido!' : data.error,
-        ticket: data.ticket
-      });
+    setResult({
+      success: data.success, // Usar data.success en lugar de response.ok
+      message: data.message, // Usar el mensaje de la respuesta
+      ticket: data.ticket
+    });
 
-      // Pausar el scanner temporalmente
-      await stopScanning();
+    // Pausar el scanner temporalmente
+    await stopScanning();
 
-      // Reiniciar después de 5 segundos
-      setTimeout(async () => {
-        setResult(null);
-        await startScanning();
-      }, 5000);
+    // Reiniciar después de 5 segundos
+    setTimeout(async () => {
+      setResult(null);
+      await startScanning();
+    }, 5000);
 
-    } catch (error) {
-      setResult({
-        success: false,
-        message: 'Error al validar el ticket'
-      });
-    }
-  };
+  } catch (error) {
+    setResult({
+      success: false,
+      message: 'Error al validar el ticket'
+    });
+  }
+};
 
   const handleScanError = (error: string) => {
     if (!error.includes('No QR code found')) {

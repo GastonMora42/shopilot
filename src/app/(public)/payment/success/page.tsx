@@ -31,43 +31,94 @@ export default function PaymentSuccessPage() {
   const { downloadPDF, loading: pdfLoading } = usePDFDownload();
 
   useEffect(() => {
-    const getTicket = async () => {
+    const verifyPayment = async () => {
       try {
+        setLoading(true);
         const ticketId = searchParams.get('ticketId');
-        if (!ticketId) {
-          throw new Error('ID de ticket no encontrado');
+        const paymentId = searchParams.get('payment_id');
+        const status = searchParams.get('collection_status');
+
+        console.log('Payment verification params:', { ticketId, paymentId, status });
+
+        if (!ticketId || !paymentId) {
+          throw new Error('Parámetros de pago incompletos');
         }
 
-        // Obtener detalles del ticket
-        const response = await fetch(`/api/tickets/${ticketId}`);
+        // Primer intento: Verificar el estado del pago
+        const response = await fetch('/api/payments/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ticketId,
+            paymentId,
+            status
+          })
+        });
+
         const data = await response.json();
+        console.log('Verification response:', data);
 
-        console.log('Ticket data:', data); // Debug log
-
-        if (!response.ok || !data.success) {
-          throw new Error(data.error || 'Error al obtener el ticket');
+        if (!response.ok) {
+          throw new Error(data.error || 'Error al verificar el pago');
         }
 
-        if (data.ticket.status !== 'PAID') {
+        // Segundo intento: Obtener los detalles del ticket
+        const ticketResponse = await fetch(`/api/tickets/${ticketId}`);
+        const ticketData = await ticketResponse.json();
+
+        console.log('Ticket data:', ticketData);
+
+        if (!ticketResponse.ok) {
+          throw new Error('Error al obtener los detalles del ticket');
+        }
+
+        if (ticketData.ticket.status !== 'PAID') {
           throw new Error('El ticket no está pagado');
         }
 
-        setTicket(data.ticket);
+        setTicket(ticketData.ticket);
       } catch (error) {
-        console.error('Error loading ticket:', error);
-        setError(error instanceof Error ? error.message : 'Error al cargar el ticket');
+        console.error('Verification error:', error);
+        setError(error instanceof Error ? error.message : 'Error al procesar el pago');
       } finally {
         setLoading(false);
       }
     };
 
-    getTicket();
+    // Intentar verificar inmediatamente
+    verifyPayment();
+
+    // Configurar reintentos cada 5 segundos por 1 minuto
+    const maxAttempts = 12; // 1 minuto (12 * 5 segundos)
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+        if (!ticket) {
+          setError('No se pudo confirmar el pago después de varios intentos');
+        }
+        return;
+      }
+      if (!ticket) {
+        await verifyPayment();
+        attempts++;
+      } else {
+        clearInterval(interval);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [searchParams]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-lg">Cargando ticket...</p>
+        <div className="text-center">
+          <p className="text-lg mb-2">Verificando el pago...</p>
+          <p className="text-sm text-gray-500">Esto puede tomar unos momentos</p>
+        </div>
       </div>
     );
   }

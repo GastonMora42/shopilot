@@ -18,7 +18,8 @@ export async function GET(
 
     await dbConnect();
 
-    const ticket = await Ticket.findById(params.id).populate('eventId');
+    const ticket = await Ticket.findById(params.id)
+      .populate('eventId');
 
     if (!ticket) {
       return NextResponse.json(
@@ -31,13 +32,13 @@ export async function GET(
       success: true,
       ticket: {
         id: ticket._id,
+        status: ticket.status,
         eventName: ticket.eventId.name,
         date: ticket.eventId.date,
         location: ticket.eventId.location,
         seats: ticket.seats,
         qrCode: ticket.qrCode,
         buyerInfo: ticket.buyerInfo,
-        status: ticket.status,
         price: ticket.price
       }
     });

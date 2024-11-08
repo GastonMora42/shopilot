@@ -3,22 +3,32 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
+import { MercadoPagoConfig, Payment } from 'mercadopago';
+
+const client = new MercadoPagoConfig({ 
+  accessToken: process.env.MP_ACCESS_TOKEN!
+});
+
+const payment = new Payment(client);
 
 export async function POST(req: Request) {
   try {
     const data = await req.json();
     console.log('Webhook received:', data);
 
-    // Verificar que sea una notificación de pago
     if (data.type !== 'payment') {
       return NextResponse.json({ message: 'Notificación ignorada' });
     }
 
     const paymentId = data.data.id;
-    const status = data.data.status;
-    const externalReference = data.data.external_reference;
+    console.log('Processing payment:', paymentId);
 
-    console.log('Processing payment:', { paymentId, status, externalReference });
+    // Verificar el pago con MercadoPago
+    const paymentInfo = await payment.get({ id: paymentId });
+    const externalReference = paymentInfo.external_reference;
+    const status = paymentInfo.status;
+
+    console.log('Payment info:', { status, externalReference });
 
     await dbConnect();
     const session = await (await dbConnect()).startSession();
@@ -31,9 +41,6 @@ export async function POST(req: Request) {
           throw new Error(`Ticket no encontrado: ${externalReference}`);
         }
 
-        console.log('Current ticket status:', ticket.status);
-
-        // Solo procesar si el ticket está pendiente
         if (ticket.status === 'PENDING') {
           if (status === 'approved') {
             // Actualizar ticket
@@ -57,23 +64,9 @@ export async function POST(req: Request) {
             );
 
             console.log('Seats update result:', seatUpdateResult);
-          } else if (['rejected', 'cancelled'].includes(status)) {
-            // Si el pago falló, liberar asientos
-            ticket.status = 'CANCELLED';
-            await ticket.save({ session });
-
-            await Seat.updateMany(
-              {
-                eventId: ticket.eventId,
-                number: { $in: ticket.seats }
-              },
-              {
-                $set: { status: 'AVAILABLE' },
-                $unset: { ticketId: "" }
-              },
-              { session }
-            );
           }
+        } else {
+          console.log(`Ticket ${externalReference} already processed. Status: ${ticket.status}`);
         }
       });
 

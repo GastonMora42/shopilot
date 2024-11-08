@@ -13,7 +13,7 @@ export interface ISeat {
   ticketId: object;
 }
 
-const SeatSchema = new mongoose.Schema<ISeat>({
+const SeatSchema = new mongoose.Schema({
   eventId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Event',
@@ -21,6 +21,14 @@ const SeatSchema = new mongoose.Schema<ISeat>({
   },
   number: {
     type: String,
+    required: true
+  },
+  row: {
+    type: Number,
+    required: true
+  },
+  column: {
+    type: Number,
     required: true
   },
   status: {
@@ -32,29 +40,22 @@ const SeatSchema = new mongoose.Schema<ISeat>({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Ticket'
   },
-  row: {
-    type: Number,
-    required: true
-  },
-  column: {
-    type: Number,
+  type: {
+    type: String,
+    enum: ['REGULAR', 'VIP', 'DISABLED'],
     required: true
   },
   price: {
     type: Number,
     required: true
-  },
-  type: {
-    type: String,
-    enum: ['REGULAR', 'VIP', 'DISABLED'],
-    default: 'REGULAR'
   }
 }, {
   timestamps: true
 });
 
+// Índices importantes
+SeatSchema.index({ eventId: 1, number: 1 }, { unique: true });
 SeatSchema.index({ eventId: 1, status: 1 });
-SeatSchema.index({ eventId: 1, row: 1, column: 1 });
-SeatSchema.index({ eventId: 1, seatId: 1 }, { unique: true });
+SeatSchema.index({ ticketId: 1 });
 
 export const Seat = mongoose.models.Seat || mongoose.model('Seat', SeatSchema);

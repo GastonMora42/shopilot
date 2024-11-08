@@ -136,57 +136,55 @@ export default function PublicEventPage() {
     }
   };
 
-  const handlePurchase = async (buyerInfo: {
-    name: string;
-    email: string;
-    dni: string;
-    phone?: string;
-  }) => {
-    setIsProcessing(true);
-    try {
-      // Verificar disponibilidad de asientos antes de procesar
-      const response = await fetch(`/api/events/${event?._id}/seats`);
-      const data = await response.json();
-      
-      const unavailableSeats = selectedSeats.filter(seatId =>
-        data.occupiedSeats.some((seat: OccupiedSeat) => 
-          seat.seatId === seatId && 
-          ['OCCUPIED', 'RESERVED'].includes(seat.status)
-        )
-      );
+// En tu PublicEventPage donde manejas la compra
+const handlePurchase = async (buyerInfo: {
+  name: string;
+  email: string;
+  dni: string;
+  phone?: string;
+}) => {
+  setIsProcessing(true);
+  try {
+    console.log('Starting purchase for seats:', selectedSeats);
+    
+    // Verificar disponibilidad antes de comprar
+    const checkResponse = await fetch(`/api/events/${event?._id}/seats`);
+    const checkData = await checkResponse.json();
+    
+    console.log('Current seat status:', checkData);
 
-      if (unavailableSeats.length > 0) {
-        throw new Error('Algunos asientos seleccionados ya no están disponibles');
-      }
+    // Procesar la compra
+    const purchaseResponse = await fetch('/api/tickets', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        eventId: event?._id,
+        seats: selectedSeats,
+        buyerInfo
+      })
+    });
 
-      const purchaseResponse = await fetch('/api/tickets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          eventId: event?._id,
-          seats: selectedSeats,
-          buyerInfo
-        })
-      });
-
-      const purchaseData = await purchaseResponse.json();
-      
-      if (!purchaseResponse.ok) {
-        throw new Error(purchaseData.error || 'Error al procesar la compra');
-      }
-
-      if (purchaseData.checkoutUrl) {
-        window.location.href = purchaseData.checkoutUrl;
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Error al procesar la compra');
-      await fetchOccupiedSeats();
-    } finally {
-      setIsProcessing(false);
+    const purchaseData = await purchaseResponse.json();
+    console.log('Purchase response:', purchaseData);
+    
+    if (!purchaseResponse.ok) {
+      throw new Error(purchaseData.error || 'Error al procesar la compra');
     }
-  };
+
+    if (purchaseData.checkoutUrl) {
+      console.log('Redirecting to checkout:', purchaseData.checkoutUrl);
+      window.location.href = purchaseData.checkoutUrl;
+    }
+  } catch (error) {
+    console.error('Purchase error:', error);
+    setError(error instanceof Error ? error.message : 'Error al procesar la compra');
+    await fetchOccupiedSeats(); // Recargar estado de asientos
+  } finally {
+    setIsProcessing(false);
+  }
+};
 
   if (loading) return <div className="p-6 text-center">Cargando...</div>;
   if (error) return <Alert variant="error">{error}</Alert>;

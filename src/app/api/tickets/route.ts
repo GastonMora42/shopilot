@@ -24,6 +24,8 @@ export async function POST(req: Request) {
     await dbConnect();
     const { eventId, seats, buyerInfo } = await req.json();
     
+    console.log('Creating ticket:', { eventId, seats, buyerInfo });
+
     if (!isValidObjectId(eventId) || !seats?.length || !buyerInfo) {
       return NextResponse.json(
         { error: 'Datos incompletos o inválidos' },
@@ -38,6 +40,20 @@ export async function POST(req: Request) {
         { error: 'Evento no encontrado o no publicado' },
         { status: 404 }
       );
+    }
+
+    // Verificar que los asientos estén disponibles
+    const occupiedSeats = await Seat.find({
+      eventId,
+      number: { $in: seats },
+      status: { $in: ['OCCUPIED', 'RESERVED'] }
+    });
+
+    if (occupiedSeats.length > 0) {
+      return NextResponse.json({
+        error: 'Algunos asientos no están disponibles',
+        unavailableSeats: occupiedSeats.map(seat => seat.number)
+      }, { status: 409 });
     }
 
     // Calcular precio total
@@ -59,25 +75,18 @@ export async function POST(req: Request) {
     // Generar QR único
     const qrCode = await generateQRCode();
 
-    // Crear ticket y actualizar asientos
+    // Crear ticket y actualizar asientos en una transacción
     const session = await (await dbConnect()).startSession();
-    
-    type TicketDocument = Document & {
-      _id: mongoose.Types.ObjectId;
-      seats: string[];
-      price: number;
-    };
-
-    let createdTicket: TicketDocument;
+    let createdTicket: any = null;
 
     try {
-      const result = await session.withTransaction<TicketDocument>(async () => {
-        // Crear ticket
-        const [newTicket] = await Ticket.create([{
+      await session.withTransaction(async () => {
+        // Crear ticket con status PENDING
+        const [ticket] = await Ticket.create([{
           eventId,
           seats,
           qrCode,
-          status: 'PAID',
+          status: 'PENDING', // Importante: Iniciar como PENDING
           buyerInfo: {
             ...buyerInfo,
             email: buyerInfo.email.toLowerCase().trim()
@@ -85,30 +94,37 @@ export async function POST(req: Request) {
           price: total
         }], { session });
 
-        // Actualizar asientos
-        await Seat.updateMany(
+        createdTicket = ticket;
+
+        // Marcar asientos como RESERVED
+        const seatUpdateResult = await Seat.updateMany(
           {
             eventId,
-            seatId: { $in: seats }
+            number: { $in: seats },
+            status: 'AVAILABLE' // Solo actualizar si están disponibles
           },
           {
-            status: 'RESERVED',
-            ticketId: newTicket._id
+            $set: {
+              status: 'RESERVED',
+              ticketId: ticket._id
+            }
           },
           { session }
         );
 
-        return newTicket;
+        console.log('Seats update result:', seatUpdateResult);
+
+        // Verificar que se actualizaron todos los asientos
+        if (seatUpdateResult.modifiedCount !== seats.length) {
+          throw new Error('No se pudieron reservar todos los asientos');
+        }
       });
-
-      if (!result) {
-        throw new Error('Error al crear el ticket');
-      }
-
-      createdTicket = result;
-
     } finally {
       await session.endSession();
+    }
+
+    if (!createdTicket) {
+      throw new Error('Error al crear el ticket');
     }
 
     // Crear preferencia de MercadoPago
@@ -116,8 +132,10 @@ export async function POST(req: Request) {
       _id: createdTicket._id.toString(),
       eventName: event.name,
       price: total,
-      description: `${seats.length} entrada(s) para ${event.name}`
+      description: `${seats.length} entrada(s) para ${event.name}`,
     });
+
+    console.log('Created preference:', preference);
 
     return NextResponse.json({
       success: true,
@@ -133,15 +151,12 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error('Error creating ticket:', error);
     return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : 'Error al procesar la compra'
-      },
+      { error: error instanceof Error ? error.message : 'Error al procesar la compra' },
       { status: 500 }
     );
   }
 }
 
-// Verificar disponibilidad de asientos
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -155,23 +170,27 @@ export async function GET(req: Request) {
       );
     }
 
+    // Verificar asientos ocupados y tickets existentes
     const [tickets, seatsStatus] = await Promise.all([
       Ticket.find({
         eventId,
         seats: { $in: seats },
         status: { $in: ['PAID', 'PENDING'] }
-      }).select('seats'),
+      }).select('seats status'),
       Seat.find({
         eventId,
-        seatId: { $in: seats }
-      }).select('seatId status')
+        number: { $in: seats }
+      }).select('number status')
     ]);
+
+    console.log('Found seats status:', seatsStatus);
+    console.log('Found tickets:', tickets);
 
     const unavailableSeats = new Set([
       ...tickets.flatMap(t => t.seats),
       ...seatsStatus
         .filter(s => s.status !== 'AVAILABLE')
-        .map(s => s.seatId)
+        .map(s => s.number)
     ]);
 
     return NextResponse.json({

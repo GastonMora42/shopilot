@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
+import { Seat } from '@/app/models/Seat';
 
 export async function GET(req: Request) {
   try {
@@ -12,17 +13,39 @@ export async function GET(req: Request) {
 
     if (status === 'approved' && externalReference) {
       await dbConnect();
+      
+      const session = await (await dbConnect()).startSession();
+      try {
+        await session.withTransaction(async () => {
+          const ticket = await Ticket.findById(externalReference)
+            .session(session);
 
-      const ticket = await Ticket.findById(externalReference);
-      if (ticket && ticket.status === 'PENDING') {
-        ticket.status = 'PAID';
-        ticket.paymentId = paymentId;
-        await ticket.save();
-        console.log('Ticket actualizado a PAID por URL de retorno:', externalReference);
+          if (ticket && ticket.status === 'PENDING') {
+            ticket.status = 'PAID';
+            ticket.paymentId = paymentId;
+            await ticket.save({ session });
+
+            // Actualizar asientos
+            await Seat.updateMany(
+              {
+                eventId: ticket.eventId,
+                seatId: { $in: ticket.seats }
+              },
+              {
+                status: 'OCCUPIED',
+                ticketId: ticket._id
+              },
+              { session }
+            );
+
+            console.log('Ticket y asientos actualizados:', externalReference);
+          }
+        });
+      } finally {
+        await session.endSession();
       }
     }
 
-    // Redirigir a la página de éxito
     return NextResponse.redirect(
       new URL(`/payment/success?ticketId=${externalReference}`, req.url)
     );

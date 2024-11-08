@@ -2,9 +2,11 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Event } from '@/app/models/Event';
-import { Ticket } from '@/app/models/Ticket';
+import { Ticket, ITicket } from '@/app/models/Ticket';
+import { Seat } from '@/app/models/Seat';
 import { generateQRCode } from '@/app/lib/utils';
 import { createPreference } from '@/app/lib/mercadopago';
+import mongoose, { isValidObjectId } from 'mongoose';
 
 interface SeatInfo {
   row: string;
@@ -22,10 +24,9 @@ export async function POST(req: Request) {
     await dbConnect();
     const { eventId, seats, buyerInfo } = await req.json();
     
-    // Validaciones de entrada
-    if (!eventId || !seats?.length || !buyerInfo) {
+    if (!isValidObjectId(eventId) || !seats?.length || !buyerInfo) {
       return NextResponse.json(
-        { error: 'Datos incompletos' },
+        { error: 'Datos incompletos o inválidos' },
         { status: 400 }
       );
     }
@@ -39,28 +40,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // Verificar disponibilidad de asientos
-    const existingTickets = await Ticket.find({
-      eventId,
-      seats: { $in: seats },
-      status: { $in: ['PAID', 'PENDING'] }
-    });
-
-    if (existingTickets.length > 0) {
-      return NextResponse.json(
-        { error: 'Algunos asientos ya no están disponibles' },
-        { status: 400 }
-      );
-    }
-
     // Calcular precio total
     const total = seats.reduce((sum: number, seat: string) => {
       const { row } = parseSeatId(seat);
       const rowIndex = row.charCodeAt(0) - 65;
       
       const section = event.seatingChart.sections.find((s: { rowStart: number; rowEnd: number; }) => 
-        rowIndex >= s.rowStart && 
-        rowIndex <= s.rowEnd
+        rowIndex >= s.rowStart && rowIndex <= s.rowEnd
       );
 
       if (!section) {
@@ -73,34 +59,72 @@ export async function POST(req: Request) {
     // Generar QR único
     const qrCode = await generateQRCode();
 
-    // Crear ticket pendiente
-    const ticket = await Ticket.create({
-      eventId,
-      seats,
-      qrCode,
-      status: 'PENDING',
-      buyerInfo: {
-        ...buyerInfo,
-        email: buyerInfo.email.toLowerCase().trim()
-      },
-      price: total
-    });
+    // Crear ticket y actualizar asientos
+    const session = await (await dbConnect()).startSession();
+    
+    type TicketDocument = Document & {
+      _id: mongoose.Types.ObjectId;
+      seats: string[];
+      price: number;
+    };
+
+    let createdTicket: TicketDocument;
+
+    try {
+      const result = await session.withTransaction<TicketDocument>(async () => {
+        // Crear ticket
+        const [newTicket] = await Ticket.create([{
+          eventId,
+          seats,
+          qrCode,
+          status: 'PENDING',
+          buyerInfo: {
+            ...buyerInfo,
+            email: buyerInfo.email.toLowerCase().trim()
+          },
+          price: total
+        }], { session });
+
+        // Actualizar asientos
+        await Seat.updateMany(
+          {
+            eventId,
+            seatId: { $in: seats }
+          },
+          {
+            status: 'RESERVED',
+            ticketId: newTicket._id
+          },
+          { session }
+        );
+
+        return newTicket;
+      });
+
+      if (!result) {
+        throw new Error('Error al crear el ticket');
+      }
+
+      createdTicket = result;
+
+    } finally {
+      await session.endSession();
+    }
 
     // Crear preferencia de MercadoPago
     const preference = await createPreference({
-      _id: ticket._id.toString(),
+      _id: createdTicket._id.toString(),
       eventName: event.name,
       price: total,
       description: `${seats.length} entrada(s) para ${event.name}`
     });
 
-    // Retornar datos para el checkout
     return NextResponse.json({
       success: true,
       ticket: {
-        id: ticket._id,
-        seats: ticket.seats,
-        total: ticket.price
+        id: createdTicket._id,
+        seats: createdTicket.seats,
+        total: createdTicket.price
       },
       checkoutUrl: preference.init_point,
       preferenceId: preference.id
@@ -108,42 +132,52 @@ export async function POST(req: Request) {
 
   } catch (error) {
     console.error('Error creating ticket:', error);
-    
-    const errorMessage = error instanceof Error 
-      ? error.message 
-      : 'Error al procesar la compra';
-      
     return NextResponse.json(
-      { error: errorMessage },
+      { 
+        error: error instanceof Error ? error.message : 'Error al procesar la compra'
+      },
       { status: 500 }
     );
   }
 }
 
-// Opcional: Endpoint para verificar disponibilidad de asientos
+// Verificar disponibilidad de asientos
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const eventId = searchParams.get('eventId');
     const seats = searchParams.get('seats')?.split(',');
 
-    if (!eventId || !seats?.length) {
+    if (!isValidObjectId(eventId) || !seats?.length) {
       return NextResponse.json(
         { error: 'Parámetros inválidos' },
         { status: 400 }
       );
     }
 
-    const occupiedSeats = await Ticket.find({
-      eventId,
-      seats: { $in: seats },
-      status: { $in: ['PAID', 'PENDING'] }
-    }).select('seats');
+    const [tickets, seatsStatus] = await Promise.all([
+      Ticket.find({
+        eventId,
+        seats: { $in: seats },
+        status: { $in: ['PAID', 'PENDING'] }
+      }).select('seats'),
+      Seat.find({
+        eventId,
+        seatId: { $in: seats }
+      }).select('seatId status')
+    ]);
+
+    const unavailableSeats = new Set([
+      ...tickets.flatMap(t => t.seats),
+      ...seatsStatus
+        .filter(s => s.status !== 'AVAILABLE')
+        .map(s => s.seatId)
+    ]);
 
     return NextResponse.json({
       success: true,
-      available: occupiedSeats.length === 0,
-      occupiedSeats: occupiedSeats.flatMap(t => t.seats)
+      available: unavailableSeats.size === 0,
+      occupiedSeats: Array.from(unavailableSeats)
     });
 
   } catch (error) {

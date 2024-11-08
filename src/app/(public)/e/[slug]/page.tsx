@@ -1,3 +1,4 @@
+// app/(public)/e/[slug]/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -9,29 +10,34 @@ import { IEvent } from '@/types';
 import { SeatSelector } from '@/components/events/SeatSelector';
 import { BuyerForm } from '@/components/events/BuyerForm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
-import { ISeat } from '@/app/models/Seat';
-
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 
 interface OccupiedSeat {
   seatId: string;
-  status: 'available' | 'occupied' | 'reserved';
+  status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
 }
 
 export default function PublicEventPage() {
   const params = useParams();
   const [event, setEvent] = useState<IEvent | null>(null);
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
+  const [occupiedSeats, setOccupiedSeats] = useState<OccupiedSeat[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showBuyerForm, setShowBuyerForm] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [occupiedSeats, setOccupiedSeats] = useState<OccupiedSeat[]>([]);
-
 
   useEffect(() => {
     fetchEvent();
   }, []);
+
+  useEffect(() => {
+    if (event?._id) {
+      fetchOccupiedSeats();
+      const interval = setInterval(fetchOccupiedSeats, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [event?._id]);
 
   const fetchEvent = async () => {
     try {
@@ -46,89 +52,85 @@ export default function PublicEventPage() {
     }
   };
 
-// En PublicEventPage
-const fetchOccupiedSeats = async () => {
-  if (!event?._id) return;
+  const fetchOccupiedSeats = async () => {
+    if (!event?._id) return;
 
-  try {
-    console.log('Fetching occupied seats for event:', event._id);
-    const response = await fetch(`/api/events/${event._id}/seats`);
-    
-    if (!response.ok) {
-      throw new Error('Error al obtener asientos');
-    }
-    
-    const data = await response.json();
-    console.log('Received occupied seats:', data);
-    
-    if (Array.isArray(data.occupiedSeats)) {
-      const formattedSeats = data.occupiedSeats.map((seat: { seatId: number; status: string; }) => ({
-        seatId: seat.seatId,
-        status: seat.status
-      }));
-      console.log('Setting occupied seats:', formattedSeats);
-      setOccupiedSeats(formattedSeats);
-    }
-  } catch (error) {
-    console.error('Error fetching occupied seats:', error);
-  }
-};
+    try {
+      console.log('Fetching occupied seats for event:', event._id);
+      const response = await fetch(`/api/events/${event._id}/seats`);
+      if (!response.ok) throw new Error('Error al obtener asientos');
+      
+      const data = await response.json();
+      console.log('Seats API response:', data);
+      
+      if (data.occupiedSeats) {
+        const formattedSeats = data.occupiedSeats.map((seat: any) => ({
+          seatId: seat.seatId,
+          status: seat.status
+        }));
+        console.log('Setting occupied seats:', formattedSeats);
+        setOccupiedSeats(formattedSeats);
 
-    // Agregamos un nuevo useEffect para actualizar los asientos ocupados periódicamente
-    useEffect(() => {
-      if (event?._id) {
-        fetchOccupiedSeats();
-        // Actualizar cada 30 segundos
-        const interval = setInterval(fetchOccupiedSeats, 30000);
-        return () => clearInterval(interval);
+        // Remover asientos seleccionados que ahora están ocupados
+        setSelectedSeats(prev => 
+          prev.filter(seatId => 
+            !formattedSeats.some(
+              (seat: { seatId: string; status: string; }) => seat.seatId === seatId && 
+                ['OCCUPIED', 'RESERVED'].includes(seat.status)
+            )
+          )
+        );
       }
-    }, [event?._id]);
+    } catch (error) {
+      console.error('Error fetching occupied seats:', error);
+    }
+  };
 
   const calculateTotal = () => {
     if (!event) return 0;
+    
     return selectedSeats.reduce((total, seatId) => {
       const [row] = seatId.split('');
       const rowIndex = row.charCodeAt(0) - 65;
+      
       const section = event.seatingChart.sections.find(section =>
-        rowIndex >= section.rowStart && rowIndex <= section.rowEnd
+        rowIndex >= section.rowStart &&
+        rowIndex <= section.rowEnd
       );
+      
       return total + (section?.price || 0);
     }, 0);
   };
 
   const handleSeatSelection = async (newSelectedSeats: string[]) => {
-    // Si estamos deseleccionando asientos, simplemente actualizamos el estado
-    if (newSelectedSeats.length < selectedSeats.length) {
-      setSelectedSeats(newSelectedSeats);
-      return;
-    }
-
-    // Si estamos seleccionando nuevos asientos, intentamos reservarlos
-    const newSeats = newSelectedSeats.filter(seat => !selectedSeats.includes(seat));
-    
     try {
       const response = await fetch(`/api/events/${event?._id}/seats`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seatIds: newSeats })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ seatIds: newSelectedSeats })
       });
 
       const data = await response.json();
       
       if (!response.ok) {
-        // Si algunos asientos ya no están disponibles, actualizamos la lista de ocupados
         if (data.unavailableSeats) {
-          setOccupiedSeats(prev => [...prev, ...data.unavailableSeats]);
+          setOccupiedSeats(prev => [
+            ...prev,
+            ...data.unavailableSeats.map((seatId: string) => ({
+              seatId,
+              status: 'OCCUPIED'
+            }))
+          ]);
           throw new Error('Algunos asientos ya no están disponibles');
         }
         throw new Error(data.error || 'Error al reservar asientos');
       }
 
-      // Si todo salió bien, actualizamos los asientos seleccionados
       setSelectedSeats(newSelectedSeats);
     } catch (error) {
-      console.error('Error reserving seats:', error);
-      // Actualizamos la lista de asientos ocupados
+      console.error('Error selecting seats:', error);
       await fetchOccupiedSeats();
     }
   };
@@ -141,22 +143,26 @@ const fetchOccupiedSeats = async () => {
   }) => {
     setIsProcessing(true);
     try {
-      // Primero verificamos que los asientos aún estén disponibles
+      // Verificar disponibilidad de asientos antes de procesar
       const response = await fetch(`/api/events/${event?._id}/seats`);
       const data = await response.json();
       
-      const unavailableSeats = data.occupiedSeats
-        .map((seat: { seatId: string; }) => seat.seatId)
-        .filter((seatId: string) => selectedSeats.includes(seatId));
+      const unavailableSeats = selectedSeats.filter(seatId =>
+        data.occupiedSeats.some((seat: OccupiedSeat) => 
+          seat.seatId === seatId && 
+          ['OCCUPIED', 'RESERVED'].includes(seat.status)
+        )
+      );
 
       if (unavailableSeats.length > 0) {
         throw new Error('Algunos asientos seleccionados ya no están disponibles');
       }
 
-      // Si los asientos están disponibles, procedemos con la compra
       const purchaseResponse = await fetch('/api/tickets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           eventId: event?._id,
           seats: selectedSeats,
@@ -175,29 +181,9 @@ const fetchOccupiedSeats = async () => {
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Error al procesar la compra');
-      // Actualizamos la lista de asientos ocupados
       await fetchOccupiedSeats();
     } finally {
       setIsProcessing(false);
-    }
-  };
-
-  // Comparte el enlace del evento
-  const handleShare = async () => {
-    const eventUrl = window.location.href;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: event?.name,
-          text: event?.description,
-          url: eventUrl,
-        });
-      } else {
-        await navigator.clipboard.writeText(eventUrl);
-        // Aquí podrías mostrar un toast o notificación de que se copió el enlace
-      }
-    } catch (error) {
-      console.error('Error sharing:', error);
     }
   };
 
@@ -322,7 +308,7 @@ const fetchOccupiedSeats = async () => {
               </CardHeader>
               <CardContent>
                 <div className="flex justify-center space-x-4">
-                  <Button variant="outline" size="icon" onClick={handleShare}>
+                  <Button variant="outline" size="icon">
                     <Share2 className="h-5 w-5" />
                   </Button>
                 </div>

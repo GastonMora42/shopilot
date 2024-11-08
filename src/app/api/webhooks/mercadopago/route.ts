@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
+import { Seat } from '@/app/models/Seat';
 import { sendTicketEmail } from '@/app/lib/email';
 
 export async function POST(req: Request) {
@@ -16,39 +17,76 @@ export async function POST(req: Request) {
     const ticketId = data.data.external_reference;
     const paymentStatus = data.data.status;
 
-    // Buscar ticket y evento
-    const ticket = await Ticket.findById(ticketId).populate('eventId');
-    if (!ticket) {
-      console.error('Ticket no encontrado:', ticketId);
-      return NextResponse.json({ error: 'Ticket no encontrado' }, { status: 404 });
-    }
+    // Usar transacción para actualizar ticket y asientos
+    const session = await (await dbConnect()).startSession();
+    try {
+      await session.withTransaction(async () => {
+        const ticket = await Ticket.findById(ticketId)
+          .populate('eventId')
+          .session(session);
 
-    if (paymentStatus === 'approved') {
-      ticket.status = 'PAID';
-      ticket.paymentId = data.data.id;
-      await ticket.save();
-      
-      // Enviar email con el ticket
-      try {
-        await sendTicketEmail({
-          ticket: {
-            eventName: ticket.eventId.name,
-            date: ticket.eventId.date,
-            location: ticket.eventId.location,
-            seats: ticket.seats,
-          },
-          qrCode: ticket.qrCode,
-          email: ticket.buyerInfo.email,
-        });
-        console.log('Email enviado:', ticket.buyerInfo.email);
-      } catch (emailError) {
-        console.error('Error enviando email:', emailError);
-      }
-      
-      console.log('Ticket actualizado a PAID:', ticketId);
-    }
+        if (!ticket) {
+          throw new Error('Ticket no encontrado: ' + ticketId);
+        }
 
-    return NextResponse.json({ success: true });
+        if (paymentStatus === 'approved') {
+          // Actualizar ticket
+          ticket.status = 'PAID';
+          ticket.paymentId = data.data.id;
+          await ticket.save({ session });
+
+          // Actualizar asientos
+          await Seat.updateMany(
+            {
+              eventId: ticket.eventId._id,
+              seatId: { $in: ticket.seats }
+            },
+            {
+              status: 'OCCUPIED',
+              ticketId: ticket._id
+            },
+            { session }
+          );
+
+          // Enviar email
+          try {
+            await sendTicketEmail({
+              ticket: {
+                eventName: ticket.eventId.name,
+                date: ticket.eventId.date,
+                location: ticket.eventId.location,
+                seats: ticket.seats,
+              },
+              qrCode: ticket.qrCode,
+              email: ticket.buyerInfo.email,
+            });
+            console.log('Email enviado:', ticket.buyerInfo.email);
+          } catch (emailError) {
+            console.error('Error enviando email:', emailError);
+          }
+        } else if (['rejected', 'cancelled'].includes(paymentStatus)) {
+          // Liberar asientos si el pago fue rechazado
+          await Seat.updateMany(
+            {
+              eventId: ticket.eventId._id,
+              seatId: { $in: ticket.seats }
+            },
+            {
+              status: 'AVAILABLE',
+              $unset: { ticketId: "" }
+            },
+            { session }
+          );
+          
+          ticket.status = 'CANCELLED';
+          await ticket.save({ session });
+        }
+      });
+
+      return NextResponse.json({ success: true });
+    } finally {
+      await session.endSession();
+    }
 
   } catch (error) {
     console.error('Error procesando webhook:', error);

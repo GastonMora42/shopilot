@@ -5,6 +5,15 @@ import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/app/lib/utils';
 import { IEvent, ISection, ISeat } from '@/types';
 
+type SeatStatus = ISeat['status'];
+
+// Definimos las constantes de estado basadas en tu interfaz ISeat
+const SEAT_STATUS: Record<string, SeatStatus> = {
+  AVAILABLE: 'AVAILABLE',
+  OCCUPIED: 'OCCUPIED',
+  RESERVED: 'RESERVED'
+} as const;
+
 interface SeatProps {
   seatId: string;
   type: 'REGULAR' | 'VIP' | 'DISABLED';
@@ -71,9 +80,19 @@ export function SeatSelector({
     );
   };
 
+  const isSeatOccupied = (seatId: string): boolean => {
+    console.log('Checking seat:', seatId, 'Current occupied seats:', occupiedSeats);
+    return occupiedSeats.some(seat => {
+      const isOccupied = seat.seatId === seatId && 
+        [SEAT_STATUS.OCCUPIED, SEAT_STATUS.RESERVED].includes(seat.status);
+      console.log(`Seat ${seatId} status:`, seat.status, 'Is occupied:', isOccupied);
+      return isOccupied;
+    });
+  };
+
   const handleSeatClick = async (seatId: string, type: 'REGULAR' | 'VIP' | 'DISABLED') => {
     if (type === 'DISABLED') return;
-    if (occupiedSeats.some(seat => seat.seatId === seatId && ['occupied', 'reserved'].includes(seat.status))) return;
+    if (isSeatOccupied(seatId)) return;
     
     const newSelectedSeats = selectedSeats.includes(seatId)
       ? selectedSeats.filter(id => id !== seatId)
@@ -125,10 +144,14 @@ export function SeatSelector({
                     if (!section) return null;
 
                     const seatId = `${String.fromCharCode(65 + rowIndex)}${colIndex + 1}`;
-                    const isOccupied = occupiedSeats.some(
-                      seat => seat.seatId === seatId && ['occupied', 'reserved'].includes(seat.status)
-                    );
+                    const isOccupied = isSeatOccupied(seatId);
                     
+                    console.log(`Rendering seat ${seatId}:`, {
+                      isOccupied,
+                      section: section.type,
+                      occupiedStatus: occupiedSeats.find(s => s.seatId === seatId)?.status
+                    });
+
                     return (
                       <Seat
                         key={seatId}

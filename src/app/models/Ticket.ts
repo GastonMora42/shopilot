@@ -1,5 +1,22 @@
 // models/Ticket.ts
-import mongoose from "mongoose";
+import mongoose, { Document } from "mongoose";
+
+export interface ITicket extends Document {
+  eventId: mongoose.Types.ObjectId;
+  seats: string[];
+  buyerInfo: {
+    name: string;
+    email: string;
+    dni: string;
+    phone?: string;
+  };
+  qrCode: string;
+  status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
+  price: number;
+  paymentId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const TicketSchema = new mongoose.Schema({
   eventId: {
@@ -39,4 +56,4 @@ const TicketSchema = new mongoose.Schema({
   timestamps: true
 });
 
-export const Ticket = mongoose.models.Ticket || mongoose.model('Ticket', TicketSchema);
+export const Ticket = mongoose.models.Ticket || mongoose.model<ITicket>('Ticket', TicketSchema);

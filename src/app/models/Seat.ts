@@ -6,7 +6,7 @@ export interface ISeat {
   row: number;
   column: number;
   number: string; // Ejemplo: "A1", "B2", etc.
-  status: 'available' | 'occupied' | 'reserved';
+  status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
   price: number;
   seatId: string;
   type?: 'REGULAR' | 'VIP' | 'DISABLED';
@@ -24,8 +24,8 @@ const SeatSchema = new mongoose.Schema<ISeat>({
   },
   status: {
     type: String,
-    enum: ['available', 'occupied', 'reserved'],
-    default: 'available'
+    enum: ['AVAILABLE', 'OCCUPIED', 'RESERVED'],
+    default: 'AVAILABLE'
   },
   row: {
     type: Number,

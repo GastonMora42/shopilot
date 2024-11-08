@@ -42,7 +42,7 @@ export default function SeatMap({ eventId, onSeatSelect }: SeatMapProps) {
               <button
                 key={seat._id.toString()}
                 onClick={() => onSeatSelect?.(seat)}
-                disabled={seat.status !== 'available'}
+                disabled={seat.status !== 'AVAILABLE'}
                 className={`
                   w-8 h-8 rounded 
                   ${getSeatStyle(seat.type, seat.status)}

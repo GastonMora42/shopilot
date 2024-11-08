@@ -49,7 +49,7 @@ export interface ISeat {
   row: number;
   column: number;
   number: string;
-  status: 'available' | 'occupied' | 'reserved';
+  status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
   price: number;
   type: 'REGULAR' | 'VIP' | 'DISABLED';
   createdAt: Date;

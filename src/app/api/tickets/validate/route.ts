@@ -1,97 +1,56 @@
 // app/api/tickets/validate/route.ts
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/lib/auth';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
+import { Seat } from '@/app/models/Seat';
 
+// app/api/tickets/validate/route.ts
 export async function POST(req: Request) {
   try {
-    // Verificar autenticación
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
-      );
-    }
-
     await dbConnect();
-    
     const { qrCode } = await req.json();
 
-    // Validar entrada
-    if (!qrCode) {
-      return NextResponse.json(
-        { error: 'Código QR requerido' },
-        { status: 400 }
-      );
-    }
+    const session = await (await dbConnect()).startSession();
+    try {
+      await session.withTransaction(async () => {
+        const ticket = await Ticket.findOne({ qrCode }).populate('eventId').session(session);
 
-    // Buscar el ticket
-    const ticket = await Ticket.findOne({ qrCode }).populate('eventId');
-    
-    if (!ticket) {
-      return NextResponse.json({
-        success: false,
-        message: 'Ticket no encontrado',
-        code: 'TICKET_NOT_FOUND'
-      }, { status: 404 });
-    }
+        if (!ticket) {
+          throw new Error('Ticket no encontrado');
+        }
 
-    // Verificar estado del ticket
-    switch (ticket.status) {
-      case 'PENDING':
-        return NextResponse.json({
-          success: false,
-          message: 'Ticket no pagado',
-          code: 'TICKET_UNPAID'
-        }, { status: 400 });
+        if (ticket.status === 'USED') {
+          throw new Error('Ticket ya utilizado');
+        }
 
-      case 'USED':
-        return NextResponse.json({
-          success: false,
-          message: 'Ticket ya utilizado',
-          code: 'TICKET_USED',
-          ticket: {
-            eventName: ticket.eventId.name,
-            buyerName: ticket.buyerInfo.name,
-            seatNumber: ticket.seats.join(', '),
-            usedAt: ticket.updatedAt
-          }
-        }, { status: 400 });
+        // Actualizar ticket
+        ticket.status = 'USED';
+        await ticket.save({ session });
 
-        case 'PAID':
-          // Marcar ticket como usado
-          ticket.status = 'USED';
-          ticket.usedAt = new Date();
-          await ticket.save();
-  
-          return NextResponse.json({
-            success: true,
-            message: '¡ACCESO PERMITIDO!', // Cambiar mensaje para que coincida
-            ticket: {
-              eventName: ticket.eventId.name,
-              buyerName: ticket.buyerInfo.name,
-              seatNumber: ticket.seats.join(', '),
-              status: 'USED'
-            }
-          });
+        // Asegurarnos que el asiento esté marcado como OCCUPIED
+        await Seat.updateMany(
+          {
+            eventId: ticket.eventId,
+            number: { $in: ticket.seats }
+          },
+          {
+            status: 'OCCUPIED',
+            ticketId: ticket._id
+          },
+          { session }
+        );
+      });
 
-      default:
-        return NextResponse.json({
-          success: false,
-          message: 'Estado de ticket inválido',
-          code: 'INVALID_STATUS'
-        }, { status: 400 });
+      return NextResponse.json({ success: true });
+    } finally {
+      await session.endSession();
     }
 
   } catch (error) {
-    console.error('Error validando ticket:', error);
-    return NextResponse.json({
-      success: false,
-      message: 'Error al validar ticket',
-      code: 'INTERNAL_ERROR'
-    }, { status: 500 });
+    console.error('Error validating ticket:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Error validando ticket' },
+      { status: 500 }
+    );
   }
 }

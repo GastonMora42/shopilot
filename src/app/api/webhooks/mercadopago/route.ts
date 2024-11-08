@@ -4,7 +4,7 @@ import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 
-// app/api/webhooks/mercadopago/route.ts
+// app/api/webhooks/mercadopago/route.tss
 export async function POST(req: Request) {
   try {
     const data = await req.json();

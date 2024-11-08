@@ -22,38 +22,92 @@ interface TicketData {
 
 export default function PaymentSuccessPage() {
   const searchParams = useSearchParams();
-  const [ticket ] = useState<TicketData | null>(null);
-  const [loading ] = useState(true);
-  const [error] = useState<string | null>(null);
+  const [ticket, setTicket] = useState<TicketData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { downloadPDF, loading: pdfLoading } = usePDFDownload();
-
 
   useEffect(() => {
     const verifyPayment = async () => {
-      const ticketId = searchParams.get('ticketId');
-      if (!ticketId) return;
-  
       try {
-        const response = await fetch(`/api/payments/verify?ticketId=${ticketId}`);
-        const data = await response.json();
-        
-        console.log('Payment verification:', data);
-  
-        if (!data.success || data.ticketStatus !== 'PAID') {
-          // Mostrar mensaje de error o recargar la página
+        const ticketId = searchParams.get('ticketId');
+        const paymentId = searchParams.get('payment_id');
+        const status = searchParams.get('collection_status');
+
+        if (!ticketId || !paymentId) {
+          throw new Error('Parámetros de pago inválidos');
         }
+
+        // Verificar y actualizar el estado del pago
+        const response = await fetch('/api/payments/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ticketId,
+            paymentId,
+            status
+          })
+        });
+
+        const data = await response.json();
+        console.log('Payment verification response:', data);
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Error al verificar el pago');
+        }
+
+        if (!data.success || data.ticket?.status !== 'PAID') {
+          throw new Error('El pago no se ha completado correctamente');
+        }
+
+        // Obtener los detalles del ticket
+        const ticketResponse = await fetch(`/api/tickets/${ticketId}`);
+        const ticketData = await ticketResponse.json();
+
+        if (!ticketResponse.ok) {
+          throw new Error('Error al obtener los detalles del ticket');
+        }
+
+        setTicket(ticketData.ticket);
       } catch (error) {
-        console.error('Error verifying payment:', error);
+        console.error('Verification error:', error);
+        setError(error instanceof Error ? error.message : 'Error al procesar el pago');
+      } finally {
+        setLoading(false);
       }
     };
-  
+
     verifyPayment();
-  }, []);
+  }, [searchParams]);
+
+  // Verificar estado del ticket periódicamente
+  useEffect(() => {
+    const ticketId = searchParams.get('ticketId');
+    if (!ticketId || ticket) return;
+
+    const checkTicketStatus = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/tickets/${ticketId}`);
+        const data = await response.json();
+
+        if (response.ok && data.ticket?.status === 'PAID') {
+          setTicket(data.ticket);
+          clearInterval(checkTicketStatus);
+        }
+      } catch (error) {
+        console.error('Error checking ticket status:', error);
+      }
+    }, 5000); // Verificar cada 5 segundos
+
+    return () => clearInterval(checkTicketStatus);
+  }, [searchParams, ticket]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-lg">Cargando ticket...</p>
+        <p className="text-lg">Verificando pago y procesando ticket...</p>
       </div>
     );
   }
@@ -61,11 +115,16 @@ export default function PaymentSuccessPage() {
   if (error || !ticket) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
-        <p className="text-gray-600 mb-8">{error}</p>
-        <Button asChild>
-          <Link href="/admin/tickets">Ver mis tickets</Link>
-        </Button>
+        <h1 className="text-2xl font-bold text-red-600 mb-4">Error en el proceso</h1>
+        <p className="text-gray-600 mb-8">{error || 'No se pudo procesar el ticket'}</p>
+        <div className="space-y-4">
+          <Button asChild className="w-full">
+            <Link href="/admin/tickets">Ver mis tickets</Link>
+          </Button>
+          <Button variant="outline" asChild className="w-full">
+            <Link href="/">Volver al inicio</Link>
+          </Button>
+        </div>
       </div>
     );
   }

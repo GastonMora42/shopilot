@@ -6,16 +6,26 @@ export interface ISeat {
   row: number;
   column: number;
   number: string; // Ejemplo: "A1", "B2", etc.
-  status: 'AVAILABLE' | 'RESERVED' | 'SOLD';
+  status: 'available' | 'occupied' | 'reserved';
   price: number;
+  seatId: string;
   type?: 'REGULAR' | 'VIP' | 'DISABLED';
 }
 
 const SeatSchema = new mongoose.Schema<ISeat>({
   eventId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Event',
+    required: true,
+    ref: 'Event'
+  },
+  seatId: {
+    type: String,
     required: true
+  },
+  status: {
+    type: String,
+    enum: ['available', 'occupied', 'reserved'],
+    default: 'available'
   },
   row: {
     type: Number,
@@ -28,11 +38,6 @@ const SeatSchema = new mongoose.Schema<ISeat>({
   number: {
     type: String,
     required: true
-  },
-  status: {
-    type: String,
-    enum: ['AVAILABLE', 'RESERVED', 'SOLD'],
-    default: 'AVAILABLE'
   },
   price: {
     type: Number,
@@ -47,4 +52,8 @@ const SeatSchema = new mongoose.Schema<ISeat>({
   timestamps: true
 });
 
-export const Seat = mongoose.models.Seat || mongoose.model<ISeat>('Seat', SeatSchema);
+SeatSchema.index({ eventId: 1, status: 1 });
+SeatSchema.index({ eventId: 1, row: 1, column: 1 });
+SeatSchema.index({ eventId: 1, seatId: 1 }, { unique: true });
+
+export const Seat = mongoose.models.Seat || mongoose.model('Seat', SeatSchema);

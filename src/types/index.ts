@@ -11,6 +11,7 @@ export interface IEvent {
   location: string;
   published: boolean;
   organizerId: string;
+  image?: string; // Agregamos la imagen como opcional
   mercadopago: {
     accessToken: string;
     userId: string;
@@ -48,7 +49,7 @@ export interface ISeat {
   row: number;
   column: number;
   number: string;
-  status: 'AVAILABLE' | 'RESERVED' | 'SOLD';
+  status: 'available' | 'occupied' | 'reserved';
   price: number;
   type: 'REGULAR' | 'VIP' | 'DISABLED';
   createdAt: Date;

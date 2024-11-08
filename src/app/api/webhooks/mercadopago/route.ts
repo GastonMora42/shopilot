@@ -15,34 +15,49 @@ export async function POST(req: Request) {
   try {
     const data = await req.json();
     console.log('Webhook received:', data);
-
-    if (data.type !== 'payment') {
-      return NextResponse.json({ message: 'Notificación ignorada' });
+    
+    if (data.type !== 'payment' || !data.data.id) {
+      console.log('Invalid webhook data:', data);
+      return NextResponse.json({ message: 'Notificación inválida o ignorada' });
     }
 
-    const paymentId = data.data.id;
-    console.log('Processing payment:', paymentId);
-
-    // Verificar el pago con MercadoPago
-    const paymentInfo = await payment.get({ id: paymentId });
-    const externalReference = paymentInfo.external_reference;
-    const status = paymentInfo.status;
-
-    console.log('Payment info:', { status, externalReference });
-
     await dbConnect();
-    const session = await (await dbConnect()).startSession();
 
     try {
-      await session.withTransaction(async () => {
-        const ticket = await Ticket.findById(externalReference).session(session);
+      // Asegurarnos que tenemos un ID de pago válido
+      const paymentId = String(data.data.id);
+      const paymentInfo = await payment.get({ id: paymentId });
+      console.log('Payment info from MP:', paymentInfo);
 
-        if (!ticket) {
-          throw new Error(`Ticket no encontrado: ${externalReference}`);
-        }
+      const ticketId = paymentInfo.external_reference;
+      const paymentStatus = paymentInfo.status;
 
-        if (ticket.status === 'PENDING') {
-          if (status === 'approved') {
+      if (!ticketId) {
+        throw new Error('Missing ticket reference');
+      }
+
+      console.log('Processing payment:', {
+        ticketId,
+        paymentStatus,
+        paymentId
+      });
+
+      const session = await (await dbConnect()).startSession();
+
+      try {
+        await session.withTransaction(async () => {
+          const ticket = await Ticket.findById(ticketId).session(session);
+
+          if (!ticket) {
+            throw new Error(`Ticket no encontrado: ${ticketId}`);
+          }
+
+          if (ticket.status === 'PAID') {
+            console.log(`Ticket ${ticketId} already paid`);
+            return;
+          }
+
+          if (paymentStatus === 'approved') {
             // Actualizar ticket
             ticket.status = 'PAID';
             ticket.paymentId = paymentId;
@@ -63,22 +78,58 @@ export async function POST(req: Request) {
               { session }
             );
 
-            console.log('Seats update result:', seatUpdateResult);
+            console.log('Seats update result:', {
+              ticketId,
+              seats: ticket.seats,
+              result: seatUpdateResult
+            });
+          } else if (['rejected', 'cancelled'].includes(status)) {
+            // Si el pago fue rechazado, liberar asientos
+            ticket.status = 'CANCELLED';
+            await ticket.save({ session });
+
+            const seatReleaseResult = await Seat.updateMany(
+              {
+                eventId: ticket.eventId,
+                number: { $in: ticket.seats }
+              },
+              {
+                $set: { status: 'AVAILABLE' },
+                $unset: { ticketId: "" }
+              },
+              { session }
+            );
+
+            console.log('Seats released:', {
+              ticketId,
+              seats: ticket.seats,
+              result: seatReleaseResult
+            });
           }
-        } else {
-          console.log(`Ticket ${externalReference} already processed. Status: ${ticket.status}`);
-        }
+        });
+      } finally {
+        await session.endSession();
+      }
+
+      return NextResponse.json({ 
+        success: true,
+        message: `Payment ${paymentStatus} processed successfully`,
+        ticketId,
+        paymentId
       });
 
-      return NextResponse.json({ success: true });
-    } finally {
-      await session.endSession();
+    } catch (mpError) {
+      console.error('Error verifying payment with MercadoPago:', mpError);
+      throw mpError;
     }
 
   } catch (error) {
-    console.error('Webhook error:', error);
+    console.error('Error processing webhook:', error);
     return NextResponse.json(
-      { error: 'Error procesando webhook' },
+      { 
+        error: 'Error procesando webhook',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

@@ -9,7 +9,6 @@ import { QRCodeSVG } from 'qrcode.react';
 import { usePDFDownload } from '@/app/hooks/usePDFDownload';
 
 interface TicketData {
-  id: string;
   eventName: string;
   date: string;
   location: string;
@@ -19,8 +18,6 @@ interface TicketData {
     name: string;
     email: string;
   };
-  status: string;
-  price: number;
 }
 
 export default function PaymentSuccessPage() {
@@ -31,94 +28,30 @@ export default function PaymentSuccessPage() {
   const { downloadPDF, loading: pdfLoading } = usePDFDownload();
 
   useEffect(() => {
-    const verifyPayment = async () => {
+    const fetchTicket = async () => {
       try {
-        setLoading(true);
         const ticketId = searchParams.get('ticketId');
-        const paymentId = searchParams.get('payment_id');
-        const status = searchParams.get('collection_status');
+        if (!ticketId) throw new Error('ID de ticket no encontrado');
 
-        console.log('Payment verification params:', { ticketId, paymentId, status });
-
-        if (!ticketId || !paymentId) {
-          throw new Error('Parámetros de pago incompletos');
-        }
-
-        // Primer intento: Verificar el estado del pago
-        const response = await fetch('/api/payments/verify', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            ticketId,
-            paymentId,
-            status
-          })
-        });
+        const response = await fetch(`/api/tickets/${ticketId}`);
+        if (!response.ok) throw new Error('Error al cargar el ticket');
 
         const data = await response.json();
-        console.log('Verification response:', data);
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Error al verificar el pago');
-        }
-
-        // Segundo intento: Obtener los detalles del ticket
-        const ticketResponse = await fetch(`/api/tickets/${ticketId}`);
-        const ticketData = await ticketResponse.json();
-
-        console.log('Ticket data:', ticketData);
-
-        if (!ticketResponse.ok) {
-          throw new Error('Error al obtener los detalles del ticket');
-        }
-
-        if (ticketData.ticket.status !== 'PAID') {
-          throw new Error('El ticket no está pagado');
-        }
-
-        setTicket(ticketData.ticket);
+        setTicket(data);
       } catch (error) {
-        console.error('Verification error:', error);
-        setError(error instanceof Error ? error.message : 'Error al procesar el pago');
+        setError(error instanceof Error ? error.message : 'Error desconocido');
       } finally {
         setLoading(false);
       }
     };
 
-    // Intentar verificar inmediatamente
-    verifyPayment();
-
-    // Configurar reintentos cada 5 segundos por 1 minuto
-    const maxAttempts = 12; // 1 minuto (12 * 5 segundos)
-    let attempts = 0;
-    const interval = setInterval(async () => {
-      if (attempts >= maxAttempts) {
-        clearInterval(interval);
-        if (!ticket) {
-          setError('No se pudo confirmar el pago después de varios intentos');
-        }
-        return;
-      }
-      if (!ticket) {
-        await verifyPayment();
-        attempts++;
-      } else {
-        clearInterval(interval);
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
+    fetchTicket();
   }, [searchParams]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-lg mb-2">Verificando el pago...</p>
-          <p className="text-sm text-gray-500">Esto puede tomar unos momentos</p>
-        </div>
+        <p className="text-lg">Cargando ticket...</p>
       </div>
     );
   }
@@ -126,16 +59,11 @@ export default function PaymentSuccessPage() {
   if (error || !ticket) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        <h1 className="text-2xl font-bold text-red-600 mb-4">Error en el proceso</h1>
-        <p className="text-gray-600 mb-8">{error || 'No se pudo cargar el ticket'}</p>
-        <div className="space-y-4">
-          <Button asChild className="w-full">
-            <Link href="/tickets">Ver mis tickets</Link>
-          </Button>
-          <Button variant="outline" asChild className="w-full">
-            <Link href="/">Volver al inicio</Link>
-          </Button>
-        </div>
+        <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
+        <p className="text-gray-600 mb-8">{error}</p>
+        <Button asChild>
+          <Link href="/admin/tickets">Ver mis tickets</Link>
+        </Button>
       </div>
     );
   }
@@ -158,7 +86,6 @@ export default function PaymentSuccessPage() {
               <p><span className="font-medium">Fecha:</span> {new Date(ticket.date).toLocaleString()}</p>
               <p><span className="font-medium">Ubicación:</span> {ticket.location}</p>
               <p><span className="font-medium">Asientos:</span> {ticket.seats.join(', ')}</p>
-              <p><span className="font-medium">Precio:</span> ${ticket.price}</p>
             </div>
           </div>
 
@@ -181,10 +108,10 @@ export default function PaymentSuccessPage() {
               {pdfLoading ? 'Generando PDF...' : 'Descargar PDF'}
             </Button>
             <Button asChild>
-              <Link href="/tickets">Ver mis tickets</Link>
+              <Link href="/admin/tickets">Ver mis tickets</Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/events">Ver más eventos</Link>
+              <Link href="/admin/events">Ver más eventos</Link>
             </Button>
           </div>
         </div>

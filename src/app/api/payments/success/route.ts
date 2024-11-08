@@ -1,63 +1,65 @@
-// app/api/payments/success/route.ts
+// app/api/webhooks/mercadopago/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 
-export async function GET(req: Request) {
+// app/api/webhooks/mercadopago/route.ts
+export async function POST(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const paymentId = searchParams.get('payment_id');
-    const status = searchParams.get('collection_status');
-    const ticketId = searchParams.get('external_reference');
-
-    console.log('Success callback received:', { paymentId, status, ticketId });
-
-    if (status === 'approved' && ticketId) {
-      await dbConnect();
-      
-      // Actualizar ticket si aún no está PAID
-      const ticket = await Ticket.findById(ticketId);
-      if (ticket && ticket.status === 'PENDING') {
-        const session = await (await dbConnect()).startSession();
-        try {
-          await session.withTransaction(async () => {
-            ticket.status = 'PAID';
-            ticket.paymentId = paymentId;
-            await ticket.save({ session });
-
-            // Actualizar asientos si aún no están ocupados
-            await Seat.updateMany(
-              {
-                eventId: ticket.eventId,
-                number: { $in: ticket.seats },
-                status: { $ne: 'OCCUPIED' }
-              },
-              {
-                $set: {
-                  status: 'OCCUPIED',
-                  ticketId: ticket._id
-                }
-              },
-              { session }
-            );
-          });
-        } finally {
-          await session.endSession();
-        }
-      }
+    const data = await req.json();
+    console.log('Webhook received:', data);
+    
+    if (data.type !== 'payment') {
+      return NextResponse.json({ message: 'Notificación ignorada' });
     }
 
-    // Siempre redirigir a la página de éxito para que maneje la visualización
-    const successPageUrl = new URL('/payment/success', req.url);
-    successPageUrl.searchParams.set('ticketId', ticketId || '');
-    successPageUrl.searchParams.set('payment_id', paymentId || '');
-    successPageUrl.searchParams.set('collection_status', status || '');
+    await dbConnect();
+    const ticketId = data.data.external_reference;
+    const paymentStatus = data.data.status;
 
-    return NextResponse.redirect(successPageUrl);
+    const session = await (await dbConnect()).startSession();
+    try {
+      await session.withTransaction(async () => {
+        const ticket = await Ticket.findById(ticketId).session(session);
+
+        if (!ticket) {
+          throw new Error('Ticket no encontrado');
+        }
+
+        if (paymentStatus === 'approved') {
+          // Actualizar ticket
+          ticket.status = 'PAID';
+          ticket.paymentId = data.data.id;
+          await ticket.save({ session });
+
+          // Actualizar estado del asiento
+          const seatUpdateResult = await Seat.updateMany(
+            {
+              eventId: ticket.eventId,
+              number: { $in: ticket.seats }
+            },
+            {
+              status: 'OCCUPIED',
+              ticketId: ticket._id
+            },
+            { session }
+          );
+
+          console.log('Seats update result:', seatUpdateResult);
+        }
+      });
+
+      return NextResponse.json({ success: true });
+    } finally {
+      await session.endSession();
+    }
 
   } catch (error) {
-    console.error('Error processing success callback:', error);
-    return NextResponse.redirect(new URL('/payment/error', req.url));
+    console.error('Error processing webhook:', error);
+    return NextResponse.json(
+      { error: 'Error procesando webhook' },
+      { status: 500 }
+    );
   }
 }

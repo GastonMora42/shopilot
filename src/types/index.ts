@@ -95,3 +95,12 @@ export interface CreateTicketRequest {
     phone?: string;
   };
 }
+
+
+export interface PreferenceData {
+  _id: string;
+  eventName: string;
+  price: number;
+  description: string;
+  seats?: string; // Agregamos la propiedad opcional
+}

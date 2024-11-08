@@ -22,31 +22,33 @@ interface TicketData {
 
 export default function PaymentSuccessPage() {
   const searchParams = useSearchParams();
-  const [ticket, setTicket] = useState<TicketData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [ticket ] = useState<TicketData | null>(null);
+  const [loading ] = useState(true);
+  const [error] = useState<string | null>(null);
   const { downloadPDF, loading: pdfLoading } = usePDFDownload();
 
+
   useEffect(() => {
-    const fetchTicket = async () => {
+    const verifyPayment = async () => {
+      const ticketId = searchParams.get('ticketId');
+      if (!ticketId) return;
+  
       try {
-        const ticketId = searchParams.get('ticketId');
-        if (!ticketId) throw new Error('ID de ticket no encontrado');
-
-        const response = await fetch(`/api/tickets/${ticketId}`);
-        if (!response.ok) throw new Error('Error al cargar el ticket');
-
+        const response = await fetch(`/api/payments/verify?ticketId=${ticketId}`);
         const data = await response.json();
-        setTicket(data);
+        
+        console.log('Payment verification:', data);
+  
+        if (!data.success || data.ticketStatus !== 'PAID') {
+          // Mostrar mensaje de error o recargar la página
+        }
       } catch (error) {
-        setError(error instanceof Error ? error.message : 'Error desconocido');
-      } finally {
-        setLoading(false);
+        console.error('Error verifying payment:', error);
       }
     };
-
-    fetchTicket();
-  }, [searchParams]);
+  
+    verifyPayment();
+  }, []);
 
   if (loading) {
     return (

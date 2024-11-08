@@ -47,13 +47,17 @@ const TicketSchema = new mongoose.Schema({
     enum: ['PENDING', 'PAID', 'USED', 'CANCELLED'],
     default: 'PENDING'
   },
+  paymentId: String,
   price: {
     type: Number,
     required: true
-  },
-  paymentId: String
+  }
 }, {
   timestamps: true
 });
 
-export const Ticket = mongoose.models.Ticket || mongoose.model<ITicket>('Ticket', TicketSchema);
+// Índices importantes
+TicketSchema.index({ eventId: 1, status: 1 });
+TicketSchema.index({ qrCode: 1 }, { unique: true });
+
+export const Ticket = mongoose.models.Ticket || mongoose.model('Ticket', TicketSchema);

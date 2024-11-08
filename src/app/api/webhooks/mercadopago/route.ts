@@ -19,16 +19,15 @@ export async function POST(req: Request) {
     const ticketId = data.data.external_reference;
     const paymentStatus = data.data.status;
 
-    console.log('Payment status:', paymentStatus, 'for ticket:', ticketId); // Debug log
+    console.log('Processing payment:', { ticketId, paymentStatus }); // Debug log
 
-    // Usar transacción para actualizar ticket y asientos
     const session = await (await dbConnect()).startSession();
+    
     try {
       await session.withTransaction(async () => {
-        const ticket = await Ticket.findById(ticketId)
-          .populate('eventId')
-          .session(session);
-
+        // Buscar ticket y verificar estado actual
+        const ticket = await Ticket.findById(ticketId).session(session);
+        
         if (!ticket) {
           console.error('Ticket not found:', ticketId);
           throw new Error('Ticket no encontrado');
@@ -42,30 +41,43 @@ export async function POST(req: Request) {
           ticket.paymentId = data.data.id;
           await ticket.save({ session });
 
-          // Actualizar asientos
-          const updateResult = await Seat.updateMany(
+          // Actualizar asientos a OCCUPIED
+          const seatUpdateResult = await Seat.updateMany(
             {
               eventId: ticket.eventId,
-              number: { $in: ticket.seats } // Asegúrate de usar el campo correcto
+              number: { $in: ticket.seats }
             },
             {
-              status: 'OCCUPIED',
-              ticketId: ticket._id
+              $set: {
+                status: 'OCCUPIED',
+                ticketId: ticket._id
+              }
             },
             { session }
           );
 
-          console.log('Seats update result:', updateResult); // Debug log
+          console.log('Seats update result:', seatUpdateResult); // Debug log
+
+          // Verificar que los asientos se actualizaron
+          const updatedSeats = await Seat.find({
+            eventId: ticket.eventId,
+            number: { $in: ticket.seats }
+          }).session(session);
+
+          console.log('Updated seats:', updatedSeats); // Debug log
         }
       });
 
       return NextResponse.json({ success: true });
+    } catch (error) {
+      console.error('Transaction error:', error);
+      throw error;
     } finally {
       await session.endSession();
     }
 
   } catch (error) {
-    console.error('Error processing webhook:', error);
+    console.error('Webhook error:', error);
     return NextResponse.json(
       { error: 'Error procesando webhook' },
       { status: 500 }

@@ -77,7 +77,7 @@ export async function POST(req: Request) {
           eventId,
           seats,
           qrCode,
-          status: 'PENDING',
+          status: 'PAID',
           buyerInfo: {
             ...buyerInfo,
             email: buyerInfo.email.toLowerCase().trim()

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cn } from "@/app/lib/utils";
 
-// Usar InputHTMLAttributes para permitir todas las propiedades estándar de un <input>
+// Usar InputHTMLAttributes para permitir todas las propiedades estándar de un <insput>
 const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   ({ className, type, ...props }, ref) => {
     return (

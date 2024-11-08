@@ -9,6 +9,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { usePDFDownload } from '@/app/hooks/usePDFDownload';
 
 interface TicketData {
+  id: string;
   eventName: string;
   date: string;
   location: string;
@@ -18,6 +19,8 @@ interface TicketData {
     name: string;
     email: string;
   };
+  status: string;
+  price: number;
 }
 
 export default function PaymentSuccessPage() {
@@ -28,86 +31,43 @@ export default function PaymentSuccessPage() {
   const { downloadPDF, loading: pdfLoading } = usePDFDownload();
 
   useEffect(() => {
-    const verifyPayment = async () => {
+    const getTicket = async () => {
       try {
         const ticketId = searchParams.get('ticketId');
-        const paymentId = searchParams.get('payment_id');
-        const status = searchParams.get('collection_status');
-
-        if (!ticketId || !paymentId) {
-          throw new Error('Parámetros de pago inválidos');
+        if (!ticketId) {
+          throw new Error('ID de ticket no encontrado');
         }
 
-        // Verificar y actualizar el estado del pago
-        const response = await fetch('/api/payments/verify', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            ticketId,
-            paymentId,
-            status
-          })
-        });
-
+        // Obtener detalles del ticket
+        const response = await fetch(`/api/tickets/${ticketId}`);
         const data = await response.json();
-        console.log('Payment verification response:', data);
 
-        if (!response.ok) {
-          throw new Error(data.error || 'Error al verificar el pago');
+        console.log('Ticket data:', data); // Debug log
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Error al obtener el ticket');
         }
 
-        if (!data.success || data.ticket?.status !== 'PAID') {
-          throw new Error('El pago no se ha completado correctamente');
+        if (data.ticket.status !== 'PAID') {
+          throw new Error('El ticket no está pagado');
         }
 
-        // Obtener los detalles del ticket
-        const ticketResponse = await fetch(`/api/tickets/${ticketId}`);
-        const ticketData = await ticketResponse.json();
-
-        if (!ticketResponse.ok) {
-          throw new Error('Error al obtener los detalles del ticket');
-        }
-
-        setTicket(ticketData.ticket);
+        setTicket(data.ticket);
       } catch (error) {
-        console.error('Verification error:', error);
-        setError(error instanceof Error ? error.message : 'Error al procesar el pago');
+        console.error('Error loading ticket:', error);
+        setError(error instanceof Error ? error.message : 'Error al cargar el ticket');
       } finally {
         setLoading(false);
       }
     };
 
-    verifyPayment();
+    getTicket();
   }, [searchParams]);
-
-  // Verificar estado del ticket periódicamente
-  useEffect(() => {
-    const ticketId = searchParams.get('ticketId');
-    if (!ticketId || ticket) return;
-
-    const checkTicketStatus = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/tickets/${ticketId}`);
-        const data = await response.json();
-
-        if (response.ok && data.ticket?.status === 'PAID') {
-          setTicket(data.ticket);
-          clearInterval(checkTicketStatus);
-        }
-      } catch (error) {
-        console.error('Error checking ticket status:', error);
-      }
-    }, 5000); // Verificar cada 5 segundos
-
-    return () => clearInterval(checkTicketStatus);
-  }, [searchParams, ticket]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-lg">Verificando pago y procesando ticket...</p>
+        <p className="text-lg">Cargando ticket...</p>
       </div>
     );
   }
@@ -116,10 +76,10 @@ export default function PaymentSuccessPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
         <h1 className="text-2xl font-bold text-red-600 mb-4">Error en el proceso</h1>
-        <p className="text-gray-600 mb-8">{error || 'No se pudo procesar el ticket'}</p>
+        <p className="text-gray-600 mb-8">{error || 'No se pudo cargar el ticket'}</p>
         <div className="space-y-4">
           <Button asChild className="w-full">
-            <Link href="/admin/tickets">Ver mis tickets</Link>
+            <Link href="/tickets">Ver mis tickets</Link>
           </Button>
           <Button variant="outline" asChild className="w-full">
             <Link href="/">Volver al inicio</Link>
@@ -147,6 +107,7 @@ export default function PaymentSuccessPage() {
               <p><span className="font-medium">Fecha:</span> {new Date(ticket.date).toLocaleString()}</p>
               <p><span className="font-medium">Ubicación:</span> {ticket.location}</p>
               <p><span className="font-medium">Asientos:</span> {ticket.seats.join(', ')}</p>
+              <p><span className="font-medium">Precio:</span> ${ticket.price}</p>
             </div>
           </div>
 
@@ -169,10 +130,10 @@ export default function PaymentSuccessPage() {
               {pdfLoading ? 'Generando PDF...' : 'Descargar PDF'}
             </Button>
             <Button asChild>
-              <Link href="/admin/tickets">Ver mis tickets</Link>
+              <Link href="/tickets">Ver mis tickets</Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/admin/events">Ver más eventos</Link>
+              <Link href="/events">Ver más eventos</Link>
             </Button>
           </div>
         </div>

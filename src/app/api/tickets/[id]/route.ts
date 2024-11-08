@@ -2,16 +2,24 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
+import { isValidObjectId } from 'mongoose';
 
-// app/api/tickets/[id]/route.ts
 export async function GET(
-  req: Request,
+  _req: Request,
   { params }: { params: { id: string } }
 ) {
   try {
+    if (!isValidObjectId(params.id)) {
+      return NextResponse.json(
+        { error: 'ID de ticket inválido' },
+        { status: 400 }
+      );
+    }
+
     await dbConnect();
 
     const ticket = await Ticket.findById(params.id).populate('eventId');
+
     if (!ticket) {
       return NextResponse.json(
         { error: 'Ticket no encontrado' },
@@ -20,16 +28,22 @@ export async function GET(
     }
 
     return NextResponse.json({
-      eventName: ticket.eventId.name,
-      date: ticket.eventId.date,
-      location: ticket.eventId.location,
-      seats: ticket.seats,
-      qrCode: ticket.qrCode,
-      buyerInfo: ticket.buyerInfo
+      success: true,
+      ticket: {
+        id: ticket._id,
+        eventName: ticket.eventId.name,
+        date: ticket.eventId.date,
+        location: ticket.eventId.location,
+        seats: ticket.seats,
+        qrCode: ticket.qrCode,
+        buyerInfo: ticket.buyerInfo,
+        status: ticket.status,
+        price: ticket.price
+      }
     });
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error fetching ticket:', error);
     return NextResponse.json(
       { error: 'Error al obtener el ticket' },
       { status: 500 }

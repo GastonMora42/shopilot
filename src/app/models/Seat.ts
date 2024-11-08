@@ -10,15 +10,16 @@ export interface ISeat {
   price: number;
   seatId: string;
   type?: 'REGULAR' | 'VIP' | 'DISABLED';
+  ticketId: object;
 }
 
 const SeatSchema = new mongoose.Schema<ISeat>({
   eventId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true,
-    ref: 'Event'
+    ref: 'Event',
+    required: true
   },
-  seatId: {
+  number: {
     type: String,
     required: true
   },
@@ -27,16 +28,16 @@ const SeatSchema = new mongoose.Schema<ISeat>({
     enum: ['AVAILABLE', 'OCCUPIED', 'RESERVED'],
     default: 'AVAILABLE'
   },
+  ticketId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Ticket'
+  },
   row: {
     type: Number,
     required: true
   },
   column: {
     type: Number,
-    required: true
-  },
-  number: {
-    type: String,
     required: true
   },
   price: {

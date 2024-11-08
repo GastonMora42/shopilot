@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { isValidObjectId } from 'mongoose';
 
 // app/api/events/[id]/seats/route.ts
+// app/api/events/[id]/seats/route.ts
 export async function GET(
   _req: Request,
   { params }: { params: { id: string } }
@@ -12,27 +13,33 @@ export async function GET(
   try {
     await dbConnect();
     
-    console.log('Fetching seats for event:', params.id); // Debug log
+    console.log('Fetching seats for event:', params.id);
 
-    const seats = await Seat.find({ 
+    // Primero, buscar todos los asientos
+    const allSeats = await Seat.find({ 
       eventId: params.id 
     });
 
-    console.log('Raw seats from DB:', seats); // Debug log
+    console.log('Found seats:', allSeats);
 
-    // Obtener solo los asientos ocupados y reservados
-    const occupiedSeats = seats
-      .filter(seat => seat.status === 'OCCUPIED' || seat.status === 'RESERVED')
+    // Filtrar los ocupados
+    const occupiedSeats = allSeats
+      .filter(seat => seat.status !== 'AVAILABLE')
       .map(seat => ({
-        seatId: seat.number, // Importante: usar seat.number que es el formato "A4"
+        seatId: seat.number,  // Importante: usar el número como seatId
         status: seat.status
       }));
 
-    console.log('Filtered occupied seats:', occupiedSeats); // Debug log
+    console.log('Filtered occupied seats:', occupiedSeats);
 
     return NextResponse.json({ 
       success: true, 
-      occupiedSeats
+      occupiedSeats,
+      debug: {
+        totalSeats: allSeats.length,
+        occupiedCount: occupiedSeats.length,
+        statuses: allSeats.map(s => ({ id: s.number, status: s.status }))
+      }
     });
 
   } catch (error) {

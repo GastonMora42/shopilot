@@ -11,6 +11,7 @@ import { SeatSelector } from '@/components/events/SeatSelector';
 import { BuyerForm } from '@/components/events/BuyerForm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
+import DebugPanel from '@/components/DebugPanel';
 
 interface OccupiedSeat {
   seatId: string;
@@ -301,7 +302,9 @@ export default function PublicEventPage() {
                 )}
               </CardContent>
             </Card>
-
+            {process.env.NODE_ENV === 'development' && event && (
+      <DebugPanel eventId={event._id} />
+    )}
             <Card>
               <CardHeader>
                 <CardTitle>Compartir Evento</CardTitle>

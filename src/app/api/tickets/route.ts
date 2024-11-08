@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Event } from '@/app/models/Event';
-import { Ticket, ITicket } from '@/app/models/Ticket';
+import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import { generateQRCode } from '@/app/lib/utils';
 import { createPreference } from '@/app/lib/mercadopago';

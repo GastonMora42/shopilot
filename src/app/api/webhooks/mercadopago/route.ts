@@ -5,9 +5,11 @@ import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import { sendTicketEmail } from '@/app/lib/email';
 
+// app/api/webhooks/mercadopago/route.ts
 export async function POST(req: Request) {
   try {
     const data = await req.json();
+    console.log('Webhook received:', data); // Debug log
     
     if (data.type !== 'payment') {
       return NextResponse.json({ message: 'Notificación ignorada' });
@@ -16,6 +18,8 @@ export async function POST(req: Request) {
     await dbConnect();
     const ticketId = data.data.external_reference;
     const paymentStatus = data.data.status;
+
+    console.log('Payment status:', paymentStatus, 'for ticket:', ticketId); // Debug log
 
     // Usar transacción para actualizar ticket y asientos
     const session = await (await dbConnect()).startSession();
@@ -26,8 +30,11 @@ export async function POST(req: Request) {
           .session(session);
 
         if (!ticket) {
-          throw new Error('Ticket no encontrado: ' + ticketId);
+          console.error('Ticket not found:', ticketId);
+          throw new Error('Ticket no encontrado');
         }
+
+        console.log('Found ticket:', ticket); // Debug log
 
         if (paymentStatus === 'approved') {
           // Actualizar ticket
@@ -36,10 +43,10 @@ export async function POST(req: Request) {
           await ticket.save({ session });
 
           // Actualizar asientos
-          await Seat.updateMany(
+          const updateResult = await Seat.updateMany(
             {
-              eventId: ticket.eventId._id,
-              seatId: { $in: ticket.seats }
+              eventId: ticket.eventId,
+              number: { $in: ticket.seats } // Asegúrate de usar el campo correcto
             },
             {
               status: 'OCCUPIED',
@@ -48,38 +55,7 @@ export async function POST(req: Request) {
             { session }
           );
 
-          // Enviar email
-          try {
-            await sendTicketEmail({
-              ticket: {
-                eventName: ticket.eventId.name,
-                date: ticket.eventId.date,
-                location: ticket.eventId.location,
-                seats: ticket.seats,
-              },
-              qrCode: ticket.qrCode,
-              email: ticket.buyerInfo.email,
-            });
-            console.log('Email enviado:', ticket.buyerInfo.email);
-          } catch (emailError) {
-            console.error('Error enviando email:', emailError);
-          }
-        } else if (['rejected', 'cancelled'].includes(paymentStatus)) {
-          // Liberar asientos si el pago fue rechazado
-          await Seat.updateMany(
-            {
-              eventId: ticket.eventId._id,
-              seatId: { $in: ticket.seats }
-            },
-            {
-              status: 'AVAILABLE',
-              $unset: { ticketId: "" }
-            },
-            { session }
-          );
-          
-          ticket.status = 'CANCELLED';
-          await ticket.save({ session });
+          console.log('Seats update result:', updateResult); // Debug log
         }
       });
 
@@ -89,7 +65,7 @@ export async function POST(req: Request) {
     }
 
   } catch (error) {
-    console.error('Error procesando webhook:', error);
+    console.error('Error processing webhook:', error);
     return NextResponse.json(
       { error: 'Error procesando webhook' },
       { status: 500 }

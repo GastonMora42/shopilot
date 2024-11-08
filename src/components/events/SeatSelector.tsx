@@ -4,6 +4,7 @@
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/app/lib/utils';
 import { IEvent, ISection, ISeat } from '@/types';
+import { useEffect } from 'react';
 
 type SeatStatus = ISeat['status'];
 
@@ -80,6 +81,10 @@ export function SeatSelector({
     );
   };
 
+  useEffect(() => {
+    console.log('SeatSelector received new occupiedSeats:', occupiedSeats);
+  }, [occupiedSeats]);
+
   const isSeatOccupied = (seatId: string): boolean => {
     console.log('Checking seat:', seatId, 'Current occupied seats:', occupiedSeats);
     return occupiedSeats.some(seat => {
@@ -100,6 +105,7 @@ export function SeatSelector({
 
     await onSeatSelect(newSelectedSeats);
   };
+
 
   return (
     <div className="space-y-6 max-w-full overflow-x-auto pb-4">

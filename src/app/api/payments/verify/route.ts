@@ -2,102 +2,92 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
-import { Seat } from '@/app/models/Seat';
+import { MercadoPagoConfig, Payment } from 'mercadopago';
+
+// Configurar MercadoPago correctamente
+const client = new MercadoPagoConfig({ 
+  accessToken: process.env.MP_ACCESS_TOKEN!
+});
+
+const payment = new Payment(client);
 
 export async function POST(req: Request) {
   try {
-    const { ticketId, paymentId, status } = await req.json();
-
-    if (!ticketId || !paymentId) {
-      return NextResponse.json(
-        { error: 'Datos incompletos' },
-        { status: 400 }
-      );
-    }
+    const { ticketId, paymentId } = await req.json();
+    console.log('Verifying payment:', { ticketId, paymentId });
 
     await dbConnect();
-    
-    const session = await (await dbConnect()).startSession();
-    
-    try {
-      await session.withTransaction(async () => {
-        // Buscar y actualizar el ticket
-        const ticket = await Ticket.findById(ticketId).session(session);
-        
-        if (!ticket) {
-          throw new Error('Ticket no encontrado');
-        }
 
-        if (ticket.status === 'PENDING') {
-          // Actualizar ticket
-          ticket.status = status === 'approved' ? 'PAID' : 'CANCELLED';
-          ticket.paymentId = paymentId;
-          await ticket.save({ session });
+    // Buscar el ticket
+    const ticket = await Ticket.findById(ticketId).populate('eventId');
+    if (!ticket) {
+      return NextResponse.json({ error: 'Ticket no encontrado' }, { status: 404 });
+    }
 
-          // Si el pago fue aprobado, actualizar asientos a OCCUPIED
-          if (status === 'approved') {
-            const seatUpdateResult = await Seat.updateMany(
-              {
-                eventId: ticket.eventId,
-                number: { $in: ticket.seats }
-              },
-              {
-                $set: {
-                  status: 'OCCUPIED',
-                  ticketId: ticket._id
-                }
-              },
-              { session }
-            );
-
-            console.log('Seat update result:', seatUpdateResult);
-          } else {
-            // Si el pago falló, liberar los asientos
-            await Seat.updateMany(
-              {
-                eventId: ticket.eventId,
-                number: { $in: ticket.seats }
-              },
-              {
-                $set: {
-                  status: 'AVAILABLE'
-                },
-                $unset: {
-                  ticketId: ""
-                }
-              },
-              { session }
-            );
-          }
-        }
-
-        return ticket;
-      });
-
-      // Obtener el ticket actualizado para la respuesta
-      const updatedTicket = await Ticket.findById(ticketId)
-        .populate('eventId', 'name');
-
+    // Si el ticket ya está pagado, retornar éxito
+    if (ticket.status === 'PAID') {
       return NextResponse.json({
         success: true,
         ticket: {
-          id: updatedTicket._id,
-          seats: updatedTicket.seats,
-          price: updatedTicket.price,
-          status: updatedTicket.status,
-          eventName: updatedTicket.eventId.name
+          id: ticket._id,
+          status: ticket.status,
+          eventName: ticket.eventId.name,
+          date: ticket.eventId.date,
+          location: ticket.eventId.location,
+          seats: ticket.seats,
+          qrCode: ticket.qrCode,
+          buyerInfo: ticket.buyerInfo
         }
       });
+    }
 
-    } finally {
-      await session.endSession();
+    // Verificar el pago directamente con MercadoPago
+    try {
+      const paymentInfo = await payment.get({ id: paymentId });
+      
+      console.log('Payment status from MP:', paymentInfo.status);
+
+      if (paymentInfo.status === 'approved') {
+        // Actualizar ticket si aún está pendiente
+        if (ticket.status === 'PENDING') {
+          ticket.status = 'PAID';
+          ticket.paymentId = paymentId;
+          await ticket.save();
+        }
+
+        return NextResponse.json({
+          success: true,
+          ticket: {
+            id: ticket._id,
+            status: 'PAID',
+            eventName: ticket.eventId.name,
+            date: ticket.eventId.date,
+            location: ticket.eventId.location,
+            seats: ticket.seats,
+            qrCode: ticket.qrCode,
+            buyerInfo: ticket.buyerInfo
+          }
+        });
+      }
+
+      return NextResponse.json({
+        success: false,
+        error: 'El pago no está aprobado'
+      }, { status: 400 });
+
+    } catch (mpError) {
+      console.error('MercadoPago error:', mpError);
+      return NextResponse.json({
+        success: false,
+        error: 'Error al verificar el pago con MercadoPago'
+      }, { status: 500 });
     }
 
   } catch (error) {
-    console.error('Error verifying payment:', error);
-    return NextResponse.json(
-      { error: 'Error al verificar el pago' },
-      { status: 500 }
-    );
+    console.error('Verification error:', error);
+    return NextResponse.json({
+      success: false,
+      error: 'Error al verificar el pago'
+    }, { status: 500 });
   }
 }

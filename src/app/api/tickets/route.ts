@@ -9,18 +9,28 @@ import { createPreference } from '@/app/lib/mercadopago';
 import { isValidObjectId } from 'mongoose';
 import type { ITicket } from '@/types';
 
-const RESERVATION_TIMEOUT = 15 * 60 * 1000; // 15 minutos en milisegundos
+const RESERVATION_TIMEOUT = 5 * 60 * 1000; // 15 minutos en milisegundos
 
 export async function POST(req: Request) {
   try {
     await dbConnect();
     const { eventId, seats, buyerInfo } = await req.json();
     
-    console.log('Creating ticket request:', { eventId, seats, buyerInfo });
+    console.log('Solicitud de creación de ticket:', { eventId, seats, buyerInfo });
 
-    if (!isValidObjectId(eventId) || !seats?.length || !buyerInfo) {
+    // Validación de datos de entrada
+    if (!isValidObjectId(eventId) || !seats?.length || !buyerInfo || !buyerInfo.email) {
       return NextResponse.json(
         { error: 'Datos incompletos o inválidos' },
+        { status: 400 }
+      );
+    }
+
+    // Validar email
+    buyerInfo.email = buyerInfo.email.toLowerCase().trim();
+    if (!/\S+@\S+\.\S+/.test(buyerInfo.email)) {
+      return NextResponse.json(
+        { error: 'Formato de email inválido' },
         { status: 400 }
       );
     }
@@ -53,6 +63,7 @@ export async function POST(req: Request) {
       return sum + section.price;
     }, 0);
 
+    // Iniciar una sesión para la transacción
     const session = await (await dbConnect()).startSession();
     let ticket: ITicket | null = null;
 
@@ -69,20 +80,17 @@ export async function POST(req: Request) {
           throw new Error('Algunos asientos ya no están disponibles');
         }
 
-        // Crear ticket
+        // Crear ticket con estado 'PENDING'
         const [newTicket] = await Ticket.create([{
           eventId,
           seats,
           qrCode: await generateQRCode(),
           status: 'PENDING',
-          buyerInfo: {
-            ...buyerInfo,
-            email: buyerInfo.email.toLowerCase().trim()
-          },
+          buyerInfo,
           price: total
         }], { session });
 
-        // Marcar asientos como reservados con tiempo de expiración
+        // Reservar los asientos con tiempo de expiración
         const reservationExpires = new Date(Date.now() + RESERVATION_TIMEOUT);
         
         await Seat.updateMany(
@@ -112,7 +120,7 @@ export async function POST(req: Request) {
       throw new Error('Error al crear el ticket');
     }
 
-    // Crear preferencia de MercadoPago
+    // Crear preferencia de MercadoPago solo si el ticket se creó correctamente
     const preference = await createPreference({
       _id: ticket._id.toString(),
       eventName: event.name,
@@ -132,7 +140,7 @@ export async function POST(req: Request) {
     });
 
   } catch (error) {
-    console.error('Error creating ticket:', error);
+    console.error('Error al crear el ticket:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Error al procesar la compra' },
       { status: 500 }

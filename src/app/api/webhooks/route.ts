@@ -1,11 +1,10 @@
-//api/webhooks/route.ts
+// app/api/webhooks/mercadopago/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { sendTicketEmail } from '@/app/lib/email';
-
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
@@ -76,6 +75,7 @@ export async function POST(req: Request) {
           throw new Error(`Ticket no encontrado: ${ticketId}`);
         }
   
+        // Si el pago está aprobado y el ticket está pendiente, se actualiza a 'PAID'
         if (ticket.status === 'PENDING' && paymentInfo.status === 'approved') {
           ticket.status = 'PAID';
           ticket.paymentId = paymentId;
@@ -113,8 +113,33 @@ export async function POST(req: Request) {
             console.error('Error enviando email:', emailError);
             // No lanzamos el error para no afectar la transacción principal
           }
-  
+
           return { ticket, seatResult };
+
+        // Si el pago es rechazado o cancelado, liberamos los asientos
+        } else if (ticket.status === 'PENDING' && ['rejected', 'cancelled'].includes(paymentInfo.status)) {
+          const seatResult = await Seat.updateMany(
+            {
+              eventId: ticket.eventId,
+              number: { $in: ticket.seats }
+            },
+            {
+              $set: {
+                status: 'AVAILABLE',
+                ticketId: null
+              }
+            },
+            { session }
+          );
+
+          console.log('Asientos liberados:', {
+            matched: seatResult.matchedCount,
+            modified: seatResult.modifiedCount,
+            seats: ticket.seats
+          });
+
+          return { ticket, seatResult };
+
         } else {
           console.log('No es necesario actualizar:', {
             estadoTicket: ticket.status,

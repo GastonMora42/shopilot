@@ -1,4 +1,4 @@
-// src/app/(dashboard)/admin/events/[id]/page.tsx
+// src/app/(dashboard)/admin/events/[id]/page.tsxss
 'use client';
 
 import { useEffect, useState } from 'react';

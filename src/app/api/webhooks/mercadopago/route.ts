@@ -11,28 +11,46 @@ const client = new MercadoPagoConfig({
 
 const payment = new Payment(client);
 
-// app/api/webhooks/mercadopago/route.ts
+type PaymentInfo = {
+  id: number | string;
+  status: string;
+  external_reference: string;
+};
+
 export async function POST(req: Request) {
   try {
-    const data = await req.json();
-    console.log('Webhook received:', data);
+    const body = await req.json();
+    
+    console.log('Webhook received:', {
+      type: body.type,
+      data: body.data,
+      timestamp: new Date().toISOString()
+    });
 
-    if (data.type !== 'payment') {
-      console.log('Skipping non-payment webhook');
+    // Solo procesar notificaciones de pago
+    if (body.type !== 'payment') {
       return NextResponse.json({ message: 'Notificación ignorada' });
     }
 
-    const paymentId = data.data.id;
-    console.log('Processing payment:', paymentId);
+    if (!body.data?.id) {
+      console.error('Missing payment ID');
+      return NextResponse.json({ error: 'Missing payment ID' }, { status: 400 });
+    }
 
     await dbConnect();
+
+    // Obtener detalles del pago
+    const paymentInfo = await payment.get({ id: body.data.id }) as unknown as PaymentInfo;
     
-    const paymentInfo = await payment.get({ id: paymentId });
-    console.log('Payment info:', paymentInfo);
+    console.log('Payment info:', {
+      id: paymentInfo.id,
+      status: paymentInfo.status,
+      external_reference: paymentInfo.external_reference
+    });
 
     const ticketId = paymentInfo.external_reference;
-    const status = paymentInfo.status;
-
+    const paymentId = String(paymentInfo.id); // Convertir a string de manera segura
+    
     if (!ticketId) {
       console.error('Missing ticket reference');
       return NextResponse.json({ error: 'Missing ticket reference' }, { status: 400 });
@@ -41,27 +59,28 @@ export async function POST(req: Request) {
     const session = await (await dbConnect()).startSession();
 
     try {
-      await session.withTransaction(async () => {
+      const result = await session.withTransaction(async () => {
+        // Buscar y actualizar el ticket
         const ticket = await Ticket.findById(ticketId).session(session);
         
         if (!ticket) {
           throw new Error(`Ticket not found: ${ticketId}`);
         }
 
-        console.log('Found ticket:', {
+        console.log('Processing ticket:', {
           id: ticket._id,
           currentStatus: ticket.status,
-          paymentStatus: status
+          paymentStatus: paymentInfo.status
         });
 
-        if (ticket.status === 'PENDING' && status === 'approved') {
+        if (ticket.status === 'PENDING' && paymentInfo.status === 'approved') {
           // Actualizar ticket
           ticket.status = 'PAID';
           ticket.paymentId = paymentId;
           await ticket.save({ session });
 
           // Actualizar asientos
-          await Seat.updateMany(
+          const seatResult = await Seat.updateMany(
             {
               eventId: ticket.eventId,
               number: { $in: ticket.seats }
@@ -75,11 +94,33 @@ export async function POST(req: Request) {
             { session }
           );
 
-          console.log('Ticket and seats updated successfully');
+          console.log('Updated seats:', {
+            matched: seatResult.matchedCount,
+            modified: seatResult.modifiedCount,
+            seats: ticket.seats
+          });
+
+          return { ticket, seatResult };
+        } else {
+          console.log('No update needed:', {
+            ticketStatus: ticket.status,
+            paymentStatus: paymentInfo.status
+          });
         }
       });
 
-      return NextResponse.json({ success: true });
+      console.log('Transaction result:', result);
+
+      return NextResponse.json({
+        success: true,
+        message: 'Webhook processed successfully',
+        data: {
+          ticketId,
+          paymentId,
+          status: paymentInfo.status
+        }
+      });
+
     } finally {
       await session.endSession();
     }
@@ -87,7 +128,10 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error('Webhook error:', error);
     return NextResponse.json(
-      { error: 'Error processing webhook' },
+      { 
+        error: 'Error processing webhook',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

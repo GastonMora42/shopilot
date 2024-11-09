@@ -2,63 +2,59 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
+import { Seat } from '@/app/models/Seat';
 
+// app/api/payments/success/route.ts
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const paymentId = searchParams.get('payment_id');
     const status = searchParams.get('collection_status');
     const externalReference = searchParams.get('external_reference');
-    const preferenceId = searchParams.get('preference_id');
 
-    console.log('Success callback received:', {
-      paymentId,
-      status,
-      externalReference,
-      preferenceId
-    });
+    if (status === 'approved' && externalReference) {
+      await dbConnect();
+      
+      const session = await (await dbConnect()).startSession();
+      try {
+        await session.withTransaction(async () => {
+          const ticket = await Ticket.findById(externalReference)
+            .session(session);
 
-    if (!externalReference) {
-      console.error('Missing external_reference');
-      return NextResponse.redirect(
-        new URL('/payment/error', process.env.NEXT_PUBLIC_BASE_URL!)
-      );
-    }
+          if (ticket && ticket.status === 'PENDING') {
+            ticket.status = 'PAID';
+            ticket.paymentId = paymentId;
+            await ticket.save({ session });
 
-    await dbConnect();
-
-    // Verificar que el ticket existe
-    const ticket = await Ticket.findById(externalReference);
-    if (!ticket) {
-      console.error('Ticket not found:', externalReference);
-      return NextResponse.redirect(
-        new URL('/payment/error', process.env.NEXT_PUBLIC_BASE_URL!)
-      );
-    }
-
-    // Construir URL con los parámetros necesarios
-    const successUrl = new URL('/payment/success', process.env.NEXT_PUBLIC_BASE_URL);
-    
-    // Añadir todos los parámetros relevantes
-    Object.entries({
-      ticketId: externalReference,
-      payment_id: paymentId,
-      collection_status: status,
-      preference_id: preferenceId
-    }).forEach(([key, value]) => {
-      if (value) {
-        successUrl.searchParams.set(key, value);
+            await Seat.updateMany(
+              {
+                eventId: ticket.eventId,
+                number: { $in: ticket.seats }
+              },
+              {
+                $set: {
+                  status: 'OCCUPIED',
+                  ticketId: ticket._id
+                }
+              },
+              { session }
+            );
+          }
+        });
+      } finally {
+        await session.endSession();
       }
-    });
+    }
 
-    console.log('Redirecting to:', successUrl.toString());
-
-    return NextResponse.redirect(successUrl);
+    // Redirigir a la página de success
+    return NextResponse.redirect(
+      new URL(`/payment/success?ticketId=${externalReference}`, req.url)
+    );
 
   } catch (error) {
     console.error('Success route error:', error);
     return NextResponse.redirect(
-      new URL('/payment/error', process.env.NEXT_PUBLIC_BASE_URL!)
+      new URL('/payment/error', req.url)
     );
   }
 }

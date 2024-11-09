@@ -20,6 +20,7 @@ interface PreferenceData {
   description?: string;
 }
 
+// lib/mercadopago.ts
 export async function createPreference({
   _id,
   eventName,
@@ -27,8 +28,6 @@ export async function createPreference({
   description
 }: PreferenceData) {
   try {
-    console.log('Creating preference for:', { _id, eventName, price });
-    
     const preference = new Preference(mpClient);
     
     const preferenceData = {
@@ -50,14 +49,14 @@ export async function createPreference({
         },
         auto_return: "approved",
         external_reference: _id,
-        notification_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/mercadopago`
+        notification_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/mercadopago`,
+        statement_descriptor: "SHOPILOT TICKETS"
       }
     };
 
-    console.log('Creating preference with data:', preferenceData);
-
+    console.log('Creating preference:', preferenceData);
     const response = await preference.create(preferenceData);
-    console.log('Preference created successfully:', response);
+    console.log('Preference created:', response);
 
     return response;
   } catch (error) {

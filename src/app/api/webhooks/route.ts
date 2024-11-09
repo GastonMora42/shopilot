@@ -1,8 +1,11 @@
+//api/webhooks/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
+import { sendTicketEmail } from '@/app/lib/email';
+
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
@@ -64,49 +67,53 @@ export async function POST(req: Request) {
     const session = await (await dbConnect()).startSession();
 
     try {
-      // Ejecutar la transacción
       const result = await session.withTransaction(async () => {
-        // Buscar el ticket usando la referencia externa
-        const ticket = await Ticket.findById(ticketId).session(session);
+        const ticket = await Ticket.findById(ticketId)
+          .populate('eventId') // Importante: populate para tener los datos del evento
+          .session(session);
         
         if (!ticket) {
-          throw new Error(`Ticket no encontrado con ID: ${ticketId}`);
+          throw new Error(`Ticket no encontrado: ${ticketId}`);
         }
-
-        console.log('Procesando ticket:', {
-          id: ticket._id,
-          statusActual: ticket.status,
-          statusPago: paymentInfo.status,
-        });
-
-        // Si el ticket está en estado PENDING y el pago está aprobado, actualizar
+  
         if (ticket.status === 'PENDING' && paymentInfo.status === 'approved') {
-          // Actualizar el estado del ticket a "PAID"
           ticket.status = 'PAID';
           ticket.paymentId = paymentId;
           await ticket.save({ session });
-
-          // Actualizar los asientos ocupados
+  
+          // Actualizar asientos
           const seatResult = await Seat.updateMany(
             {
               eventId: ticket.eventId,
-              number: { $in: ticket.seats },
+              number: { $in: ticket.seats }
             },
             {
               $set: {
                 status: 'OCCUPIED',
-                ticketId: ticket._id,
-              },
+                ticketId: ticket._id
+              }
             },
             { session }
           );
-
-          console.log('Asientos actualizados:', {
-            matched: seatResult.matchedCount,
-            modified: seatResult.modifiedCount,
-            asientos: ticket.seats,
-          });
-
+  
+          // Enviar email después de confirmar el pago
+          try {
+            await sendTicketEmail({
+              ticket: {
+                eventName: ticket.eventId.name,
+                date: ticket.eventId.date,
+                location: ticket.eventId.location,
+                seats: ticket.seats
+              },
+              qrCode: ticket.qrCode,
+              email: ticket.buyerInfo.email
+            });
+            console.log('Email enviado a:', ticket.buyerInfo.email);
+          } catch (emailError) {
+            console.error('Error enviando email:', emailError);
+            // No lanzamos el error para no afectar la transacción principal
+          }
+  
           return { ticket, seatResult };
         } else {
           console.log('No es necesario actualizar:', {
@@ -115,7 +122,6 @@ export async function POST(req: Request) {
           });
         }
       });
-
       // Resultado de la transacción
       console.log('Resultado de la transacción:', result);
 

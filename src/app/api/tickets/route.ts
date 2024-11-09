@@ -9,6 +9,8 @@ import { createPreference } from '@/app/lib/mercadopago';
 import { isValidObjectId } from 'mongoose';
 import type { ITicket } from '@/types';
 
+const RESERVATION_TIMEOUT = 15 * 60 * 1000; // 15 minutos en milisegundos
+
 export async function POST(req: Request) {
   try {
     await dbConnect();
@@ -31,6 +33,9 @@ export async function POST(req: Request) {
         { status: 404 }
       );
     }
+
+    // Liberar asientos expirados antes de verificar disponibilidad
+    await Seat.releaseExpiredSeats(eventId);
 
     // Calcular precio total
     const total = seats.reduce((sum: number, seat: string) => {
@@ -77,7 +82,9 @@ export async function POST(req: Request) {
           price: total
         }], { session });
 
-        // Marcar asientos como reservados
+        // Marcar asientos como reservados con tiempo de expiración
+        const reservationExpires = new Date(Date.now() + RESERVATION_TIMEOUT);
+        
         await Seat.updateMany(
           {
             eventId,
@@ -86,7 +93,8 @@ export async function POST(req: Request) {
           {
             $set: {
               status: 'RESERVED',
-              ticketId: newTicket._id
+              ticketId: newTicket._id,
+              reservationExpires
             }
           },
           { session }
@@ -104,23 +112,12 @@ export async function POST(req: Request) {
       throw new Error('Error al crear el ticket');
     }
 
-    console.log('Ticket created successfully:', {
-      id: ticket._id,
-      seats: ticket.seats,
-      status: ticket.status
-    });
-
     // Crear preferencia de MercadoPago
     const preference = await createPreference({
       _id: ticket._id.toString(),
       eventName: event.name,
-      price: ticket.price,
+      price: total,
       description: `${seats.length} entrada(s) para ${event.name}`
-    });
-
-    console.log('Preference created:', {
-      ticketId: ticket._id,
-      preferenceId: preference.id
     });
 
     return NextResponse.json({
@@ -137,9 +134,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error('Error creating ticket:', error);
     return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : 'Error al procesar la compra'
-      },
+      { error: error instanceof Error ? error.message : 'Error al procesar la compra' },
       { status: 500 }
     );
   }

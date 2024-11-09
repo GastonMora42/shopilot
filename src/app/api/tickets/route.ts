@@ -53,6 +53,8 @@ export async function POST(req: Request) {
 
     try {
       const result = await session.withTransaction(async () => {
+        const releasedSeats = await Seat.releaseExpiredSeats(eventId);
+        console.log('Released seats before reservation:', releasedSeats);
         // Verificar disponibilidad de asientos
         const occupiedSeats = await Seat.find({
           eventId,

@@ -1,8 +1,11 @@
+//api/webhooks/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
+import { sendTicketEmail } from '@/app/lib/email';
+
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,

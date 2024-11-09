@@ -5,7 +5,7 @@ export const mpClient = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN ?? '',
 });
 
-// lib/mercadopago.tss
+// lib/mercadopago.tssgiss
 interface PreferenceData {
   _id: string;
   eventName: string;

@@ -18,8 +18,7 @@ export async function GET(
 
     await dbConnect();
 
-    const ticket = await Ticket.findById(params.id)
-      .populate('eventId');
+    const ticket = await Ticket.findById(params.id).populate('eventId');
 
     if (!ticket) {
       return NextResponse.json(

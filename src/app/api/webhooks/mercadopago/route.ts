@@ -3,90 +3,156 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
-import { Event } from '@/app/models/Event';
-import { sendTicketEmail } from '@/app/lib/email';
+import { MercadoPagoConfig, Payment } from 'mercadopago';
+
+// Definir los tipos de estado de pago de MercadoPago
+type MercadoPagoPaymentStatus = 
+  | 'approved'
+  | 'pending'
+  | 'authorized'
+  | 'in_process'
+  | 'in_mediation'
+  | 'rejected'
+  | 'cancelled'
+  | 'refunded'
+  | 'charged_back';
+
+const client = new MercadoPagoConfig({ 
+  accessToken: process.env.MP_ACCESS_TOKEN!
+});
+
+const payment = new Payment(client);
 
 export async function POST(req: Request) {
   try {
     const data = await req.json();
-    console.log('Webhook received:', data);
-
-    // Verificar que sea una notificación de pago
-    if (data.type !== 'payment') {
+    console.log('Webhook received:', {
+      type: data.type,
+      id: data.data?.id,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Solo procesar notificaciones de pago
+    if (data.type !== 'payment' || !data.data?.id) {
+      console.log('Skipping non-payment webhook');
       return NextResponse.json({ message: 'Notificación ignorada' });
     }
 
     await dbConnect();
-    const ticketId = data.data.external_reference;
-    const paymentStatus = data.data.status;
+    
+    // Obtener detalles del pago de MercadoPago
+    const paymentId = data.data.id.toString();
+    console.log('Fetching payment details:', paymentId);
+    
+    const paymentInfo = await payment.get({ id: paymentId });
+    const paymentStatus = paymentInfo.status as MercadoPagoPaymentStatus;
 
-    // Iniciar una sesión de transacción para asegurar consistencia
+    console.log('Payment details:', {
+      status: paymentStatus,
+      external_reference: paymentInfo.external_reference
+    });
+
+    const ticketId = paymentInfo.external_reference;
+    if (!ticketId) {
+      throw new Error('Missing ticket reference');
+    }
+
     const session = await (await dbConnect()).startSession();
+
     try {
       await session.withTransaction(async () => {
-        // Buscar ticket y evento asociado
-        const ticket = await Ticket.findById(ticketId).populate('eventId').session(session);
+        // Buscar el ticket
+        const ticket = await Ticket.findById(ticketId).session(session);
         if (!ticket) {
-          console.error('Ticket no encontrado:', ticketId);
-          throw new Error('Ticket no encontrado');
+          throw new Error(`Ticket not found: ${ticketId}`);
         }
 
-        if (paymentStatus === 'approved') {
-          // Actualizar el estado del ticket
-          ticket.status = 'PAID';
-          ticket.paymentId = data.data.id;
-          await ticket.save({ session });
+        console.log('Found ticket:', {
+          id: ticket._id,
+          currentStatus: ticket.status,
+          paymentStatus
+        });
 
-          // Actualizar el estado de los asientos
-          const seatUpdateResult = await Seat.updateMany(
-            {
-              eventId: ticket.eventId,
-              number: { $in: ticket.seats }
-            },
-            {
-              status: 'OCCUPIED',
-              ticketId: ticket._id
-            },
-            { session }
-          );
-          console.log('Seats update result:', seatUpdateResult);
+        // Solo procesar si el ticket está pendiente
+        if (ticket.status === 'PENDING') {
+          if (paymentStatus === 'approved') {
+            console.log(`Updating ticket ${ticketId} to PAID`);
+            
+            // Actualizar ticket
+            ticket.status = 'PAID';
+            ticket.paymentId = paymentId;
+            await ticket.save({ session });
 
-          // Actualizar el número de asientos disponibles en el evento
-          await Event.findByIdAndUpdate(
-            ticket.eventId,
-            { $inc: { availableSeats: -ticket.seats.length } },
-            { session }
-          );
-
-          // Enviar email con el ticket y QR
-          try {
-            await sendTicketEmail({
-              ticket: {
-                eventName: ticket.eventId.name,
-                date: ticket.eventId.date,
-                location: ticket.eventId.location,
-                seats: ticket.seats,
+            // Actualizar asientos a OCCUPIED
+            const seatUpdateResult = await Seat.updateMany(
+              {
+                eventId: ticket.eventId,
+                number: { $in: ticket.seats }
               },
-              qrCode: ticket.qrCode,
-              email: ticket.buyerInfo.email,
+              {
+                $set: {
+                  status: 'OCCUPIED',
+                  ticketId: ticket._id
+                }
+              },
+              { session }
+            );
+
+            console.log('Seats updated:', {
+              ticketId,
+              seats: ticket.seats,
+              result: seatUpdateResult
             });
-            console.log('Email enviado:', ticket.buyerInfo.email);
-          } catch (emailError) {
-            console.error('Error enviando email:', emailError);
+          } else if (paymentStatus === 'rejected' || paymentStatus === 'cancelled') {
+            console.log(`Payment ${paymentStatus} for ticket ${ticketId}`);
+            
+            // Actualizar ticket a cancelado
+            ticket.status = 'CANCELLED';
+            await ticket.save({ session });
+
+            // Liberar asientos
+            const seatUpdateResult = await Seat.updateMany(
+              {
+                eventId: ticket.eventId,
+                number: { $in: ticket.seats }
+              },
+              {
+                $set: { status: 'AVAILABLE' },
+                $unset: { ticketId: "" }
+              },
+              { session }
+            );
+
+            console.log('Seats released:', {
+              ticketId,
+              seats: ticket.seats,
+              result: seatUpdateResult
+            });
+          } else {
+            console.log(`Payment status ${paymentStatus} not handled for ticket ${ticketId}`);
           }
-          
-          console.log('Ticket actualizado a PAID:', ticketId);
+        } else {
+          console.log(`Ticket ${ticketId} already processed, current status: ${ticket.status}`);
         }
       });
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({
+        success: true,
+        ticketId,
+        status: paymentStatus
+      });
+
     } finally {
       await session.endSession();
     }
+
   } catch (error) {
-    console.error('Error procesando webhook:', error);
+    console.error('Webhook error:', error);
     return NextResponse.json(
-      { error: 'Error procesando webhook' },
+      { 
+        error: 'Error procesando webhook',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

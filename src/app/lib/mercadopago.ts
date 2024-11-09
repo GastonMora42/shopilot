@@ -1,11 +1,18 @@
 // lib/mercadopago.ts
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 
+if (!process.env.MP_ACCESS_TOKEN) {
+  throw new Error('MP_ACCESS_TOKEN is not defined');
+}
+
+if (!process.env.NEXT_PUBLIC_BASE_URL) {
+  throw new Error('NEXT_PUBLIC_BASE_URL is not defined');
+}
+
 export const mpClient = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN ?? '',
+  accessToken: process.env.MP_ACCESS_TOKEN,
 });
 
-// lib/mercadopago.tssgiss
 interface PreferenceData {
   _id: string;
   eventName: string;
@@ -19,37 +26,39 @@ export async function createPreference({
   price,
   description
 }: PreferenceData) {
-  const mpClient = new MercadoPagoConfig({
-    accessToken: process.env.MP_ACCESS_TOKEN ?? '',
-  });
-
-  const preference = new Preference(mpClient);
-  
-  const preferenceData = {
-    body: {
-      items: [
-        {
-          id: _id,
-          title: `Entrada para ${eventName}`,
-          description: description || `Entrada para ${eventName}`,
-          quantity: 1,
-          currency_id: "ARS",
-          unit_price: Number(price),
-        }
-      ],
-      back_urls: {
-        success: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/success?ticketId=${_id}`,
-        failure: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/failure?ticketId=${_id}`,
-        pending: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/pending?ticketId=${_id}`
-      },
-      auto_return: "approved",
-      external_reference: _id,
-      notification_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/mercadopago`
-    }
-  };
-
   try {
+    console.log('Creating preference for:', { _id, eventName, price });
+    
+    const preference = new Preference(mpClient);
+    
+    const preferenceData = {
+      body: {
+        items: [
+          {
+            id: _id,
+            title: `Entrada para ${eventName}`,
+            description: description || `Entrada para ${eventName}`,
+            quantity: 1,
+            currency_id: "ARS",
+            unit_price: Number(price),
+          }
+        ],
+        back_urls: {
+          success: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/success`,
+          failure: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/failure`,
+          pending: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/pending`
+        },
+        auto_return: "approved",
+        external_reference: _id,
+        notification_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/mercadopago`
+      }
+    };
+
+    console.log('Creating preference with data:', preferenceData);
+
     const response = await preference.create(preferenceData);
+    console.log('Preference created successfully:', response);
+
     return response;
   } catch (error) {
     console.error('Error creating preference:', error);

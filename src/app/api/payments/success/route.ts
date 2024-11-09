@@ -1,65 +1,56 @@
-// app/api/webhooks/mercadopago/route.ts
+// app/api/payments/success/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
-import { Seat } from '@/app/models/Seat';
+import { MercadoPagoConfig, Payment } from 'mercadopago';
 
-// app/api/webhooks/mercadopago/route.ts
-export async function POST(req: Request) {
+const client = new MercadoPagoConfig({ 
+  accessToken: process.env.MP_ACCESS_TOKEN!
+});
+
+const payment = new Payment(client);
+
+export async function GET(req: Request) {
   try {
-    const data = await req.json();
-    console.log('Webhook received:', data);
-    
-    if (data.type !== 'payment') {
-      return NextResponse.json({ message: 'Notificación ignorada' });
+    const { searchParams } = new URL(req.url);
+    const paymentId = searchParams.get('payment_id');
+    const status = searchParams.get('collection_status');
+    const ticketId = searchParams.get('external_reference');
+
+    console.log('Payment success callback:', {
+      paymentId,
+      status,
+      ticketId,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!paymentId || !ticketId) {
+      console.error('Missing required parameters');
+      return NextResponse.redirect(
+        new URL('/payment/error', req.url)
+      );
     }
 
     await dbConnect();
-    const ticketId = data.data.external_reference;
-    const paymentStatus = data.data.status;
 
-    const session = await (await dbConnect()).startSession();
-    try {
-      await session.withTransaction(async () => {
-        const ticket = await Ticket.findById(ticketId).session(session);
+    // Verificar el estado del ticket
+    const ticket = await Ticket.findById(ticketId);
+    console.log('Ticket status:', ticket?.status);
 
-        if (!ticket) {
-          throw new Error('Ticket no encontrado');
-        }
+    // Construir URL de éxito con todos los parámetros necesarios
+    const successUrl = new URL('/payment/success', req.url);
+    successUrl.searchParams.set('ticketId', ticketId);
+    successUrl.searchParams.set('payment_id', paymentId);
+    successUrl.searchParams.set('collection_status', status || '');
 
-        if (paymentStatus === 'approved') {
-          // Actualizar ticket
-          ticket.status = 'PAID';
-          ticket.paymentId = data.data.id;
-          await ticket.save({ session });
+    console.log('Redirecting to:', successUrl.toString());
 
-          // Actualizar estado del asiento
-          const seatUpdateResult = await Seat.updateMany(
-            {
-              eventId: ticket.eventId,
-              number: { $in: ticket.seats }
-            },
-            {
-              status: 'OCCUPIED',
-              ticketId: ticket._id
-            },
-            { session }
-          );
-
-          console.log('Seats update result:', seatUpdateResult);
-        }
-      });
-
-      return NextResponse.json({ success: true });
-    } finally {
-      await session.endSession();
-    }
+    return NextResponse.redirect(successUrl);
 
   } catch (error) {
-    console.error('Error processing webhook:', error);
-    return NextResponse.json(
-      { error: 'Error procesando webhook' },
-      { status: 500 }
+    console.error('Success route error:', error);
+    return NextResponse.redirect(
+      new URL('/payment/error', req.url)
     );
   }
 }

@@ -1,8 +1,12 @@
 // types/index.ts
-import { ObjectId } from 'mongoose';
+import { ObjectId, Document } from 'mongoose';
 
-// types/index.tsss
-export interface IEvent {
+// Status como types para reutilización
+export type TicketStatus = 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
+export type SeatStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
+export type SeatType = 'REGULAR' | 'VIP' | 'DISABLED';
+
+export interface IEvent extends Document {
   _id: string;
   name: string;
   slug: string;
@@ -11,7 +15,7 @@ export interface IEvent {
   location: string;
   published: boolean;
   organizerId: string;
-  image?: string; // Agregamos la imagen como opcional
+  image?: string;
   mercadopago: {
     accessToken: string;
     userId: string;
@@ -19,15 +23,7 @@ export interface IEvent {
   seatingChart: {
     rows: number;
     columns: number;
-    sections: Array<{
-      name: string;
-      type: 'REGULAR' | 'VIP' | 'DISABLED';
-      price: number;
-      rowStart: number;
-      rowEnd: number;
-      columnStart: number;
-      columnEnd: number;
-    }>;
+    sections: Array<ISection>;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -35,7 +31,7 @@ export interface IEvent {
 
 export interface ISection {
   name: string;
-  type: 'REGULAR' | 'VIP' | 'DISABLED';
+  type: SeatType;
   price: number;
   rowStart: number;
   rowEnd: number;
@@ -43,23 +39,24 @@ export interface ISection {
   columnEnd: number;
 }
 
-export interface ISeat {
+export interface ISeat extends Document {
   _id: ObjectId;
   eventId: ObjectId;
   row: number;
   column: number;
   number: string;
-  status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
+  status: SeatStatus;
   price: number;
-  type: 'REGULAR' | 'VIP' | 'DISABLED';
+  type: SeatType;
+  ticketId?: ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface ITicket {
-  _id: ObjectId;
+export interface ITicket extends Document {
+  _id: string;
   eventId: ObjectId;
-  seatNumber: string;
+  seats: string[];
   buyerInfo: {
     name: string;
     email: string;
@@ -67,7 +64,7 @@ export interface ITicket {
     phone?: string;
   };
   qrCode: string;
-  status: 'PENDING' | 'PAID' | 'USED';
+  status: TicketStatus;
   paymentId?: string;
   price: number;
   createdAt: Date;
@@ -80,7 +77,7 @@ export interface TicketValidation {
     eventName: string;
     buyerName: string;
     seatNumber: string;
-    status: string;
+    status: TicketStatus;
   };
   error?: string;
 }
@@ -96,11 +93,46 @@ export interface CreateTicketRequest {
   };
 }
 
-
 export interface PreferenceData {
   _id: string;
   eventName: string;
   price: number;
   description: string;
-  seats?: string; // Agregamos la propiedad opcional
+  seats?: string;
+}
+
+// Interfaces adicionales para respuestas de API
+export interface TicketResponse {
+  success: boolean;
+  ticket?: {
+    id: string;
+    status: TicketStatus;
+    eventName: string;
+    date: string;
+    location: string;
+    seats: string[];
+    qrCode: string;
+    buyerInfo: {
+      name: string;
+      email: string;
+    };
+    price: number;
+  };
+  error?: string;
+}
+
+export interface PaymentVerificationResponse {
+  success: boolean;
+  status?: TicketStatus;
+  paymentId?: string;
+  error?: string;
+}
+
+export interface MercadoPagoWebhookData {
+  type: string;
+  data: {
+    id: string;
+    status: string;
+    external_reference: string;
+  };
 }

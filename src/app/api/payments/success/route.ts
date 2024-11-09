@@ -7,30 +7,58 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const paymentId = searchParams.get('payment_id');
-    const status = searchParams.get('status');
+    const status = searchParams.get('collection_status');
     const externalReference = searchParams.get('external_reference');
+    const preferenceId = searchParams.get('preference_id');
 
-    if (status === 'approved' && externalReference) {
-      await dbConnect();
+    console.log('Success callback received:', {
+      paymentId,
+      status,
+      externalReference,
+      preferenceId
+    });
 
-      const ticket = await Ticket.findById(externalReference);
-      if (ticket && ticket.status === 'PENDING') {
-        ticket.status = 'PAID';
-        ticket.paymentId = paymentId;
-        await ticket.save();
-        console.log('Ticket actualizado a PAID por URL de retorno:', externalReference);
-      }
+    if (!externalReference) {
+      console.error('Missing external_reference');
+      return NextResponse.redirect(
+        new URL('/payment/error', process.env.NEXT_PUBLIC_BASE_URL!)
+      );
     }
 
-    // Redirigir a la página de éxito
-    return NextResponse.redirect(
-      new URL(`/payment/success?ticketId=${externalReference}`, req.url)
-    );
+    await dbConnect();
+
+    // Verificar que el ticket existe
+    const ticket = await Ticket.findById(externalReference);
+    if (!ticket) {
+      console.error('Ticket not found:', externalReference);
+      return NextResponse.redirect(
+        new URL('/payment/error', process.env.NEXT_PUBLIC_BASE_URL!)
+      );
+    }
+
+    // Construir URL con los parámetros necesarios
+    const successUrl = new URL('/payment/success', process.env.NEXT_PUBLIC_BASE_URL);
+    
+    // Añadir todos los parámetros relevantes
+    Object.entries({
+      ticketId: externalReference,
+      payment_id: paymentId,
+      collection_status: status,
+      preference_id: preferenceId
+    }).forEach(([key, value]) => {
+      if (value) {
+        successUrl.searchParams.set(key, value);
+      }
+    });
+
+    console.log('Redirecting to:', successUrl.toString());
+
+    return NextResponse.redirect(successUrl);
 
   } catch (error) {
-    console.error('Error procesando pago:', error);
+    console.error('Success route error:', error);
     return NextResponse.redirect(
-      new URL('/payment/error', req.url)
+      new URL('/payment/error', process.env.NEXT_PUBLIC_BASE_URL!)
     );
   }
 }

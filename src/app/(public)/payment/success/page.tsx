@@ -32,51 +32,59 @@ export default function PaymentSuccessPage() {
 
   useEffect(() => {
 // En PaymentSuccessPage, actualiza la función verifyPayment:
+// app/(public)/payment/success/page.tsx
 const verifyPayment = async () => {
   try {
-    const ticketId = searchParams.get('ticketId');
+    const ticketId = searchParams.get('ticketId') || searchParams.get('external_reference');
     const paymentId = searchParams.get('payment_id');
+    const status = searchParams.get('collection_status') || searchParams.get('status');
 
-    if (!ticketId || !paymentId) {
-      throw new Error('Parámetros incompletos');
+    console.log('Verifying payment:', { ticketId, paymentId, status });
+
+    if (!ticketId) {
+      throw new Error('ID de ticket no encontrado');
     }
 
-    // Primero verificar el estado actual
-    const statusResponse = await fetch(`/api/tickets/${ticketId}/status`);
-    const statusData = await statusResponse.json();
+    // Verificar el estado del ticket
+    const response = await fetch(`/api/tickets/${ticketId}`);
+    const data = await response.json();
 
-    if (statusData.status === 'PAID') {
-      // Si ya está pagado, obtener los detalles completos
-      const ticketResponse = await fetch(`/api/tickets/${ticketId}`);
-      const ticketData = await ticketResponse.json();
-      setTicket(ticketData.ticket);
-      return;
+    if (!response.ok) {
+      throw new Error(data.error || 'Error al obtener el ticket');
     }
 
-    // Si no está pagado, verificar con MercadoPago
-    const verifyResponse = await fetch('/api/payments/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticketId, paymentId })
-    });
+    console.log('Ticket data:', data);
 
-    const verifyData = await verifyResponse.json();
-    
-    if (!verifyResponse.ok) {
-      throw new Error(verifyData.error || 'Error al verificar el pago');
+    // Si el ticket aún está pendiente, verificar el pago
+    if (data.ticket.status === 'PENDING' && paymentId) {
+      const verifyResponse = await fetch('/api/payments/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ticketId,
+          paymentId,
+          status
+        })
+      });
+
+      const verifyData = await verifyResponse.json();
+      console.log('Payment verification:', verifyData);
+
+      if (!verifyResponse.ok) {
+        throw new Error(verifyData.error || 'Error al verificar el pago');
+      }
     }
 
-    if (verifyData.success) {
-      setTicket(verifyData.ticket);
-    }
+    setTicket(data.ticket);
   } catch (error) {
-    console.error('Verification error:', error);
-    setError(error instanceof Error ? error.message : 'Error al verificar el pago');
+    console.error('Error:', error);
+    setError(error instanceof Error ? error.message : 'Error al procesar el pago');
   } finally {
     setLoading(false);
   }
 };
-
     // Verificar inmediatamente
     verifyPayment();
 

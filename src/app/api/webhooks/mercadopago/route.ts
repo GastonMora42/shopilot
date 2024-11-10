@@ -1,148 +1,132 @@
+// app/api/webhooks/mercadopago/route.ts
 import { NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/mongodb';
+import { Payment } from 'mercadopago';
+import { mercadopago } from '@/app/lib/mercadopago';
 import { Ticket } from '@/app/models/Ticket';
-import { Seat } from '@/app/models/Seat';
-import { MercadoPagoConfig, Payment } from 'mercadopago';
+import { Seat, ISeat } from '@/app/models/Seat';
+import dbConnect from '@/app/lib/mongodb';
+import { MercadoPagoWebhook, MercadoPagoPayment, WebhookResponse } from '@/types';
 
-const client = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN!,
-});
-
-const payment = new Payment(client);
-
-type PaymentInfo = {
-  id: string | number;
-  status: string;
-  external_reference: string;
-};
-
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    // Parsear el cuerpo de la notificación
-    const body = await req.json();
+    // Obtener y validar webhook
+    const rawBody = await request.text();
+    const webhook = JSON.parse(rawBody) as MercadoPagoWebhook;
     
-    console.log('Webhook recibido:', {
-      type: body.type,
-      data: body.data,
-      timestamp: new Date().toISOString(),
+    console.log('1. Webhook recibido:', {
+      type: webhook.type,
+      data: webhook.data,
+      timestamp: new Date().toISOString()
     });
 
-    // Solo procesar notificaciones de tipo 'payment'
-    if (body.type !== 'payment') {
-      console.log('Notificación ignorada, tipo incorrecto');
-      return NextResponse.json({ message: 'Notificación ignorada' });
+    if (!webhook.data?.id) {
+      console.log('Webhook ignorado - sin ID de pago');
+      return new Response(null, { status: 200 });
     }
 
-    // Verificar si la notificación tiene un ID de pago
-    if (!body.data?.id) {
-      console.error('Falta ID de pago en la notificación');
-      return NextResponse.json({ error: 'Falta ID de pago' }, { status: 400 });
-    }
-
-    // Conectar a la base de datos
-    await dbConnect();
-
-    // Obtener los detalles del pago
-    const paymentInfo = await payment.get({ id: body.data.id }) as unknown as PaymentInfo;
+    // Obtener información del pago
+    const paymentInfo = await new Payment(mercadopago).get({ id: webhook.data.id }) as unknown as MercadoPagoPayment;
     
-    console.log('Información del pago:', {
+    console.log('2. Información del pago:', {
       id: paymentInfo.id,
       status: paymentInfo.status,
-      external_reference: paymentInfo.external_reference,
+      external_reference: paymentInfo.external_reference
     });
 
-    // Obtener el ID del ticket desde la referencia externa
-    const ticketId = paymentInfo.external_reference;
-    const paymentId = String(paymentInfo.id); // Convertir ID de pago a string de manera segura
-
-    if (!ticketId) {
-      console.error('Falta la referencia del ticket');
-      return NextResponse.json({ error: 'Falta referencia del ticket' }, { status: 400 });
+    // Validar información necesaria
+    if (!paymentInfo.external_reference || !paymentInfo.status) {
+      console.error('Información de pago incompleta');
+      return new Response(null, { status: 200 });
     }
 
-    // Crear una sesión de base de datos para asegurar una transacción atómica
+    await dbConnect();
     const session = await (await dbConnect()).startSession();
 
     try {
-      // Ejecutar la transacción
-      const result = await session.withTransaction(async () => {
-        // Buscar el ticket usando la referencia externa
-        const ticket = await Ticket.findById(ticketId).session(session);
-        
-        if (!ticket) {
-          throw new Error(`Ticket no encontrado con ID: ${ticketId}`);
+      await session.withTransaction(async () => {
+        // Buscar ticket
+        const ticket = await Ticket.findById(paymentInfo.external_reference)
+          .session(session);
+
+        if (!ticket || ticket.status !== 'PENDING') {
+          console.log('Ticket no encontrado o no pendiente:', {
+            ticketId: paymentInfo.external_reference,
+            status: ticket?.status
+          });
+          return;
         }
 
-        console.log('Procesando ticket:', {
-          id: ticket._id,
-          statusActual: ticket.status,
-          statusPago: paymentInfo.status,
-        });
+        if (paymentInfo.status === 'approved') {
+          // Marcar ticket como pagado
+          await ticket.markAsPaid(String(paymentInfo.id));
 
-        // Si el ticket está en estado PENDING y el pago está aprobado, actualizar
-        if (ticket.status === 'PENDING' && paymentInfo.status === 'approved') {
-          // Actualizar el estado del ticket a "PAID"
-          ticket.status = 'PAID';
-          ticket.paymentId = paymentId;
-          await ticket.save({ session });
-
-          // Actualizar los asientos ocupados
+          // Actualizar asientos
           const seatResult = await Seat.updateMany(
             {
               eventId: ticket.eventId,
               number: { $in: ticket.seats },
+              status: 'RESERVED'
             },
             {
               $set: {
                 status: 'OCCUPIED',
-                ticketId: ticket._id,
+                ticketId: ticket._id
               },
+              $unset: {
+                reservationExpires: 1
+              }
             },
             { session }
           );
 
-          console.log('Asientos actualizados:', {
-            matched: seatResult.matchedCount,
-            modified: seatResult.modifiedCount,
-            asientos: ticket.seats,
+          console.log('3. Actualización completada:', {
+            ticketId: ticket._id,
+            status: 'PAID',
+            paymentId: paymentInfo.id,
+            seatsUpdated: seatResult.modifiedCount
           });
 
-          return { ticket, seatResult };
-        } else {
-          console.log('No es necesario actualizar:', {
-            estadoTicket: ticket.status,
-            estadoPago: paymentInfo.status,
+        } else if (['rejected', 'cancelled'].includes(paymentInfo.status)) {
+          // Marcar ticket como fallido
+          await ticket.markAsFailed(String(paymentInfo.id));
+
+          // Liberar asientos
+          const seatResult = await Seat.updateMany(
+            {
+              eventId: ticket.eventId,
+              number: { $in: ticket.seats }
+            },
+            {
+              $set: { status: 'AVAILABLE' },
+              $unset: { 
+                ticketId: 1,
+                reservationExpires: 1
+              }
+            },
+            { session }
+          );
+
+          console.log('3. Pago fallido, asientos liberados:', {
+            ticketId: ticket._id,
+            status: 'FAILED',
+            seatsUpdated: seatResult.modifiedCount
           });
         }
       });
 
-      // Resultado de la transacción
-      console.log('Resultado de la transacción:', result);
-
-      return NextResponse.json({
+      const response: WebhookResponse = {
         success: true,
-        message: 'Webhook procesado exitosamente',
-        data: {
-          ticketId,
-          paymentId,
-          status: paymentInfo.status,
-        },
-      });
+        message: 'Webhook procesado correctamente'
+      };
+
+      return NextResponse.json(response);
 
     } finally {
-      // Cerrar la sesión de base de datos
       await session.endSession();
     }
 
   } catch (error) {
-    // Capturar cualquier error en el procesamiento del webhook
-    console.error('Error al procesar el webhook:', error);
-    return NextResponse.json(
-      {
-        error: 'Error al procesar el webhook',
-        details: error instanceof Error ? error.message : 'Error desconocido',
-      },
-      { status: 500 }
-    );
+    console.error('Error en webhook:', error);
+    return new Response(null, { status: 200 });
   }
 }

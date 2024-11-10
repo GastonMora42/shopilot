@@ -1,7 +1,7 @@
 // types/index.ts
-import { ObjectId, Document } from 'mongoose';
+import { ObjectId, Document, Types } from 'mongoose';
 
-// Status como union types
+// Status como union types - sin cambios
 export type TicketStatus = 'PENDING' | 'PAID' | 'FAILED' | 'USED' | 'CANCELLED';
 export type SeatStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
 export type SeatType = 'REGULAR' | 'VIP' | 'DISABLED';
@@ -9,14 +9,14 @@ export type PaymentStatus = 'approved' | 'rejected' | 'cancelled' | 'pending';
 
 // Interfaces base
 export interface IEvent extends Document {
-  _id: string;
+  _id: Types.ObjectId;  // Cambiado a Types.ObjectId
   name: string;
   slug: string;
   description: string;
   date: Date;
   location: string;
   published: boolean;
-  organizerId: string;
+  organizerId: Types.ObjectId;  // Cambiado a Types.ObjectId
   image?: string;
   mercadopago: {
     accessToken: string;
@@ -29,6 +29,7 @@ export interface IEvent extends Document {
   };
   createdAt: Date;
   updatedAt: Date;
+  calculateTotal(seats: string[]): number;  // Agregar método
 }
 
 export interface ISection {
@@ -42,23 +43,23 @@ export interface ISection {
 }
 
 export interface ISeat extends Document {
-  _id: ObjectId;
-  eventId: ObjectId;
+  _id: Types.ObjectId;
+  eventId: Types.ObjectId;
   row: number;
   column: number;
   number: string;
   status: SeatStatus;
   price: number;
   type: SeatType;
-  ticketId?: ObjectId;
-  reservationExpires?: Date;  // Agregado
+  ticketId?: Types.ObjectId;
+  reservationExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface ITicket extends Document {
-  _id: string;
-  eventId: ObjectId;
+  _id: Types.ObjectId;
+  eventId: Types.ObjectId;
   seats: string[];
   buyerInfo: {
     name: string;
@@ -72,7 +73,6 @@ export interface ITicket extends Document {
   price: number;
   createdAt: Date;
   updatedAt: Date;
-  // Métodos agregados del modelo
   markAsPaid(paymentId: string): Promise<ITicket>;
   markAsFailed(paymentId: string): Promise<ITicket>;
 }
@@ -115,11 +115,11 @@ export interface CreateTicketRequest {
 }
 
 export interface PreferenceData {
-  _id: string;
+  ticketId: string;  // Cambiado de _id a ticketId
   eventName: string;
   price: number;
   description: string;
-  seats?: string[];
+  seats: string[];  // Hecho requerido
 }
 
 // Interfaces para responses
@@ -136,10 +136,14 @@ export interface TicketResponse {
     buyerInfo: {
       name: string;
       email: string;
+      dni: string;  // Agregado dni
+      phone?: string;  // Agregado phone opcional
     };
     price: number;
-    paymentId?: string;  // Agregado
+    paymentId?: string;
   };
+  preferenceId?: string;  // Agregado
+  checkoutUrl?: string;   // Agregado
   error?: string;
 }
 
@@ -184,3 +188,18 @@ export type ApiResponse<T> = {
   data?: T;
   error?: string | ValidationError[];
 };
+
+export type MongoId = string | Types.ObjectId;
+
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+  sort?: string;
+}
+
+export interface FilterParams {
+  status?: TicketStatus;
+  dateFrom?: Date;
+  dateTo?: Date;
+  [key: string]: any;
+}

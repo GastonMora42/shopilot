@@ -11,10 +11,6 @@ if (!process.env.MP_ACCESS_TOKEN) {
   throw new Error('MP_ACCESS_TOKEN no está definido');
 }
 
-if (!process.env.MP_WEBHOOK_SECRET) {
-  throw new Error('MP_WEBHOOK_SECRET no está definido');
-}
-
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
 });
@@ -27,29 +23,13 @@ export async function POST(req: Request) {
     const rawBody = await req.text();
     const body = JSON.parse(rawBody);
     
-    // Verificar la firma del webhook solo en producción
-    const signature = req.headers.get('x-signature');
-    const isProduction = process.env.NODE_ENV === 'production';
-    
     console.log('1. Webhook recibido:', {
-      headers: Object.fromEntries(req.headers),
       body,
-      signature,
-      environment: process.env.NODE_ENV
+      headers: Object.fromEntries(req.headers),
+      timestamp: new Date().toISOString()
     });
 
-    // En producción, verificar la firma
-    if (isProduction && signature !== process.env.MP_WEBHOOK_SECRET) {
-      console.error('Firma del webhook inválida o faltante en producción');
-      return new Response('Unauthorized', { status: 401 });
-    }
-
-    // Verificar que sea una notificación de pago
-    if (body.type !== 'payment') {
-      console.log('Notificación ignorada - tipo incorrecto');
-      return new Response(null, { status: 200 });
-    }
-
+    // Verificar que tengamos un ID de pago
     if (!body.data?.id) {
       console.error('Falta ID de pago en la notificación');
       return new Response(null, { status: 200 });
@@ -57,29 +37,25 @@ export async function POST(req: Request) {
 
     // Obtener detalles del pago
     const paymentInfo = await payment.get({ id: body.data.id }) as PaymentResponse;
+    
+    console.log('2. Información del pago:', {
+      id: paymentInfo.id,
+      status: paymentInfo.status,
+      external_reference: paymentInfo.external_reference,
+      raw: paymentInfo
+    });
 
-    // Validar que tengamos toda la información necesaria
     if (!paymentInfo.status || !paymentInfo.id || !paymentInfo.external_reference) {
-      console.error('Información de pago incompleta:', paymentInfo);
+      console.error('Información de pago incompleta');
       return new Response(null, { status: 200 });
     }
 
-    // Convertir los valores a tipos seguros
     const paymentStatus = paymentInfo.status as string;
     const paymentId = String(paymentInfo.id);
     const externalReference = paymentInfo.external_reference;
-    
-    console.log('2. Información del pago:', {
-      id: paymentId,
-      status: paymentStatus,
-      external_reference: externalReference,
-      date_approved: paymentInfo.date_approved,
-      date_created: paymentInfo.date_created
-    });
 
     await dbConnect();
 
-    // Buscar el ticket
     const ticket = await Ticket.findById(externalReference);
     
     if (!ticket) {
@@ -89,22 +65,43 @@ export async function POST(req: Request) {
 
     console.log('3. Ticket encontrado:', {
       id: ticket._id,
-      currentStatus: ticket.status,
-      currentPaymentId: ticket.paymentId
+      status: ticket.status,
+      paymentId: ticket.paymentId
     });
 
     const session = await (await dbConnect()).startSession();
 
     try {
       await session.withTransaction(async () => {
-        // Procesar pago aprobado
         if (paymentStatus === "approved" && ticket.status === 'PENDING') {
-          await ticket.markAsPaid(paymentId);
+          // Actualizar ticket
+          const updatedTicket = await Ticket.findOneAndUpdate(
+            { 
+              _id: ticket._id,
+              status: 'PENDING'
+            },
+            {
+              $set: {
+                status: 'PAID',
+                paymentId: paymentId
+              }
+            },
+            { 
+              new: true,
+              session,
+              runValidators: true
+            }
+          );
 
-          console.log('4. Ticket actualizado a PAID:', {
-            id: ticket._id,
-            newPaymentId: paymentId
+          console.log('4. Ticket actualizado:', {
+            id: updatedTicket?._id,
+            newStatus: updatedTicket?.status,
+            paymentId: updatedTicket?.paymentId
           });
+
+          if (!updatedTicket) {
+            throw new Error('No se pudo actualizar el ticket');
+          }
 
           // Actualizar asientos
           const seatResult = await Seat.updateMany(
@@ -143,45 +140,18 @@ export async function POST(req: Request) {
           } catch (emailError) {
             console.error('Error enviando email:', emailError);
           }
-        } 
-        // Procesar pago fallido
-        else if (['rejected', 'cancelled'].includes(paymentStatus) && ticket.status === 'PENDING') {
-          await ticket.markAsFailed(paymentId);
-
-          // Liberar asientos
-          const seatResult = await Seat.updateMany(
-            {
-              eventId: ticket.eventId,
-              number: { $in: ticket.seats }
-            },
-            {
-              $set: {
-                status: 'AVAILABLE',
-                ticketId: null,
-                reservationExpires: null
-              }
-            },
-            { session }
-          );
-
-          console.log('7. Pago fallido, asientos liberados:', {
-            ticketId: ticket._id,
-            paymentId: paymentId,
-            seats: ticket.seats,
-            seatsUpdated: seatResult.modifiedCount
-          });
         } else {
           console.log('No se requiere actualización:', {
             ticketStatus: ticket.status,
-            paymentStatus: paymentStatus
+            paymentStatus
           });
         }
       });
-
     } finally {
       await session.endSession();
     }
 
+    // Siempre responder 200 OK a MercadoPago
     return new Response(null, { status: 200 });
 
   } catch (error) {

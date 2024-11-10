@@ -50,7 +50,7 @@ export async function GET(req: Request) {
 
     const mpData = await tokenResponse.json();
 
-    // Guardar datos en la base de datos
+    // Guardar datos en la base de datossss
     await dbConnect();
     await User.findOneAndUpdate(
       { email: session.user.email },

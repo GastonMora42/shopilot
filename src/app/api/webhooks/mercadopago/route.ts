@@ -7,150 +7,186 @@ import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { PaymentResponse } from 'mercadopago/dist/clients/payment/commonTypes';
 import { sendTicketEmail } from '@/app/lib/email';
 
+if (!process.env.MP_ACCESS_TOKEN) {
+  throw new Error('MP_ACCESS_TOKEN no está definido');
+}
+
+if (!process.env.MP_WEBHOOK_SECRET) {
+  throw new Error('MP_WEBHOOK_SECRET no está definido');
+}
+
 const client = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN!,
+  accessToken: process.env.MP_ACCESS_TOKEN,
 });
 
 const payment = new Payment(client);
 
 export async function POST(req: Request) {
   try {
-    const body: { data: { id: string } } = await req.json();
-    console.log('1. Webhook recibido:', body);
+    // Verificar la firma del webhook
+    const signature = req.headers.get('x-signature');
+    console.log('Headers recibidos:', Object.fromEntries(req.headers));
 
-    if (!body.data?.id) {
-      console.log('Webhook ignorado - falta ID de pago');
+    if (!signature) {
+      console.error('Falta la firma del webhook');
+      return new Response('Unauthorized', { status: 401 });
+    }
+
+    // Obtener el cuerpo como texto para verificar la firma
+    const rawBody = await req.text();
+    
+    // Validar la firma con la clave secreta del .env
+    if (signature !== process.env.MP_WEBHOOK_SECRET) {
+      console.error('Firma del webhook inválida');
+      return new Response('Unauthorized', { status: 401 });
+    }
+
+    // Parsear el body después de validar
+    const body = JSON.parse(rawBody);
+    
+    console.log('1. Webhook recibido:', {
+      type: body.type,
+      data: body.data,
+      signature,
+      timestamp: new Date().toISOString()
+    });
+
+    // Verificar que sea una notificación de pago
+    if (body.type !== 'payment') {
+      console.log('Notificación ignorada - tipo incorrecto');
       return new Response(null, { status: 200 });
     }
 
-    // Obtener los detalles del pago
+    if (!body.data?.id) {
+      console.error('Falta ID de pago en la notificación');
+      return new Response(null, { status: 200 });
+    }
+
+    // Obtener detalles del pago
     const paymentInfo = await payment.get({ id: body.data.id }) as PaymentResponse;
-    
-    // Validar información necesaria del pago
-    if (!paymentInfo || !paymentInfo.id || !paymentInfo.status || !paymentInfo.external_reference) {
+
+    // Validar que tengamos toda la información necesaria
+    if (!paymentInfo.status || !paymentInfo.id || !paymentInfo.external_reference) {
       console.error('Información de pago incompleta:', paymentInfo);
       return new Response(null, { status: 200 });
     }
 
+    // Convertir los valores a tipos seguros
+    const paymentStatus = paymentInfo.status as string;
+    const paymentId = String(paymentInfo.id);
+    const externalReference = paymentInfo.external_reference;
+    
     console.log('2. Información del pago:', {
-      paymentId: String(paymentInfo.id),
-      status: paymentInfo.status,
-      external_reference: paymentInfo.external_reference
+      id: paymentId,
+      status: paymentStatus,
+      external_reference: externalReference,
+      date_approved: paymentInfo.date_approved,
+      date_created: paymentInfo.date_created
     });
 
     await dbConnect();
 
-    // Si el pago está aprobado
-    if (paymentInfo.status === "approved") {
-      // Buscar y actualizar el ticket
-      const updatedTicket = await Ticket.findOneAndUpdate(
-        { 
-          _id: paymentInfo.external_reference,
-          status: 'PENDING'
-        },
-        {
-          $set: {
-            status: 'PAID',
-            paymentId: String(paymentInfo.id)
-          }
-        },
-        { 
-          new: true,
-          populate: 'eventId'
-        }
-      );
+    // Buscar el ticket
+    const ticket = await Ticket.findById(externalReference);
+    
+    if (!ticket) {
+      console.error('Ticket no encontrado:', externalReference);
+      return new Response(null, { status: 200 });
+    }
 
-      console.log('3. Resultado de actualización de ticket:', {
-        ticketId: updatedTicket?._id,
-        newStatus: updatedTicket?.status,
-        paymentId: updatedTicket?.paymentId
+    console.log('3. Ticket encontrado:', {
+      id: ticket._id,
+      currentStatus: ticket.status,
+      currentPaymentId: ticket.paymentId
+    });
+
+    const session = await (await dbConnect()).startSession();
+
+    try {
+      await session.withTransaction(async () => {
+        // Procesar pago aprobado
+        if (paymentStatus === "approved" && ticket.status === 'PENDING') {
+          await ticket.markAsPaid(paymentId);
+
+          console.log('4. Ticket actualizado a PAID:', {
+            id: ticket._id,
+            newPaymentId: paymentId
+          });
+
+          // Actualizar asientos
+          const seatResult = await Seat.updateMany(
+            {
+              eventId: ticket.eventId,
+              number: { $in: ticket.seats }
+            },
+            {
+              $set: {
+                status: 'OCCUPIED',
+                ticketId: ticket._id
+              }
+            },
+            { session }
+          );
+
+          console.log('5. Asientos actualizados:', {
+            matched: seatResult.matchedCount,
+            modified: seatResult.modifiedCount,
+            seats: ticket.seats
+          });
+
+          // Enviar email
+          try {
+            await sendTicketEmail({
+              ticket: {
+                eventName: ticket.eventId.name,
+                date: ticket.eventId.date,
+                location: ticket.eventId.location,
+                seats: ticket.seats
+              },
+              qrCode: ticket.qrCode,
+              email: ticket.buyerInfo.email
+            });
+            console.log('6. Email enviado a:', ticket.buyerInfo.email);
+          } catch (emailError) {
+            console.error('Error enviando email:', emailError);
+          }
+        } 
+        // Procesar pago fallido
+        else if (['rejected', 'cancelled'].includes(paymentStatus) && ticket.status === 'PENDING') {
+          await ticket.markAsFailed(paymentId);
+
+          // Liberar asientos
+          const seatResult = await Seat.updateMany(
+            {
+              eventId: ticket.eventId,
+              number: { $in: ticket.seats }
+            },
+            {
+              $set: {
+                status: 'AVAILABLE',
+                ticketId: null,
+                reservationExpires: null
+              }
+            },
+            { session }
+          );
+
+          console.log('7. Pago fallido, asientos liberados:', {
+            ticketId: ticket._id,
+            paymentId: paymentId,
+            seats: ticket.seats,
+            seatsUpdated: seatResult.modifiedCount
+          });
+        } else {
+          console.log('No se requiere actualización:', {
+            ticketStatus: ticket.status,
+            paymentStatus: paymentStatus
+          });
+        }
       });
 
-      if (updatedTicket) {
-        // Actualizar asientos
-        const seatResult = await Seat.updateMany(
-          {
-            eventId: updatedTicket.eventId._id,
-            number: { $in: updatedTicket.seats }
-          },
-          {
-            $set: {
-              status: 'OCCUPIED',
-              ticketId: updatedTicket._id
-            }
-          }
-        );
-
-        console.log('4. Asientos actualizados:', {
-          matched: seatResult.matchedCount,
-          modified: seatResult.modifiedCount,
-          seats: updatedTicket.seats
-        });
-
-        // Enviar email de confirmación
-        try {
-          await sendTicketEmail({
-            ticket: {
-              eventName: updatedTicket.eventId.name,
-              date: updatedTicket.eventId.date,
-              location: updatedTicket.eventId.location,
-              seats: updatedTicket.seats
-            },
-            qrCode: updatedTicket.qrCode,
-            email: updatedTicket.buyerInfo.email
-          });
-          console.log('5. Email enviado a:', updatedTicket.buyerInfo.email);
-        } catch (emailError) {
-          console.error('Error enviando email:', emailError);
-        }
-      } else {
-        console.log('Ticket no encontrado o ya procesado');
-      }
-    } 
-    // Si el pago es rechazado o cancelado
-    else if (paymentInfo.status === 'rejected' || paymentInfo.status === 'cancelled') {
-      const ticket = await Ticket.findOneAndUpdate(
-        { 
-          _id: paymentInfo.external_reference,
-          status: 'PENDING'
-        },
-        {
-          $set: {
-            status: 'FAILED',
-            paymentId: String(paymentInfo.id)
-          }
-        },
-        { 
-          new: true,
-          populate: 'eventId'
-        }
-      );
-
-      if (ticket) {
-        // Liberar asientos
-        const seatResult = await Seat.updateMany(
-          {
-            eventId: ticket.eventId._id,
-            number: { $in: ticket.seats }
-          },
-          {
-            $set: {
-              status: 'AVAILABLE',
-              ticketId: null,
-              reservationExpires: null
-            }
-          }
-        );
-
-        console.log('6. Asientos liberados por pago fallido:', {
-          ticketId: ticket._id,
-          paymentId: String(paymentInfo.id),
-          seats: ticket.seats,
-          seatsUpdated: seatResult.modifiedCount
-        });
-      } else {
-        console.log('Ticket no encontrado o ya procesado para pago fallido');
-      }
+    } finally {
+      await session.endSession();
     }
 
     return new Response(null, { status: 200 });

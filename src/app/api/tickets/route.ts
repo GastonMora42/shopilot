@@ -1,133 +1,145 @@
-// app/api/webhooks/mercadopago/route.ts
+// app/api/tickets/route.ts
 import { NextResponse } from 'next/server';
-import { Payment } from 'mercadopago';
-import { mercadopago } from '@/app/lib/mercadopago';
-import { Ticket } from '@/app/models/Ticket';
-import { Seat, ISeat } from '@/app/models/Seat';
 import dbConnect from '@/app/lib/mongodb';
-import { MercadoPagoWebhook, MercadoPagoPayment, WebhookResponse } from '@/types';
+import { Event } from '@/app/models/Event';
+import { Ticket } from '@/app/models/Ticket';
+import { Seat } from '@/app/models/Seat';
+import { generateQRCode } from '@/app/lib/utils';
+import { createPreference } from '@/app/lib/mercadopago';
+import { isValidObjectId } from 'mongoose';
+import type { ITicket } from '@/types';
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    // Obtener y validar webhook
-    const rawBody = await request.text();
-    const webhook = JSON.parse(rawBody) as MercadoPagoWebhook;
-
-    console.log('1. Webhook recibido:', {
-      type: webhook.type,
-      data: webhook.data,
-      timestamp: new Date().toISOString()
-    });
-
-    if (!webhook.data?.id) {
-      console.log('Webhook ignorado - sin ID de pago');
-      return new Response(null, { status: 200 });
-    }
-
-    // Obtener información del pago
-    const paymentInfo = await new Payment(mercadopago).get({ id: webhook.data.id }) as unknown as MercadoPagoPayment;
-
-    console.log('2. Información del pago:', {
-      id: paymentInfo.id,
-      status: paymentInfo.status,
-      external_reference: paymentInfo.external_reference
-    });
-
-    // Validar información necesaria
-    if (!paymentInfo.id || !paymentInfo.external_reference || !paymentInfo.status) {
-      console.error('Información de pago incompleta');
-      return new Response(null, { status: 200 });
-    }
-
     await dbConnect();
+    const { eventId, seats, buyerInfo } = await req.json();
+    
+    console.log('Creating ticket request:', { eventId, seats, buyerInfo });
+
+    if (!isValidObjectId(eventId) || !seats?.length || !buyerInfo) {
+      return NextResponse.json(
+        { error: 'Datos incompletos o inválidos' },
+        { status: 400 }
+      );
+    }
+
+    // Verificar evento
+    const event = await Event.findById(eventId);
+    if (!event || !event.published) {
+      return NextResponse.json(
+        { error: 'Evento no encontrado o no publicado' },
+        { status: 404 }
+      );
+    }
+
+    // Calcular precio total
+    const total = seats.reduce((sum: number, seat: string) => {
+      const row = seat.charAt(0);
+      const rowIndex = row.charCodeAt(0) - 65;
+      
+      const section = event.seatingChart.sections.find((s: { rowStart: number; rowEnd: number; }) => 
+        rowIndex >= s.rowStart && rowIndex <= s.rowEnd
+      );
+
+      if (!section) {
+        throw new Error(`Sección no encontrada para el asiento ${seat}`);
+      }
+
+      return sum + section.price;
+    }, 0);
+
     const session = await (await dbConnect()).startSession();
+    let ticket: ITicket | null = null;
 
     try {
-      await session.withTransaction(async () => {
-        // Buscar ticket
-        const ticket = await Ticket.findById(paymentInfo.external_reference)
-          .session(session);
+      const result = await session.withTransaction(async () => {
+        // Verificar disponibilidad de asientos
+        const occupiedSeats = await Seat.find({
+          eventId,
+          number: { $in: seats },
+          status: { $ne: 'AVAILABLE' }
+        }).session(session);
 
-        if (!ticket) {
-          console.log('Ticket no encontrado:', {
-            ticketId: paymentInfo.external_reference
-          });
-          return;
+        if (occupiedSeats.length > 0) {
+          throw new Error('Algunos asientos ya no están disponibles');
         }
 
-        if (paymentInfo.status === 'approved') {
-          // Marcar ticket como pagado
-          await ticket.markAsPaid(String(paymentInfo.id));
+        // Crear ticket
+        const [newTicket] = await Ticket.create([{
+          eventId,
+          seats,
+          qrCode: await generateQRCode(),
+          status: 'PENDING',
+          buyerInfo: {
+            ...buyerInfo,
+            email: buyerInfo.email.toLowerCase().trim()
+          },
+          price: total
+        }], { session });
 
-          // Actualizar asientos
-          const seatResult = await Seat.updateMany(
-            {
-              eventId: ticket.eventId,
-              number: { $in: ticket.seats },
-              status: 'RESERVED'
-            },
-            {
-              $set: {
-                status: 'OCCUPIED',
-                ticketId: ticket._id
-              },
-              $unset: {
-                reservationExpires: 1
-              }
-            },
-            { session }
-          );
+        // Marcar asientos como reservados
+        await Seat.updateMany(
+          {
+            eventId,
+            number: { $in: seats }
+          },
+          {
+            $set: {
+              status: 'RESERVED',
+              ticketId: newTicket._id
+            }
+          },
+          { session }
+        );
 
-          console.log('3. Actualización completada:', {
-            ticketId: ticket._id,
-            status: 'PAID',
-            paymentId: paymentInfo.id,
-            seatsUpdated: seatResult.modifiedCount
-          });
-
-        } else if (['rejected', 'cancelled'].includes(paymentInfo.status)) {
-          // Marcar ticket como fallido
-          await ticket.markAsFailed(String(paymentInfo.id));
-
-          // Liberar asientos
-          const seatResult = await Seat.updateMany(
-            {
-              eventId: ticket.eventId,
-              number: { $in: ticket.seats }
-            },
-            {
-              $set: { status: 'AVAILABLE' },
-              $unset: {
-                ticketId: 1,
-                reservationExpires: 1
-              }
-            },
-            { session }
-          );
-
-          console.log('3. Pago fallido, asientos liberados:', {
-            ticketId: ticket._id,
-            status: 'FAILED',
-            seatsUpdated: seatResult.modifiedCount
-          });
-        }
+        return newTicket;
       });
 
-      const response: WebhookResponse = {
-        success: true,
-        message: 'Webhook procesado correctamente'
-      };
-
-      return NextResponse.json(response);
-
+      ticket = result;
     } finally {
       await session.endSession();
     }
 
+    if (!ticket) {
+      throw new Error('Error al crear el ticket');
+    }
+
+    console.log('Ticket created successfully:', {
+      id: ticket._id,
+      seats: ticket.seats,
+      status: ticket.status
+    });
+
+    // Crear preferencia de MercadoPago
+    const preference = await createPreference({
+      _id: ticket._id.toString(),
+      eventName: event.name,
+      price: ticket.price,
+      description: `${seats.length} entrada(s) para ${event.name}`
+    });
+
+    console.log('Preference created:', {
+      ticketId: ticket._id,
+      preferenceId: preference.id
+    });
+
+    return NextResponse.json({
+      success: true,
+      ticket: {
+        id: ticket._id,
+        seats: ticket.seats,
+        total: ticket.price
+      },
+      checkoutUrl: preference.init_point,
+      preferenceId: preference.id
+    });
+
   } catch (error) {
-    console.error('Error en webhook:', error);
+    console.error('Error creating ticket:', error);
     return NextResponse.json(
-      { error: 'Error al procesar el webhook' },
+      { 
+        error: error instanceof Error ? error.message : 'Error al procesar la compra'
+      },
       { status: 500 }
     );
   }

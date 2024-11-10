@@ -1,6 +1,5 @@
 // models/Ticket.ts
 import mongoose, { Document } from "mongoose";
-import { TicketStatus } from '@/types';
 
 export interface ITicket extends Document {
   eventId: mongoose.Types.ObjectId;
@@ -12,43 +11,30 @@ export interface ITicket extends Document {
     phone?: string;
   };
   qrCode: string;
-  status: TicketStatus;
+  status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
   price: number;
   paymentId?: string;
   createdAt: Date;
   updatedAt: Date;
-  markAsPaid(paymentId: string): Promise<ITicket>;
-  markAsFailed(paymentId: string): Promise<ITicket>;
 }
 
 const TicketSchema = new mongoose.Schema({
   eventId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Event',
-    required: true,
-    index: true
+    required: true
   },
   seats: [{
     type: String,
     required: true
   }],
   buyerInfo: {
-    name: {
-      type: String,
-      required: true,
-      trim: true
-    },
+    name: String,
     email: {
       type: String,
-      required: true,
-      trim: true,
-      lowercase: true
+      required: true
     },
-    dni: {
-      type: String,
-      required: true,
-      trim: true
-    },
+    dni: String,
     phone: String
   },
   qrCode: {
@@ -58,40 +44,20 @@ const TicketSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['PENDING', 'PAID', 'FAILED', 'USED', 'CANCELLED'],
-    default: 'PENDING',
-    index: true
+    enum: ['PENDING', 'PAID', 'USED', 'CANCELLED'],
+    default: 'PENDING'
   },
-  paymentId: {
-    type: String,
-    sparse: true,
-    index: true
-  },
+  paymentId: String,
   price: {
     type: Number,
-    required: true,
-    min: 0
+    required: true
   }
 }, {
   timestamps: true
 });
 
-// Métodos de instancia
-TicketSchema.methods.markAsPaid = async function(paymentId: string) {
-  this.status = 'PAID';
-  this.paymentId = paymentId;
-  return await this.save();
-};
-
-TicketSchema.methods.markAsFailed = async function(paymentId: string) {
-  this.status = 'FAILED';
-  this.paymentId = paymentId;
-  return await this.save();
-};
-
-// Índices
+// Índices importantes
 TicketSchema.index({ eventId: 1, status: 1 });
 TicketSchema.index({ qrCode: 1 }, { unique: true });
-TicketSchema.index({ paymentId: 1 }, { sparse: true });
 
-export const Ticket = mongoose.models.Ticket || mongoose.model<ITicket>('Ticket', TicketSchema);
+export const Ticket = mongoose.models.Ticket || mongoose.model('Ticket', TicketSchema);

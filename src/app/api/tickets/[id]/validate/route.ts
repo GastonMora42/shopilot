@@ -6,7 +6,7 @@ import { isValidObjectId } from 'mongoose';
 import type { ITicket } from '@/types';
 
 export async function POST(
-  req: Request,
+  _req: Request,
   { params }: { params: { id: string } }
 ) {
   try {

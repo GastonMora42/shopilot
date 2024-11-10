@@ -21,6 +21,7 @@ interface PreferenceData {
 }
 
 // lib/mercadopago.ts
+// lib/mercadopago.ts
 export async function createPreference({
   _id,
   eventName,
@@ -36,7 +37,7 @@ export async function createPreference({
           {
             id: _id,
             title: `Entrada para ${eventName}`,
-            description: description || `Entrada para ${eventName}`,
+            description: description,
             quantity: 1,
             currency_id: "ARS",
             unit_price: Number(price),
@@ -50,13 +51,23 @@ export async function createPreference({
         auto_return: "approved",
         external_reference: _id,
         notification_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/mercadopago`,
-        statement_descriptor: "SHOPILOT TICKETS"
+        statement_descriptor: "SHOPILOT TICKETS",
+        // Agregar estas configuraciones
+        payment_methods: {
+          installments: 1
+        },
+        expires: true,
+        expiration_date_to: new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 minutos
       }
     };
 
-    console.log('Creating preference:', preferenceData);
+    console.log('Creating preference with notification URL:', preferenceData.body.notification_url);
     const response = await preference.create(preferenceData);
-    console.log('Preference created:', response);
+    console.log('Preference created:', {
+      id: response.id,
+      init_point: response.init_point,
+      notification_url: response.notification_url
+    });
 
     return response;
   } catch (error) {

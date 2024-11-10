@@ -32,6 +32,7 @@ export async function GET(
       ticket: {
         id: ticket._id,
         status: ticket.status,
+        paymentId: ticket.paymentId, // Agregar paymentId
         eventName: ticket.eventId.name,
         date: ticket.eventId.date,
         location: ticket.eventId.location,

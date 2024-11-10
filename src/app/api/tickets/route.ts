@@ -16,7 +16,11 @@ export async function POST(req: Request) {
     await dbConnect();
     const { eventId, seats, buyerInfo } = await req.json();
     
-    console.log('Solicitud de creación de ticket:', { eventId, seats, buyerInfo });
+    console.log('1. Solicitud de creación de ticket:', { 
+      eventId, 
+      seats, 
+      buyerInfo: { ...buyerInfo, email: buyerInfo?.email?.toLowerCase() } 
+    });
 
     // Validación de datos de entrada
     if (!isValidObjectId(eventId) || !seats?.length || !buyerInfo || !buyerInfo.email) {
@@ -44,7 +48,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Liberar asientos expirados antes de verificar disponibilidad
+    // Liberar asientos expirados
     await Seat.releaseExpiredSeats(eventId);
 
     // Calcular precio total
@@ -63,14 +67,14 @@ export async function POST(req: Request) {
       return sum + section.price;
     }, 0);
 
-    // Iniciar una sesión para la transacción
+    console.log('2. Precio total calculado:', total);
+
+    // Iniciar transacción
     const session = await (await dbConnect()).startSession();
     let ticket: ITicket | null = null;
 
     try {
       const result = await session.withTransaction(async () => {
-        const releasedSeats = await Seat.releaseExpiredSeats(eventId);
-        console.log('Released seats before reservation:', releasedSeats);
         // Verificar disponibilidad de asientos
         const occupiedSeats = await Seat.find({
           eventId,
@@ -82,7 +86,7 @@ export async function POST(req: Request) {
           throw new Error('Algunos asientos ya no están disponibles');
         }
 
-        // Crear ticket con estado 'PENDING'
+        // Crear ticket
         const [newTicket] = await Ticket.create([{
           eventId,
           seats,
@@ -92,10 +96,15 @@ export async function POST(req: Request) {
           price: total
         }], { session });
 
-        // Reservar los asientos con tiempo de expiración
+        console.log('3. Ticket creado:', {
+          id: newTicket._id,
+          status: newTicket.status
+        });
+
+        // Reservar asientos
         const reservationExpires = new Date(Date.now() + RESERVATION_TIMEOUT);
         
-        await Seat.updateMany(
+        const seatResult = await Seat.updateMany(
           {
             eventId,
             number: { $in: seats }
@@ -110,6 +119,11 @@ export async function POST(req: Request) {
           { session }
         );
 
+        console.log('4. Asientos reservados:', {
+          count: seatResult.modifiedCount,
+          seats: seats
+        });
+
         return newTicket;
       });
 
@@ -122,18 +136,24 @@ export async function POST(req: Request) {
       throw new Error('Error al crear el ticket');
     }
 
-    // Crear preferencia de MercadoPago solo si el ticket se creó correctamente
+    // Crear preferencia de MercadoPago
     const preference = await createPreference({
       _id: ticket._id.toString(),
       eventName: event.name,
       price: total,
-      description: `${seats.length} entrada(s) para ${event.name}`
+      description: `${seats.length} entrada(s) para ${event.name} - Asientos: ${seats.join(', ')}`
+    });
+
+    console.log('5. Preferencia de MercadoPago creada:', {
+      preferenceId: preference.id,
+      ticketId: ticket._id
     });
 
     return NextResponse.json({
       success: true,
       ticket: {
         id: ticket._id,
+        status: ticket.status,
         seats: ticket.seats,
         total: ticket.price
       },

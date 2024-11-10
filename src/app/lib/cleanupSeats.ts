@@ -6,7 +6,7 @@ export async function releaseExpiredSeats() {
   try {
     const now = new Date();
 
-    // Encontrar asientos expirados
+    // Encontrar asientos expiradosssssss
     const expiredSeats = await Seat.find({
       status: 'RESERVED',
       reservationExpires: { $lt: now }

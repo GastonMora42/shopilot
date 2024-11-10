@@ -9,7 +9,7 @@ import { createPreference } from '@/app/lib/mercadopago';
 import { isValidObjectId } from 'mongoose';
 import type { ITicket } from '@/types';
 
-const RESERVATION_TIMEOUT = 5 * 60 * 1000; // 15 minutos en milisegundos
+const RESERVATION_TIMEOUT = 5 * 60 * 1000; // 5 minutos en milisegundos
 
 export async function POST(req: Request) {
   try {

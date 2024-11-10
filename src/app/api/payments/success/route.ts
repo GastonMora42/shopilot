@@ -2,9 +2,14 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
-import { Seat } from '@/app/models/Seat';
+import { MercadoPagoConfig, Payment } from 'mercadopago';
 
-// app/api/payments/success/route.ts
+const client = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN!,
+});
+
+const payment = new Payment(client);
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -12,47 +17,63 @@ export async function GET(req: Request) {
     const status = searchParams.get('collection_status');
     const externalReference = searchParams.get('external_reference');
 
+    console.log('Success callback recibido:', {
+      paymentId,
+      status,
+      externalReference
+    });
+
+    // Verificar que tenemos los parámetros necesarios
+    if (!paymentId || !status || !externalReference) {
+      console.error('Faltan parámetros en callback de success');
+      return NextResponse.redirect(
+        new URL('/payment/error', req.url)
+      );
+    }
+
+    // Verificar el estado del pago directamente con MercadoPago
+    const paymentInfo = await payment.get({ id: paymentId });
+    
+    console.log('Estado del pago verificado:', {
+      id: paymentInfo.id,
+      status: paymentInfo.status
+    });
+
+    // Solo verificamos el estado del ticket
     if (status === 'approved' && externalReference) {
       await dbConnect();
       
-      const session = await (await dbConnect()).startSession();
-      try {
-        await session.withTransaction(async () => {
-          const ticket = await Ticket.findById(externalReference)
-            .session(session);
+      const ticket = await Ticket.findById(externalReference);
+      
+      console.log('Estado del ticket:', {
+        id: ticket?._id,
+        status: ticket?.status,
+        paymentId: ticket?.paymentId
+      });
 
-          if (ticket && ticket.status === 'PENDING') {
-            ticket.status = 'PAID';
-            ticket.paymentId = paymentId;
-            await ticket.save({ session });
-
-            await Seat.updateMany(
-              {
-                eventId: ticket.eventId,
-                number: { $in: ticket.seats }
-              },
-              {
-                $set: {
-                  status: 'OCCUPIED',
-                  ticketId: ticket._id
-                }
-              },
-              { session }
-            );
-          }
-        });
-      } finally {
-        await session.endSession();
+      // No actualizamos nada aquí - solo verificamos
+      if (!ticket) {
+        console.error('Ticket no encontrado en success callback');
+        return NextResponse.redirect(
+          new URL('/payment/error', req.url)
+        );
       }
     }
 
-    // Redirigir a la página de success
-    return NextResponse.redirect(
-      new URL(`/payment/success?ticketId=${externalReference}`, req.url)
-    );
+    // Si todo está bien, redirigimos a la página de éxito
+    const successUrl = new URL(`/payment/success`, req.url);
+    successUrl.searchParams.set('ticketId', externalReference);
+    
+    if (paymentId) {
+      successUrl.searchParams.set('paymentId', paymentId);
+    }
+
+    console.log('Redirigiendo a:', successUrl.toString());
+
+    return NextResponse.redirect(successUrl);
 
   } catch (error) {
-    console.error('Success route error:', error);
+    console.error('Error en success callback:', error);
     return NextResponse.redirect(
       new URL('/payment/error', req.url)
     );

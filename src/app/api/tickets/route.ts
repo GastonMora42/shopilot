@@ -9,16 +9,28 @@ import { createPreference } from '@/app/lib/mercadopago';
 import { isValidObjectId } from 'mongoose';
 import type { ITicket } from '@/types';
 
+const RESERVATION_TIMEOUT = 5 * 60 * 1000; // 5 minutos en milisegundos
+
 export async function POST(req: Request) {
   try {
     await dbConnect();
     const { eventId, seats, buyerInfo } = await req.json();
     
-    console.log('Creating ticket request:', { eventId, seats, buyerInfo });
+    console.log('Solicitud de creación de ticket:', { eventId, seats, buyerInfo });
 
-    if (!isValidObjectId(eventId) || !seats?.length || !buyerInfo) {
+    // Validación de datos de entrada
+    if (!isValidObjectId(eventId) || !seats?.length || !buyerInfo || !buyerInfo.email) {
       return NextResponse.json(
         { error: 'Datos incompletos o inválidos' },
+        { status: 400 }
+      );
+    }
+
+    // Validar email
+    buyerInfo.email = buyerInfo.email.toLowerCase().trim();
+    if (!/\S+@\S+\.\S+/.test(buyerInfo.email)) {
+      return NextResponse.json(
+        { error: 'Formato de email inválido' },
         { status: 400 }
       );
     }
@@ -31,6 +43,9 @@ export async function POST(req: Request) {
         { status: 404 }
       );
     }
+
+    // Liberar asientos expirados antes de verificar disponibilidad
+    await Seat.releaseExpiredSeats(eventId);
 
     // Calcular precio total
     const total = seats.reduce((sum: number, seat: string) => {
@@ -48,6 +63,7 @@ export async function POST(req: Request) {
       return sum + section.price;
     }, 0);
 
+    // Iniciar una sesión para la transacción
     const session = await (await dbConnect()).startSession();
     let ticket: ITicket | null = null;
 
@@ -66,20 +82,19 @@ export async function POST(req: Request) {
           throw new Error('Algunos asientos ya no están disponibles');
         }
 
-        // Crear ticket
+        // Crear ticket con estado 'PENDING'
         const [newTicket] = await Ticket.create([{
           eventId,
           seats,
           qrCode: await generateQRCode(),
           status: 'PENDING',
-          buyerInfo: {
-            ...buyerInfo,
-            email: buyerInfo.email.toLowerCase().trim()
-          },
+          buyerInfo,
           price: total
         }], { session });
 
-        // Marcar asientos como reservados
+        // Reservar los asientos con tiempo de expiración
+        const reservationExpires = new Date(Date.now() + RESERVATION_TIMEOUT);
+        
         await Seat.updateMany(
           {
             eventId,
@@ -88,7 +103,8 @@ export async function POST(req: Request) {
           {
             $set: {
               status: 'RESERVED',
-              ticketId: newTicket._id
+              ticketId: newTicket._id,
+              reservationExpires
             }
           },
           { session }
@@ -106,23 +122,12 @@ export async function POST(req: Request) {
       throw new Error('Error al crear el ticket');
     }
 
-    console.log('Ticket created successfully:', {
-      id: ticket._id,
-      seats: ticket.seats,
-      status: ticket.status
-    });
-
-    // Crear preferencia de MercadoPago
+    // Crear preferencia de MercadoPago solo si el ticket se creó correctamente
     const preference = await createPreference({
       _id: ticket._id.toString(),
       eventName: event.name,
-      price: ticket.price,
+      price: total,
       description: `${seats.length} entrada(s) para ${event.name}`
-    });
-
-    console.log('Preference created:', {
-      ticketId: ticket._id,
-      preferenceId: preference.id
     });
 
     return NextResponse.json({
@@ -137,11 +142,9 @@ export async function POST(req: Request) {
     });
 
   } catch (error) {
-    console.error('Error creating ticket:', error);
+    console.error('Error al crear el ticket:', error);
     return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : 'Error al procesar la compra'
-      },
+      { error: error instanceof Error ? error.message : 'Error al procesar la compra' },
       { status: 500 }
     );
   }

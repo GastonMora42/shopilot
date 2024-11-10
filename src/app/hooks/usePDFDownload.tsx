@@ -2,7 +2,8 @@
 'use client';
 
 import { useState } from 'react';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import QRCode from 'qrcode';
 
 interface TicketData {
   eventName: string;
@@ -14,6 +15,7 @@ interface TicketData {
     name: string;
     email: string;
   };
+  price: number;
 }
 
 export function usePDFDownload() {
@@ -23,43 +25,103 @@ export function usePDFDownload() {
     try {
       setLoading(true);
 
-      // Creamos un documento PDF
+      // Crear el documento PDF
       const pdfDoc = await PDFDocument.create();
-      const page = pdfDoc.addPage([600, 400]);
+      const page = pdfDoc.addPage([600, 800]);
       const { width, height } = page.getSize();
 
-      // Añadir texto al PDF
-      page.drawText(ticket.eventName, { x: 50, y: height - 50, size: 18 });
-      page.drawText(`Fecha: ${new Date(ticket.date).toLocaleString()}`, { x: 50, y: height - 80, size: 12 });
-      page.drawText(`Ubicación: ${ticket.location}`, { x: 50, y: height - 110, size: 12 });
-      page.drawText(`Asientos: ${ticket.seats.join(', ')}`, { x: 50, y: height - 140, size: 12 });
-      page.drawText(`Comprador: ${ticket.buyerInfo.name}`, { x: 50, y: height - 170, size: 12 });
+      // Cargar fuentes
+      const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-      // Añadir imagen QR
-      const qrImageUrl = await fetch(ticket.qrCode).then((res) => res.blob());
-      const qrImageBytes = await qrImageUrl.arrayBuffer();
+      // Generar QR
+      const qrDataUrl = await QRCode.toDataURL(ticket.qrCode, {
+        width: 200,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#ffffff',
+        },
+      });
+
+      // Convertir data URL a Uint8Array
+      const qrImageBytes = await fetch(qrDataUrl).then(res => res.arrayBuffer());
       const qrImage = await pdfDoc.embedPng(qrImageBytes);
+      const qrDims = qrImage.scale(0.8);
 
-      const qrDims = qrImage.scale(0.5);
+      // Dibujar contenido
+      page.drawText('TICKET DE ENTRADA', {
+        x: 50,
+        y: height - 50,
+        size: 24,
+        font: helveticaBold,
+        color: rgb(0, 0, 0),
+      });
+
+      const textContent = [
+        { label: 'Evento:', value: ticket.eventName },
+        { label: 'Fecha:', value: new Date(ticket.date).toLocaleString() },
+        { label: 'Ubicación:', value: ticket.location },
+        { label: 'Asientos:', value: ticket.seats.join(', ') },
+        { label: 'Comprador:', value: ticket.buyerInfo.name },
+        { label: 'Total:', value: `$${ticket.price}` },
+      ];
+
+      let yPosition = height - 100;
+      textContent.forEach(({ label, value }) => {
+        // Label
+        page.drawText(label, {
+          x: 50,
+          y: yPosition,
+          size: 12,
+          font: helveticaBold,
+          color: rgb(0.4, 0.4, 0.4),
+        });
+
+        // Value
+        page.drawText(value, {
+          x: 150,
+          y: yPosition,
+          size: 12,
+          font: helvetica,
+          color: rgb(0, 0, 0),
+        });
+
+        yPosition -= 30;
+      });
+
+      // Dibujar QR
       page.drawImage(qrImage, {
-        x: width - qrDims.width - 50,
-        y: height - qrDims.height - 50,
+        x: width / 2 - qrDims.width / 2,
+        y: yPosition - qrDims.height - 50,
         width: qrDims.width,
         height: qrDims.height,
       });
 
-      // Crear y descargar el PDF
+      // Texto debajo del QR
+      page.drawText('Presenta este código QR en la entrada del evento', {
+        x: width / 2 - 150,
+        y: yPosition - qrDims.height - 80,
+        size: 12,
+        font: helvetica,
+        color: rgb(0.4, 0.4, 0.4),
+      });
+
+      // Generar y descargar el PDF
       const pdfBytes = await pdfDoc.save();
-      const url = URL.createObjectURL(new Blob([pdfBytes]));
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `ticket-${ticket.eventName}.pdf`;
+      link.download = `ticket-${ticket.eventName.toLowerCase().replace(/\s+/g, '-')}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+
     } catch (error) {
       console.error('Error generando PDF:', error);
+      throw error;
     } finally {
       setLoading(false);
     }

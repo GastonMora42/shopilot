@@ -1,11 +1,14 @@
-// components/emails/TicketEmail.tsx
-'use client';
-
-import {
+// components/email/TicketEmail.tsx
+import { 
   Html,
-  Text,
-  Section,
+  Head,
+  Body,
   Container,
+  Section,
+  Text,
+  Img,
+  Link,
+  Preview
 } from '@react-email/components';
 
 interface TicketEmailProps {
@@ -18,75 +21,57 @@ interface TicketEmailProps {
   qrUrl: string;
 }
 
-const styles = {
-  main: {
-    backgroundColor: '#ffffff',
-    fontFamily: 'arial',
-  },
-  container: {
-    margin: '0 auto',
-    padding: '20px 0 48px',
-    width: '580px',
-  },
-  heading: {
-    fontSize: '32px',
-    fontWeight: 'bold',
-    textAlign: 'center' as const,
-    margin: '30px 0',
-  },
-  paragraph: {
-    fontSize: '16px',
-    lineHeight: '26px',
-  },
-  ticketInfo: {
-    padding: '24px',
-    border: '1px solid #e6e6e6',
-    borderRadius: '5px',
-    margin: '20px 0',
-  },
-  eventName: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    margin: '0 0 16px',
-  },
-  qrContainer: {
-    textAlign: 'center' as const,
-    margin: '32px 0',
-  },
-  footer: {
-    fontSize: '14px',
-    color: '#666666',
-    textAlign: 'center' as const,
-    margin: '16px 0 0',
-  },
-};
-
 export function TicketEmail({ ticket, qrUrl }: TicketEmailProps) {
   return (
     <Html>
-      <Section style={styles.main}>
-        <Container style={styles.container}>
-          <Text style={styles.heading}>¡Tu entrada está lista!</Text>
-          <Text style={styles.paragraph}>
-            Gracias por tu compra. Aquí están los detalles de tu entrada:
-          </Text>
-          
-          <Section style={styles.ticketInfo}>
-            <Text style={styles.eventName}>{ticket.eventName}</Text>
-            <Text>Fecha: {new Date(ticket.date).toLocaleString()}</Text>
-            <Text>Ubicación: {ticket.location}</Text>
-            <Text>Asientos: {ticket.seats.join(', ')}</Text>
+      <Head />
+      <Preview>Tu entrada para {ticket.eventName}</Preview>
+      <Body style={{ fontFamily: 'Arial, sans-serif' }}>
+        <Container>
+          <Section>
+            <Text>¡Gracias por tu compra!</Text>
+            <Text>Aquí están los detalles de tu entrada:</Text>
           </Section>
 
-          <Section style={styles.qrContainer}>
-            <img src={qrUrl} width={200} height={200} alt="QR Code" />
+          <Section style={{ backgroundColor: '#f9fafb', padding: '20px', borderRadius: '8px' }}>
+            <Text><strong>Evento:</strong> {ticket.eventName}</Text>
+            <Text><strong>Fecha:</strong> {new Date(ticket.date).toLocaleString()}</Text>
+            <Text><strong>Ubicación:</strong> {ticket.location}</Text>
+            <Text><strong>Asientos:</strong> {ticket.seats.join(', ')}</Text>
           </Section>
 
-          <Text style={styles.footer}>
-            Presenta este código QR en la entrada del evento
-          </Text>
+          <Section style={{ textAlign: 'center', marginTop: '20px' }}>
+            <Text>Tu código QR:</Text>
+            <Img 
+              src={qrUrl} 
+              width="200" 
+              height="200" 
+              alt="Código QR del ticket"
+              style={{ margin: '0 auto' }}
+            />
+          </Section>
+
+          <Section style={{ marginTop: '20px' }}>
+            <Text>Presenta este código QR en la entrada del evento.</Text>
+            <Text>También puedes descargar tu entrada desde el sitio web.</Text>
+          </Section>
+
+          <Section style={{ textAlign: 'center', marginTop: '30px' }}>
+            <Link 
+              href="https://www.shopilot.xyz/tickets"
+              style={{ 
+                backgroundColor: '#000',
+                color: '#fff',
+                padding: '10px 20px',
+                borderRadius: '5px',
+                textDecoration: 'none'
+              }}
+            >
+              Ver mis tickets
+            </Link>
+          </Section>
         </Container>
-      </Section>
+      </Body>
     </Html>
   );
 }

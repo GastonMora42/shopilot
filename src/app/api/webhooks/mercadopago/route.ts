@@ -21,7 +21,7 @@ type PaymentInfo = {
 
 export async function POST(req: Request) {
   try {
-    // Parsear el cuerpo de la notificación
+    // Parsear el cuerpo de la notificaciónss
     const body = await req.json();
     
     console.log('Webhook recibido:', {

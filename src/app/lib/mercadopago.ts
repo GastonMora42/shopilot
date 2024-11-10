@@ -57,7 +57,7 @@ export async function createPreference({
           installments: 1
         },
         expires: true,
-        expiration_date_to: new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 minutos
+        expiration_date_to: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 30 minutos
       }
     };
 

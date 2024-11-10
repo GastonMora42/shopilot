@@ -1,11 +1,13 @@
 // types/index.ts
 import { ObjectId, Document } from 'mongoose';
 
-// Status como types para reutilización
-export type TicketStatus = 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
+// Status como union types
+export type TicketStatus = 'PENDING' | 'PAID' | 'FAILED' | 'USED' | 'CANCELLED';
 export type SeatStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
 export type SeatType = 'REGULAR' | 'VIP' | 'DISABLED';
+export type PaymentStatus = 'approved' | 'rejected' | 'cancelled' | 'pending';
 
+// Interfaces base
 export interface IEvent extends Document {
   _id: string;
   name: string;
@@ -49,6 +51,7 @@ export interface ISeat extends Document {
   price: number;
   type: SeatType;
   ticketId?: ObjectId;
+  reservationExpires?: Date;  // Agregado
   createdAt: Date;
   updatedAt: Date;
 }
@@ -69,19 +72,37 @@ export interface ITicket extends Document {
   price: number;
   createdAt: Date;
   updatedAt: Date;
+  // Métodos agregados del modelo
+  markAsPaid(paymentId: string): Promise<ITicket>;
+  markAsFailed(paymentId: string): Promise<ITicket>;
 }
 
-export interface TicketValidation {
-  success: boolean;
-  ticket?: {
-    eventName: string;
-    buyerName: string;
-    seatNumber: string;
-    status: TicketStatus;
+// Interfaces para MercadoPago
+export interface MercadoPagoWebhook {
+  action: string;
+  api_version: string;
+  data: {
+    id: string;
   };
-  error?: string;
+  date_created: string;
+  id: string;
+  live_mode: boolean;
+  type: 'payment' | 'plan' | 'subscription' | 'invoice';
+  user_id: string;
 }
 
+export interface MercadoPagoPayment {
+  id: number | string;
+  status: PaymentStatus;
+  status_detail: string;
+  external_reference: string;
+  date_approved?: string;
+  date_created: string;
+  transaction_amount: number;
+  payment_method_id: string;
+}
+
+// Interfaces para requests
 export interface CreateTicketRequest {
   eventId: string;
   seats: string[];
@@ -98,10 +119,10 @@ export interface PreferenceData {
   eventName: string;
   price: number;
   description: string;
-  seats?: string;
+  seats?: string[];
 }
 
-// Interfaces adicionales para respuestas de API
+// Interfaces para responses
 export interface TicketResponse {
   success: boolean;
   ticket?: {
@@ -117,6 +138,18 @@ export interface TicketResponse {
       email: string;
     };
     price: number;
+    paymentId?: string;  // Agregado
+  };
+  error?: string;
+}
+
+export interface WebhookResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    ticketId: string;
+    paymentId: string;
+    status: PaymentStatus;
   };
   error?: string;
 }
@@ -128,11 +161,26 @@ export interface PaymentVerificationResponse {
   error?: string;
 }
 
-export interface MercadoPagoWebhookData {
-  type: string;
-  data: {
-    id: string;
-    status: string;
-    external_reference: string;
+// Interfaces para emails
+export interface TicketEmailData {
+  ticket: {
+    eventName: string;
+    date: Date;
+    location: string;
+    seats: string[];
   };
+  qrCode: string;
+  email: string;
 }
+
+// Utility types
+export type ValidationError = {
+  field: string;
+  message: string;
+};
+
+export type ApiResponse<T> = {
+  success: boolean;
+  data?: T;
+  error?: string | ValidationError[];
+};

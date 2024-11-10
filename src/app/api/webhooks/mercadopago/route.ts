@@ -34,7 +34,6 @@ export async function POST(req: Request) {
       console.error('Falta ID de pago en la notificación');
       return new Response(null, { status: 200 });
     }
-
     // Obtener detalles del pago
     const paymentInfo = await payment.get({ id: body.data.id }) as PaymentResponse;
     

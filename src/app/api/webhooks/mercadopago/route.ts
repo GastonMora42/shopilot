@@ -23,33 +23,26 @@ const payment = new Payment(client);
 
 export async function POST(req: Request) {
   try {
-    // Verificar la firma del webhook
-    const signature = req.headers.get('x-signature');
-    console.log('Headers recibidos:', Object.fromEntries(req.headers));
-
-    if (!signature) {
-      console.error('Falta la firma del webhook');
-      return new Response('Unauthorized', { status: 401 });
-    }
-
-    // Obtener el cuerpo como texto para verificar la firma
+    // Obtener el cuerpo como texto
     const rawBody = await req.text();
-    
-    // Validar la firma con la clave secreta del .env
-    if (signature !== process.env.MP_WEBHOOK_SECRET) {
-      console.error('Firma del webhook inválida');
-      return new Response('Unauthorized', { status: 401 });
-    }
-
-    // Parsear el body después de validar
     const body = JSON.parse(rawBody);
     
+    // Verificar la firma del webhook solo en producción
+    const signature = req.headers.get('x-signature');
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     console.log('1. Webhook recibido:', {
-      type: body.type,
-      data: body.data,
+      headers: Object.fromEntries(req.headers),
+      body,
       signature,
-      timestamp: new Date().toISOString()
+      environment: process.env.NODE_ENV
     });
+
+    // En producción, verificar la firma
+    if (isProduction && signature !== process.env.MP_WEBHOOK_SECRET) {
+      console.error('Firma del webhook inválida o faltante en producción');
+      return new Response('Unauthorized', { status: 401 });
+    }
 
     // Verificar que sea una notificación de pago
     if (body.type !== 'payment') {

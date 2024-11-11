@@ -1,9 +1,9 @@
 // components/SeatSelector.tsx
 'use client';
 
-import { Modal, ModalContent, ModalFooter, ModalHeader } from '@/components/ui/Modal';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { Modal, ModalContent, ModalFooter, ModalHeader } from '@/components/ui/Modal';
 import { cn } from '@/app/lib/utils';
 import { IEvent, ISection, ISeat } from '@/types';
 import { useState, useMemo } from 'react';
@@ -124,13 +124,11 @@ export function SeatSelector({
           {Array.from({ length: selectedSection.rowEnd - selectedSection.rowStart + 1 }).map((_, rowIndex) => (
             <div key={rowIndex} className="flex gap-4 items-center">
               <span className="w-10 text-center text-sm font-medium text-gray-600">
-                {String.fromCharCode(65 + selectedSection.rowStart + rowIndex)}
+                {rowIndex + 1}
               </span>
               <div className="flex flex-col gap-4 md:gap-6">
                 {Array.from({ length: selectedSection.columnEnd - selectedSection.columnStart + 1 }).map((_, colIndex) => {
-                  const row = selectedSection.rowStart + rowIndex;
-                  const col = selectedSection.columnStart + colIndex;
-                  const seatId = `${String.fromCharCode(65 + row)}${col + 1}`;
+                  const seatId = `${rowIndex + 1}-${colIndex + 1}`;
 
                   const isOccupied = isSeatOccupied(seatId);
 

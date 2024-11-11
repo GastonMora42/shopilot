@@ -85,7 +85,7 @@ export async function POST(req: Request) {
           },
           {
             $set: {
-              status: 'RESERVED',
+              status: 'OCCUPIED',
               ticketId: newTicket._id
             }
           },

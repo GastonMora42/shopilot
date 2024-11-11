@@ -1,8 +1,8 @@
-// app/(public)/e/[slug]/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Image from 'next/image';
 import { Calendar, Clock, MapPin, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
@@ -72,11 +72,11 @@ export default function PublicEventPage() {
         console.log('Setting occupied seats:', formattedSeats);
         setOccupiedSeats(formattedSeats);
 
-        // Remover asientos seleccionados que ahora están ocupados
         setSelectedSeats(prev => 
           prev.filter(seatId => 
             !formattedSeats.some(
-              (seat: { seatId: string; status: string; }) => seat.seatId === seatId && 
+              (seat: { seatId: string; status: string; }) => 
+                seat.seatId === seatId && 
                 ['OCCUPIED', 'RESERVED'].includes(seat.status)
             )
           )
@@ -136,55 +136,52 @@ export default function PublicEventPage() {
     }
   };
 
-// En tu PublicEventPage donde manejas la compra
-const handlePurchase = async (buyerInfo: {
-  name: string;
-  email: string;
-  dni: string;
-  phone?: string;
-}) => {
-  setIsProcessing(true);
-  try {
-    console.log('Starting purchase for seats:', selectedSeats);
-    
-    // Verificar disponibilidad antes de comprar
-    const checkResponse = await fetch(`/api/events/${event?._id}/seats`);
-    const checkData = await checkResponse.json();
-    
-    console.log('Current seat status:', checkData);
+  const handlePurchase = async (buyerInfo: {
+    name: string;
+    email: string;
+    dni: string;
+    phone?: string;
+  }) => {
+    setIsProcessing(true);
+    try {
+      console.log('Starting purchase for seats:', selectedSeats);
+      
+      const checkResponse = await fetch(`/api/events/${event?._id}/seats`);
+      const checkData = await checkResponse.json();
+      
+      console.log('Current seat status:', checkData);
 
-    // Procesar la compra
-    const purchaseResponse = await fetch('/api/tickets', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        eventId: event?._id,
-        seats: selectedSeats,
-        buyerInfo
-      })
-    });
+      const purchaseResponse = await fetch('/api/tickets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          eventId: event?._id,
+          seats: selectedSeats,
+          buyerInfo
+        })
+      });
 
-    const purchaseData = await purchaseResponse.json();
-    console.log('Purchase response:', purchaseData);
-    
-    if (!purchaseResponse.ok) {
-      throw new Error(purchaseData.error || 'Error al procesar la compra');
+      const purchaseData = await purchaseResponse.json();
+      console.log('Purchase response:', purchaseData);
+      
+      if (!purchaseResponse.ok) {
+        throw new Error(purchaseData.error || 'Error al procesar la compra');
+      }
+
+      if (purchaseData.checkoutUrl) {
+        console.log('Redirecting to checkout:', purchaseData.checkoutUrl);
+        window.location.href = purchaseData.checkoutUrl;
+      }
+    } catch (error) {
+      console.error('Purchase error:', error);
+      setError(error instanceof Error ? error.message : 'Error al procesar la compra');
+      await fetchOccupiedSeats();
+    } finally {
+      setIsProcessing(false);
     }
-
-    if (purchaseData.checkoutUrl) {
-      console.log('Redirecting to checkout:', purchaseData.checkoutUrl);
-      window.location.href = purchaseData.checkoutUrl;
-    }
-  } catch (error) {
-    console.error('Purchase error:', error);
-    setError(error instanceof Error ? error.message : 'Error al procesar la compra');
-    await fetchOccupiedSeats(); // Recargar estado de asientos
-  } finally {
-    setIsProcessing(false);
-  }
-};
+  };
 
   if (loading) return <div className="p-6 text-center">Cargando...</div>;
   if (error) return <Alert variant="error">{error}</Alert>;
@@ -202,12 +199,23 @@ const handlePurchase = async (buyerInfo: {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="md:col-span-2">
             <Card>
-              <CardHeader>
-                <img 
-                  src={event.image || "/placeholder.svg"}
-                  alt="Imagen del evento" 
-                  className="w-full h-64 object-cover rounded-t-lg"
-                />
+              <CardHeader className="p-0">
+                <div className="relative w-full h-[400px]">
+                  {event.imageUrl ? (
+                    <Image
+                      src={event.imageUrl}
+                      alt={`Imagen de ${event.name}`}
+                      fill
+                      className="object-cover rounded-t-lg"
+                      priority
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-200 rounded-t-lg flex items-center justify-center">
+                      <span className="text-gray-400">No hay imagen disponible</span>
+                    </div>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center space-x-2 text-gray-500">
@@ -300,9 +308,11 @@ const handlePurchase = async (buyerInfo: {
                 )}
               </CardContent>
             </Card>
+
             {process.env.NODE_ENV === 'development' && event && (
-      <DebugPanel eventId={event._id} />
-    )}
+              <DebugPanel eventId={event._id} />
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle>Compartir Evento</CardTitle>

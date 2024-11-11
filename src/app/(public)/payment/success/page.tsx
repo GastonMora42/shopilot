@@ -21,6 +21,7 @@ interface TicketData {
     email: string;
   };
   price: number;
+  paymentId: string;
 }
 
 export default function PaymentSuccessPage() {
@@ -37,44 +38,28 @@ const verifyPayment = async () => {
   try {
     const ticketId = searchParams.get('ticketId') || searchParams.get('external_reference');
     const paymentId = searchParams.get('payment_id');
-    const status = searchParams.get('collection_status') || searchParams.get('status');
 
-    console.log('Verifying payment:', { ticketId, paymentId, status });
+    console.log('Verifying payment:', { ticketId, paymentId });
 
-    if (!ticketId) {
-      throw new Error('ID de ticket no encontrado');
+    if (!ticketId || !paymentId) {
+      throw new Error('Datos de pago incompletos');
     }
 
-    // Verificar el estado del ticket
-    const response = await fetch(`/api/tickets/${ticketId}`);
+    const response = await fetch('/api/payments/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ticketId,
+        paymentId
+      })
+    });
+
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Error al obtener el ticket');
-    }
-
-    console.log('Ticket data:', data);
-
-    // Si el ticket aún está pendiente, verificar el pago
-    if (data.ticket.status === 'PENDING' && paymentId) {
-      const verifyResponse = await fetch('/api/payments/verify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ticketId,
-          paymentId,
-          status
-        })
-      });
-
-      const verifyData = await verifyResponse.json();
-      console.log('Payment verification:', verifyData);
-
-      if (!verifyResponse.ok) {
-        throw new Error(verifyData.error || 'Error al verificar el pago');
-      }
+      throw new Error(data.error || 'Error al verificar el pago');
     }
 
     setTicket(data.ticket);
@@ -123,9 +108,6 @@ const verifyPayment = async () => {
         <h1 className="text-2xl font-bold text-red-600 mb-4">Error en el proceso</h1>
         <p className="text-gray-600 mb-8">{error}</p>
         <div className="space-y-4">
-          <Button asChild className="w-full">
-            <Link href="/tickets">Ver mis tickets</Link>
-          </Button>
           <Button variant="outline" asChild className="w-full">
             <Link href="/">Volver al inicio</Link>
           </Button>
@@ -149,11 +131,12 @@ const verifyPayment = async () => {
           <div className="border rounded-lg p-4">
             <h2 className="font-semibold mb-4">{ticket.eventName}</h2>
             <div className="space-y-2 text-sm">
-              <p><span className="font-medium">Fecha:</span> {new Date(ticket.date).toLocaleString()}</p>
-              <p><span className="font-medium">Ubicación:</span> {ticket.location}</p>
-              <p><span className="font-medium">Asientos:</span> {ticket.seats.join(', ')}</p>
-              <p><span className="font-medium">Total:</span> ${ticket.price}</p>
-            </div>
+  <p><span className="font-medium">Fecha:</span> {new Date(ticket.date).toLocaleString()}</p>
+  <p><span className="font-medium">Ubicación:</span> {ticket.location}</p>
+  <p><span className="font-medium">Asientos:</span> {ticket.seats.join(', ')}</p>
+  <p><span className="font-medium">Total:</span> ${ticket.price}</p>
+  <p><span className="font-medium">Pago ID:</span> {ticket.paymentId}</p>
+</div>
           </div>
 
           <div className="flex justify-center">

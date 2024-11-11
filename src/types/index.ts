@@ -15,6 +15,7 @@ export interface IEvent extends Document {
   location: string;
   published: boolean;
   organizerId: string;
+  imageUrl: string;
   image?: string;
   mercadopago: {
     accessToken: string;

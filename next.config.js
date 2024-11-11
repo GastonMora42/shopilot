@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ['localhost']
+    domains: ['localhost', 'storage.googleapis.com',
+      'storage.cloud.google.com']
   },
   webpack: (config) => {
     config.resolve.alias.canvas = false;

@@ -38,7 +38,7 @@ const Seat = ({
     onClick={() => onClick(seatId, type)}
     disabled={type === 'DISABLED' || isOccupied}
     className={cn(
-      "relative w-14 h-14 md:w-16 md:h-16 rounded-md border-2 transition-all text-sm md:text-base",
+      "relative w-12 h-12 md:w-14 md:h-14 rounded-md border-2 transition-all text-sm md:text-base",
       isSelected && "bg-primary text-white border-primary ring-2 ring-primary ring-offset-2",
       isOccupied && "bg-red-100 border-red-300 text-red-500 cursor-not-allowed",
       type === 'VIP' && !isSelected && !isOccupied && "bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-700",
@@ -126,7 +126,7 @@ export function SeatSelector({
               <span className="w-10 text-center text-sm font-medium text-gray-600">
                 {String.fromCharCode(65 + selectedSection.rowStart + rowIndex)}
               </span>
-              <div className="flex gap-4 md:gap-6">
+              <div className="flex flex-col gap-4 md:gap-6">
                 {Array.from({ length: selectedSection.columnEnd - selectedSection.columnStart + 1 }).map((_, colIndex) => {
                   const row = selectedSection.rowStart + rowIndex;
                   const col = selectedSection.columnStart + colIndex;
@@ -194,6 +194,9 @@ export function SeatSelector({
       <Modal isOpen={isModalOpen} onClose={handleModalClose}>
         <ModalHeader>
           <h3 className="text-xl font-semibold">Mapa de Asientos</h3>
+          <Button variant="outline" size="sm" onClick={handleModalClose}>
+            Cerrar
+          </Button>
         </ModalHeader>
         <ModalContent>
           <div className="overflow-auto max-h-[80vh]">

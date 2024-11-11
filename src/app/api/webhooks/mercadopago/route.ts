@@ -4,6 +4,7 @@ import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
+import { sendTicketEmail } from '@/app/lib/email';
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
     // Si el pago está aprobado
     if (paymentInfo.status === "approved") {
       // Buscar y actualizar el ticket
-      const ticket = await Ticket.findById(paymentInfo.external_reference);
+      let ticket = await Ticket.findById(paymentInfo.external_reference);
       if (!ticket || ticket.status !== 'PENDING') {
         console.log('Ticket no encontrado o no pendiente:', {
           ticketId: paymentInfo.external_reference,
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ message: 'Ticket no encontrado o ya procesado' }, { status: 200 });
       }
 
-      // Actualizar el ticket
+      // Forzar el estado del ticket a "PAID"
       ticket.status = 'PAID';
       ticket.paymentId = String(paymentInfo.id);
       await ticket.save();
@@ -88,6 +89,23 @@ export async function POST(req: Request) {
         modified: seatResult.modifiedCount,
         seats: ticket.seats
       });
+
+      // Enviar email de confirmación
+      try {
+        await sendTicketEmail({
+          ticket: {
+            eventName: ticket.eventId.name,
+            date: ticket.eventId.date,
+            location: ticket.eventId.location,
+            seats: ticket.seats
+          },
+          qrCode: ticket.qrCode,
+          email: ticket.buyerInfo.email
+        });
+        console.log('Email enviado a:', ticket.buyerInfo.email);
+      } catch (emailError) {
+        console.error('Error enviando email:', emailError);
+      }
 
       return NextResponse.json({
         success: true,

@@ -4,8 +4,6 @@ import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
-import { PaymentResponse } from 'mercadopago/dist/clients/payment/commonTypes';
-import { sendTicketEmail } from '@/app/lib/email';
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
@@ -13,26 +11,34 @@ const client = new MercadoPagoConfig({
 
 const payment = new Payment(client);
 
+type PaymentInfo = {
+  id: string | number;
+  status: string;
+  external_reference: string;
+};
+
 export async function POST(req: Request) {
   try {
+    // Parsear el cuerpo de la notificación
     const body: { data: { id: string } } = await req.json();
-    console.log('1. Webhook recibido:', body);
+    console.log('Webhook recibido:', body);
 
+    // Solo procesar notificaciones de tipo 'payment'
     if (!body.data?.id) {
       console.log('Webhook ignorado - falta ID de pago');
       return NextResponse.json({ message: 'Webhook ignorado' }, { status: 200 });
     }
 
     // Obtener los detalles del pago
-    const paymentInfo = await payment.get({ id: body.data.id }) as PaymentResponse;
+    const paymentInfo = await payment.get({ id: body.data.id }) as unknown as PaymentInfo;
 
     // Validar información necesaria del pago
     if (!paymentInfo || !paymentInfo.id || !paymentInfo.status || !paymentInfo.external_reference) {
       console.error('Información de pago incompleta:', paymentInfo);
-      return NextResponse.json({ error: 'Información de pago incompleta' }, { status: 400 });
+      return NextResponse.json({ error: 'Información de pago incompleta' }, { status: 200 });
     }
 
-    console.log('2. Información del pago:', {
+    console.log('Información del pago:', {
       paymentId: String(paymentInfo.id),
       status: paymentInfo.status,
       external_reference: paymentInfo.external_reference
@@ -57,7 +63,7 @@ export async function POST(req: Request) {
       ticket.paymentId = String(paymentInfo.id);
       await ticket.save();
 
-      console.log('3. Resultado de actualización de ticket:', {
+      console.log('Resultado de actualización de ticket:', {
         ticketId: ticket._id,
         newStatus: ticket.status,
         paymentId: ticket.paymentId
@@ -77,28 +83,11 @@ export async function POST(req: Request) {
         }
       );
 
-      console.log('4. Asientos actualizados:', {
+      console.log('Asientos actualizados:', {
         matched: seatResult.matchedCount,
         modified: seatResult.modifiedCount,
         seats: ticket.seats
       });
-
-      // Enviar email de confirmación
-      try {
-        await sendTicketEmail({
-          ticket: {
-            eventName: ticket.eventId.name,
-            date: ticket.eventId.date,
-            location: ticket.eventId.location,
-            seats: ticket.seats
-          },
-          qrCode: ticket.qrCode,
-          email: ticket.buyerInfo.email
-        });
-        console.log('5. Email enviado a:', ticket.buyerInfo.email);
-      } catch (emailError) {
-        console.error('Error enviando email:', emailError);
-      }
 
       return NextResponse.json({
         success: true,
@@ -108,7 +97,7 @@ export async function POST(req: Request) {
           paymentId: ticket.paymentId,
           status: paymentInfo.status
         }
-      });
+      }, { status: 200 });
     }
     // Si el pago es rechazado o cancelado
     else if (paymentInfo.status === 'rejected' || paymentInfo.status === 'cancelled') {
@@ -141,7 +130,7 @@ export async function POST(req: Request) {
         }
       );
 
-      console.log('6. Asientos liberados por pago fallido:', {
+      console.log('Asientos liberados por pago fallido:', {
         ticketId: ticket._id,
         paymentId: String(paymentInfo.id),
         seats: ticket.seats,
@@ -156,7 +145,7 @@ export async function POST(req: Request) {
           paymentId: String(paymentInfo.id),
           status: paymentInfo.status
         }
-      });
+      }, { status: 200 });
     }
 
     // Si el estado de pago no es ni aprobado ni rechazado/cancelado, ignorar
@@ -167,7 +156,7 @@ export async function POST(req: Request) {
     console.error('Error procesando webhook:', error);
     return NextResponse.json(
       { error: 'Error al procesar el webhook' },
-      { status: 500 }
+      { status: 200 }
     );
   }
 }

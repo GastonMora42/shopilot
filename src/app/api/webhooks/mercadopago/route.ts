@@ -59,6 +59,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ message: 'Ticket no encontrado o ya procesado' }, { status: 200 });
       }
 
+      // Si el ticket está en estado PENDING y el pago está aprobado, actualizar
+      if (ticket.status === 'PENDING' && paymentInfo.status === 'approved')
       // Forzar el estado del ticket a "PAID"
       ticket.status = 'PAID';
       ticket.paymentId = String(paymentInfo.id);
@@ -129,7 +131,7 @@ export async function POST(req: Request) {
       }
 
       // Actualizar el ticket
-      ticket.status = 'FAILED';
+      ticket.status = 'CANCELLED';
       ticket.paymentId = String(paymentInfo.id);
       await ticket.save();
 

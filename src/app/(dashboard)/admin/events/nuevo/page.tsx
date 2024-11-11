@@ -13,7 +13,6 @@ import { StepIndicator } from '@/components/events/StepIndicator';
 
 type StepType = 'info' | 'seating' | 'pricing' | 'review';
 
-
 interface Seating {
   rows: number;
   columns: number;
@@ -22,7 +21,8 @@ interface Seating {
 export default function NewEventPage() {
   const router = useRouter();
   const [step, setStep] = useState<StepType>('info');
-  const [isSubmitting, setIsSubmitting] = useState(false); // Agregar el estado aquí
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [eventData, setEventData] = useState({
     name: '',
     description: '',
@@ -52,7 +52,8 @@ export default function NewEventPage() {
         }
       ]
     },
-    orderTotal: 3000 // Agregar un valor para orderTotalss
+    orderTotal: 3000,
+    imageUrl: ''
   });
 
   const handleBasicInfoChange = (info: unknown) => {
@@ -62,7 +63,6 @@ export default function NewEventPage() {
       console.error("Invalid info format");
     }
   };
-  
 
   const handleSeatingChange = (seating: unknown) => {
     if (typeof seating === "object" && seating !== null && "rows" in seating && "columns" in seating) {
@@ -79,7 +79,6 @@ export default function NewEventPage() {
       console.error("Invalid seating format");
     }
   };
-  
 
   const handleSectionsChange = (sections: unknown) => {
     if (Array.isArray(sections)) {
@@ -94,30 +93,57 @@ export default function NewEventPage() {
       console.error("Invalid sections format");
     }
   };
-  
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      setImageFile(e.target.files[0]);
+    }
+  };
+
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
-      
+
+      // Otros pasos de envío del formulario
+      if (imageFile) {
+        const formData = new FormData();
+        formData.append('file', imageFile);
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+        if (data.url) {
+          setEventData(prev => ({
+            ...prev,
+            imageUrl: data.url
+          }));
+        } else {
+          console.error('Error al subir la imagen:', data.error);
+        }
+      }
+
       const formattedData = {
         ...eventData,
         date: new Date(eventData.date).toISOString()
       };
-  
+
       const response = await fetch('/api/events/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formattedData)
       });
-  
-      const data = await response.json();
-  
+
+      const eventCreationData = await response.json();
+
       if (!response.ok) {
-        throw new Error(data.error || 'Error al crear el evento');
+        throw new Error(eventCreationData.error || 'Error al crear el evento');
       }
-  
+
       alert('¡Evento creado exitosamente!');
-      router.push(`/events/${data._id}`);
+      router.push(`/events/${eventCreationData._id}`);
     } catch (error) {
       console.error('Error:', error);
       alert(error || 'Ocurrió un error al crear el evento');
@@ -198,25 +224,28 @@ export default function NewEventPage() {
           Atrás
         </Button>
 
-        <Button
-          onClick={() => {
-            if (!validateStep(step)) {
-              alert('Por favor completa todos los campos requeridos');
-              return;
-            }
+        <div>
+          <input type="file" onChange={handleImageUpload} />
+          <Button
+            onClick={() => {
+              if (!validateStep(step)) {
+                alert('Por favor completa todos los campos requeridos');
+                return;
+              }
 
-            if (step === 'review') {
-              handleSubmit();
-            } else {
-              const stepArray = Object.keys(steps) as StepType[];
-              const nextIndex = stepArray.indexOf(step) + 1;
-              setStep(stepArray[nextIndex]);
-            }
-          }}
-          disabled={isSubmitting} // Desactivar el botón mientras se envían los datos
-        >
-          {step === 'review' ? 'Crear Evento' : 'Siguiente'}
-        </Button>
+              if (step === 'review') {
+                handleSubmit();
+              } else {
+                const stepArray = Object.keys(steps) as StepType[];
+                const nextIndex = stepArray.indexOf(step) + 1;
+                setStep(stepArray[nextIndex]);
+              }
+            }}
+            disabled={isSubmitting}
+          >
+            {step === 'review' ? 'Crear Evento' : 'Siguiente'}
+          </Button>
+        </div>
       </div>
     </div>
   );

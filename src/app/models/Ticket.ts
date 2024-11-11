@@ -11,7 +11,7 @@ export interface ITicket extends Document {
     phone?: string;
   };
   qrCode: string;
-  status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
+  status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED' ;
   price: number;
   paymentId?: string;
   createdAt: Date;

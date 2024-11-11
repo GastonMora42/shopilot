@@ -1,8 +1,8 @@
 // components/SeatSelector.tsx
 'use client';
 
-import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { cn } from '@/app/lib/utils';
 import { IEvent, ISection, ISeat } from '@/types';
 import { useState, useMemo } from 'react';
@@ -73,7 +73,7 @@ export function SeatSelector({
   occupiedSeats,
   onSeatSelect
 }: SeatSelectorProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSection, setSelectedSection] = useState<ISection | null>(null);
 
   const getSectionForSeat = (row: number, col: number): ISection | undefined => {
@@ -106,7 +106,12 @@ export function SeatSelector({
 
   const handleSectionSelect = (section: ISection) => {
     setSelectedSection(section);
-    setIsExpanded(true);
+    setIsModalOpen(true);
+  };
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setSelectedSection(null);
   };
 
   const seatGrid = useMemo(() => {
@@ -147,9 +152,7 @@ export function SeatSelector({
       );
     } else {
       return (
-        <div className="grid gap-2 md:gap-4" style={{
-          gridTemplateColumns: `repeat(5, minmax(0, 1fr))`
-        }}>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {seatingChart.sections.map((section, index) => (
             <div
               key={index}
@@ -180,16 +183,26 @@ export function SeatSelector({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={() => setIsModalOpen(true)}
           >
-            {isExpanded ? 'Ocultar' : 'Mostrar'} Mapa de Asientos
+            Ver Mapa de Asientos
           </Button>
         </div>
       </div>
 
-      {isExpanded && (
-        <div className="w-full overflow-x-auto">
-          {seatGrid}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-3xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold">Mapa de Asientos</h3>
+              <Button variant="outline" size="sm" onClick={handleModalClose}>
+                Cerrar
+              </Button>
+            </div>
+            <div className="overflow-auto max-h-[80vh]">
+              {seatGrid}
+            </div>
+          </div>
         </div>
       )}
 

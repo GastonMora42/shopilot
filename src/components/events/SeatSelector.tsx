@@ -1,6 +1,7 @@
 // components/SeatSelector.tsx
 'use client';
 
+import { Modal, ModalContent, ModalFooter, ModalHeader } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/app/lib/utils';
@@ -37,7 +38,7 @@ const Seat = ({
     onClick={() => onClick(seatId, type)}
     disabled={type === 'DISABLED' || isOccupied}
     className={cn(
-      "relative w-10 h-10 md:w-12 md:h-12 rounded-md border-2 transition-all text-sm md:text-base",
+      "relative w-14 h-14 md:w-16 md:h-16 rounded-md border-2 transition-all text-sm md:text-base",
       isSelected && "bg-primary text-white border-primary ring-2 ring-primary ring-offset-2",
       isOccupied && "bg-red-100 border-red-300 text-red-500 cursor-not-allowed",
       type === 'VIP' && !isSelected && !isOccupied && "bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-700",
@@ -48,7 +49,7 @@ const Seat = ({
   >
     {seatId}
     <span className={cn(
-      "absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 rounded bg-gray-900 text-white text-xs",
+      "absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 rounded bg-gray-900 text-white text-xs",
       "opacity-0 group-hover:opacity-100 transition-opacity duration-200",
       "whitespace-nowrap z-10"
     )}>
@@ -117,15 +118,15 @@ export function SeatSelector({
   const seatGrid = useMemo(() => {
     if (selectedSection) {
       return (
-        <div className="grid gap-2 md:gap-4" style={{
+        <div className="grid gap-4 md:gap-6" style={{
           gridTemplateColumns: `repeat(${selectedSection.columnEnd - selectedSection.columnStart + 1}, minmax(0, 1fr))`
         }}>
           {Array.from({ length: selectedSection.rowEnd - selectedSection.rowStart + 1 }).map((_, rowIndex) => (
-            <div key={rowIndex} className="flex gap-2 items-center">
-              <span className="w-8 text-center text-sm font-medium text-gray-600">
+            <div key={rowIndex} className="flex gap-4 items-center">
+              <span className="w-10 text-center text-sm font-medium text-gray-600">
                 {String.fromCharCode(65 + selectedSection.rowStart + rowIndex)}
               </span>
-              <div className="flex gap-2 md:gap-4">
+              <div className="flex gap-4 md:gap-6">
                 {Array.from({ length: selectedSection.columnEnd - selectedSection.columnStart + 1 }).map((_, colIndex) => {
                   const row = selectedSection.rowStart + rowIndex;
                   const col = selectedSection.columnStart + colIndex;
@@ -152,12 +153,12 @@ export function SeatSelector({
       );
     } else {
       return (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {seatingChart.sections.map((section, index) => (
             <div
               key={index}
               className={cn(
-                "p-4 rounded-lg shadow-sm transition-all hover:scale-105 cursor-pointer",
+                "p-6 rounded-lg shadow-sm transition-all hover:scale-105 cursor-pointer",
                 section.type === 'VIP' && "bg-purple-50 border-purple-300",
                 section.type === 'REGULAR' && "bg-gray-50 border-gray-200",
                 section.type === 'DISABLED' && "bg-gray-100 border-gray-200 cursor-not-allowed"
@@ -190,21 +191,21 @@ export function SeatSelector({
         </div>
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-3xl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold">Mapa de Asientos</h3>
-              <Button variant="outline" size="sm" onClick={handleModalClose}>
-                Cerrar
-              </Button>
-            </div>
-            <div className="overflow-auto max-h-[80vh]">
-              {seatGrid}
-            </div>
+      <Modal isOpen={isModalOpen} onClose={handleModalClose}>
+        <ModalHeader>
+          <h3 className="text-xl font-semibold">Mapa de Asientos</h3>
+        </ModalHeader>
+        <ModalContent>
+          <div className="overflow-auto max-h-[80vh]">
+            {seatGrid}
           </div>
-        </div>
-      )}
+        </ModalContent>
+        <ModalFooter>
+          <Button variant="outline" onClick={handleModalClose}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       <div className="flex flex-col md:flex-row gap-2 justify-between items-center bg-gray-50 p-3 rounded-lg">
         <Badge variant="outline" className="text-sm">

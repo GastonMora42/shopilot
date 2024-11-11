@@ -1,47 +1,51 @@
-// app/api/tickets/validate/route.ts
+// app/api/tickets/[id]/validate/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
-import { Seat } from '@/app/models/Seat';
+import { isValidObjectId } from 'mongoose';
+import type { ITicket } from '@/types';
 
-// app/api/tickets/validate/route.ts
-export async function POST(req: Request) {
+export async function POST(
+  _req: Request,
+  { params }: { params: { id: string } }
+) {
   try {
-    await dbConnect();
-    const { qrCode } = await req.json();
+    if (!isValidObjectId(params.id)) {
+      return NextResponse.json(
+        { error: 'ID de ticket inválido' },
+        { status: 400 }
+      );
+    }
 
+    await dbConnect();
     const session = await (await dbConnect()).startSession();
+
     try {
       await session.withTransaction(async () => {
-        const ticket = await Ticket.findOne({ qrCode }).populate('eventId').session(session);
+        const ticket = await Ticket.findById(params.id)
+          .populate('eventId')
+          .session(session) as ITicket | null;
 
         if (!ticket) {
           throw new Error('Ticket no encontrado');
         }
 
-        if (ticket.status === 'USED') {
-          throw new Error('Ticket ya utilizado');
+        if (ticket.status !== 'PAID') {
+          throw new Error('Ticket no válido o ya utilizado');
         }
 
-        // Actualizar ticket
+        // Actualizar estado del ticket
         ticket.status = 'USED';
         await ticket.save({ session });
 
-        // Asegurarnos que el asiento esté marcado como OCCUPIED
-        await Seat.updateMany(
-          {
-            eventId: ticket.eventId,
-            number: { $in: ticket.seats }
-          },
-          {
-            status: 'OCCUPIED',
-            ticketId: ticket._id
-          },
-          { session }
-        );
+        return ticket;
       });
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({
+        success: true,
+        message: 'Ticket validado correctamente'
+      });
+
     } finally {
       await session.endSession();
     }
@@ -49,8 +53,11 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error('Error validating ticket:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error validando ticket' },
-      { status: 500 }
+      { 
+        success: false,
+        error: error instanceof Error ? error.message : 'Error al validar el ticket'
+      },
+      { status: 400 }
     );
   }
 }

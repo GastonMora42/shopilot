@@ -1,145 +1,55 @@
-// app/api/tickets/route.ts
+// app/api/tickets/validate/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
-import { Event } from '@/app/models/Event';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
-import { generateQRCode } from '@/app/lib/utils';
-import { createPreference } from '@/app/lib/mercadopago';
-import { isValidObjectId } from 'mongoose';
-import type { ITicket } from '@/types';
 
+// app/api/tickets/validate/route.ts
 export async function POST(req: Request) {
   try {
     await dbConnect();
-    const { eventId, seats, buyerInfo } = await req.json();
-    
-    console.log('Creating ticket request:', { eventId, seats, buyerInfo });
-
-    if (!isValidObjectId(eventId) || !seats?.length || !buyerInfo) {
-      return NextResponse.json(
-        { error: 'Datos incompletos o inválidos' },
-        { status: 400 }
-      );
-    }
-
-    // Verificar evento
-    const event = await Event.findById(eventId);
-    if (!event || !event.published) {
-      return NextResponse.json(
-        { error: 'Evento no encontrado o no publicado' },
-        { status: 404 }
-      );
-    }
-
-    // Calcular precio total
-    const total = seats.reduce((sum: number, seat: string) => {
-      const row = seat.charAt(0);
-      const rowIndex = row.charCodeAt(0) - 65;
-      
-      const section = event.seatingChart.sections.find((s: { rowStart: number; rowEnd: number; }) => 
-        rowIndex >= s.rowStart && rowIndex <= s.rowEnd
-      );
-
-      if (!section) {
-        throw new Error(`Sección no encontrada para el asiento ${seat}`);
-      }
-
-      return sum + section.price;
-    }, 0);
+    const { qrCode } = await req.json();
 
     const session = await (await dbConnect()).startSession();
-    let ticket: ITicket | null = null;
-
     try {
-      const result = await session.withTransaction(async () => {
-        // Verificar disponibilidad de asientos
-        const occupiedSeats = await Seat.find({
-          eventId,
-          number: { $in: seats },
-          status: { $ne: 'AVAILABLE' }
-        }).session(session);
+      await session.withTransaction(async () => {
+        const ticket = await Ticket.findOne({ qrCode }).populate('eventId').session(session);
 
-        if (occupiedSeats.length > 0) {
-          throw new Error('Algunos asientos ya no están disponibles');
+        if (!ticket) {
+          throw new Error('Ticket no encontrado');
         }
 
-        // Crear ticket
-        const [newTicket] = await Ticket.create([{
-          eventId,
-          seats,
-          qrCode: await generateQRCode(),
-          status: 'PENDING',
-          buyerInfo: {
-            ...buyerInfo,
-            email: buyerInfo.email.toLowerCase().trim()
-          },
-          price: total
-        }], { session });
+        if (ticket.status === 'USED') {
+          throw new Error('Ticket ya utilizado');
+        }
 
-        // Marcar asientos como reservados
+        // Actualizar ticket
+        ticket.status = 'USED';
+        await ticket.save({ session });
+
+        // Asegurarnos que el asiento esté marcado como OCCUPIED
         await Seat.updateMany(
           {
-            eventId,
-            number: { $in: seats }
+            eventId: ticket.eventId,
+            number: { $in: ticket.seats }
           },
           {
-            $set: {
-              status: 'RESERVED',
-              ticketId: newTicket._id
-            }
+            status: 'OCCUPIED',
+            ticketId: ticket._id
           },
           { session }
         );
-
-        return newTicket;
       });
 
-      ticket = result;
+      return NextResponse.json({ success: true });
     } finally {
       await session.endSession();
     }
 
-    if (!ticket) {
-      throw new Error('Error al crear el ticket');
-    }
-
-    console.log('Ticket created successfully:', {
-      id: ticket._id,
-      seats: ticket.seats,
-      status: ticket.status
-    });
-
-    // Crear preferencia de MercadoPago
-    const preference = await createPreference({
-      _id: ticket._id.toString(),
-      eventName: event.name,
-      price: ticket.price,
-      description: `${seats.length} entrada(s) para ${event.name}`
-    });
-
-    console.log('Preference created:', {
-      ticketId: ticket._id,
-      preferenceId: preference.id
-    });
-
-    return NextResponse.json({
-      success: true,
-      ticket: {
-        id: ticket._id,
-        seats: ticket.seats,
-        total: ticket.price
-      },
-      checkoutUrl: preference.init_point,
-      preferenceId: preference.id
-    });
-
   } catch (error) {
-    console.error('Error creating ticket:', error);
+    console.error('Error validating ticket:', error);
     return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : 'Error al procesar la compra'
-      },
+      { error: error instanceof Error ? error.message : 'Error validando ticket' },
       { status: 500 }
     );
   }

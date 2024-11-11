@@ -157,9 +157,6 @@ const verifyPayment = async () => {
             >
               {pdfLoading ? 'Generando PDF...' : 'Descargar PDF'}
             </Button>
-            <Button asChild>
-              <Link href="/tickets">Ver mis tickets</Link>
-            </Button>
             <Button variant="outline" asChild>
               <Link href="/events">Ver más eventos</Link>
             </Button>

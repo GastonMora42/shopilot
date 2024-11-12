@@ -37,25 +37,26 @@ const Seat = ({
   isReserved,
   price,
   onClick
-}: SeatProps) => (
-  <motion.button
-    onClick={() => onClick(seatId, type)}
-    disabled={type === 'DISABLED' || isOccupied || isReserved}
-    whileHover={{ scale: 1.05 }}
-    whileTap={{ scale: 0.95 }}
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    className={cn(
-      "relative w-12 h-12 md:w-14 md:h-14 rounded-md border-2 transition-all text-sm md:text-base",
-      isSelected && "bg-primary text-white border-primary ring-2 ring-primary ring-offset-2",
-      isOccupied && "bg-red-100 border-red-300 text-red-500 cursor-not-allowed",
-      isReserved && "bg-yellow-100 border-yellow-300 text-yellow-600 cursor-not-allowed",
-      type === 'VIP' && !isSelected && !isOccupied && !isReserved && "bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-700",
-      type === 'REGULAR' && !isSelected && !isOccupied && !isReserved && "bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700",
-      type === 'DISABLED' && "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed",
-      "flex items-center justify-center group"
-    )}
-  >
+}: SeatProps) => {
+  const [row, col] = seatId.split('-');
+  
+  return (
+    <motion.button
+      onClick={() => onClick(seatId, type)}
+      disabled={type === 'DISABLED' || isOccupied || isReserved}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      className={cn(
+        "relative w-12 h-12 md:w-14 md:h-14 rounded-md border-2 transition-all text-sm md:text-base",
+        isSelected && "bg-primary text-white border-primary ring-2 ring-primary ring-offset-2",
+        isOccupied && "bg-red-100 border-red-300 text-red-500 cursor-not-allowed",
+        isReserved && "bg-yellow-100 border-yellow-300 text-yellow-600 cursor-not-allowed",
+        type === 'VIP' && !isSelected && !isOccupied && !isReserved && "bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-700",
+        type === 'REGULAR' && !isSelected && !isOccupied && !isReserved && "bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700",
+        type === 'DISABLED' && "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed",
+        "flex items-center justify-center group"
+      )}
+    >
     {seatId}
     <motion.span 
       className={cn(
@@ -70,8 +71,9 @@ const Seat = ({
        isReserved ? 'Reservado' : 
        `$${price}`}
     </motion.span>
-  </motion.button>
-);
+    </motion.button>
+  );
+};
 
 interface SeatSelectorProps {
   seatingChart: IEvent['seatingChart'];

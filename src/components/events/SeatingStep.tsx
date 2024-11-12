@@ -8,10 +8,10 @@ interface SeatingStepData {
     name: string;
     type: 'REGULAR' | 'VIP' | 'DISABLED';
     price: number;
-    rowStart: number;
-    rowEnd: number;
-    columnStart: number;
-    columnEnd: number;
+    rowStart: number;     // Comenzará desde 1 en lugar de 0
+    rowEnd: number;       // Terminará en el número real de fila
+    columnStart: number;  // Comenzará desde 1 en lugar de 0
+    columnEnd: number;    // Terminará en el número real de columna
   }>;
 }
 
@@ -22,6 +22,7 @@ interface SeatingStepProps {
 
 export function SeatingStep({ data, onChange }: SeatingStepProps) {
   const [showPreview, setShowPreview] = useState(true);
+
 
   const handleDimensionChange = (field: 'rows' | 'columns', value: number) => {
     onChange({
@@ -37,9 +38,9 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
   };
 
   const generateSeatId = (rowIndex: number, colIndex: number): string => {
-    const rowLetter = String.fromCharCode(65 + rowIndex); // Convierte 0 a 'A', 1 a 'B', etc.
-    const colNumber = (colIndex + 1).toString().padStart(2, '0'); // Asegura que el número tenga 2 dígitos
-    return `${rowLetter}${colNumber}`;
+    const row = rowIndex + 1;
+    const col = colIndex + 1;
+    return `${row}-${col}`;
   };
 
   const getSectionInfo = (rowIndex: number, colIndex: number) => {

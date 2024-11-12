@@ -5,6 +5,7 @@ import { Seat } from '@/app/models/Seat';
 import { User } from '@/app/models/User';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/lib/auth';
+import mongoose from 'mongoose'
 
 // Definir tipos para la estructura de seatingChart
 interface Section {
@@ -14,7 +15,7 @@ interface Section {
   columnStart: number;
   columnEnd: number;
   price: number;
-  type: string; // O ajusta el tipo si es necesario
+  type: 'REGULAR' | 'VIP' | 'DISABLED';
 }
 
 interface SeatingChart {
@@ -26,12 +27,13 @@ interface SeatingChart {
 async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart) {
   const seats = [];
   
+  // Validar límites
+  if (seatingChart.rows > 26) { // Límite de A-Z
+    throw new Error('Número de filas excede el límite (máximo 26)');
+  }
+
   for (let row = 0; row < seatingChart.rows; row++) {
     for (let col = 0; col < seatingChart.columns; col++) {
-      const rowLetter = String.fromCharCode(65 + row);
-      const colNumber = (col + 1).toString().padStart(2, '0');
-      const seatId = `${rowLetter}${colNumber}`;
-
       const section = seatingChart.sections.find(s => 
         row >= s.rowStart && 
         row <= s.rowEnd && 
@@ -40,15 +42,21 @@ async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart
       );
 
       if (section) {
+        const rowNumber = row + 1;
+        const colNumber = col + 1;
+        const seatId = `${rowNumber}-${colNumber}`; // Formato: "1-1"
+
         seats.push({
           eventId,
           seatId,
-          row,
-          column: col,
+          row: rowNumber,
+          column: colNumber,
           status: 'AVAILABLE',
           type: section.type,
           price: section.price,
-          section: section.name
+          section: section.name,
+          temporaryReservation: null,
+          lastReservationAttempt: null
         });
       }
     }
@@ -57,18 +65,51 @@ async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart
   return seats;
 }
 
+function validateSeatingChart(seatingChart: SeatingChart): string | null {
+  if (!seatingChart.rows || seatingChart.rows < 1) {
+    return 'Número de filas inválido';
+  }
+
+  if (!seatingChart.columns || seatingChart.columns < 1) {
+    return 'Número de columnas inválido';
+  }
+
+  if (!Array.isArray(seatingChart.sections) || seatingChart.sections.length === 0) {
+    return 'Debe definir al menos una sección';
+  }
+
+  for (const section of seatingChart.sections) {
+    if (section.rowStart < 0 || section.rowEnd >= seatingChart.rows) {
+      return 'Límites de fila inválidos en sección';
+    }
+    if (section.columnStart < 0 || section.columnEnd >= seatingChart.columns) {
+      return 'Límites de columna inválidos en sección';
+    }
+    if (section.price < 0) {
+      return 'Precio inválido en sección';
+    }
+    if (!['REGULAR', 'VIP', 'DISABLED'].includes(section.type)) {
+      return 'Tipo de sección inválido';
+    }
+  }
+
+  return null;
+}
+
 export async function POST(req: Request) {
+  let mongoSession = null;
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authSession = await getServerSession(authOptions);
+    if (!authSession?.user?.email) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
     await dbConnect();
     
     // Obtener usuario y sus credenciales de MP
-    const user = await User.findOne({ email: session.user.email });
-    if (!user.mercadopago?.accessToken) {
+    const user = await User.findOne({ email: authSession.user.email });
+    if (!user?.mercadopago?.accessToken) {
       return NextResponse.json(
         { error: 'MercadoPago no está configurado' },
         { status: 400 }
@@ -77,44 +118,62 @@ export async function POST(req: Request) {
 
     const data = await req.json();
 
-    // Validamos la data del seatingChart
-    if (
-      !data.seatingChart?.rows ||
-      !data.seatingChart?.columns ||
-      !Array.isArray(data.seatingChart.sections) ||
-      data.seatingChart.sections.length === 0
-    ) {
+    // Validar seatingChart
+    const validationError = validateSeatingChart(data.seatingChart);
+    if (validationError) {
       return NextResponse.json(
-        { error: 'Configuración de asientos inválida' },
+        { error: validationError },
         { status: 400 }
       );
     }
 
-    // Crear el evento
-    const event = await Event.create({
-      ...data,
-      organizerId: user._id,
-      mercadopago: {
-        accessToken: user.mercadopago.accessToken,
-        userId: user.mercadopago.userId
-      },
-      published: false // Por defecto como borrador
-    });
+    // Iniciar sesión de MongoDB
+    mongoSession = await mongoose.startSession();
+    mongoSession.startTransaction();
 
-    // Generar y crear los asientos
-    const seats = await generateSeatsForEvent(event._id.toString(), data.seatingChart);
-    await Seat.insertMany(seats);
+    try {
+      // Crear el evento
+      const [event] = await Event.create([{
+        ...data,
+        organizerId: user._id,
+        mercadopago: {
+          accessToken: user.mercadopago.accessToken,
+          userId: user.mercadopago.userId
+        },
+        published: false
+      }], { session: mongoSession });
 
-    return NextResponse.json({
-      ...event.toJSON(),
-      totalSeatsCreated: seats.length
-    }, { status: 201 });
+      // Generar y crear los asientos
+      const seats = await generateSeatsForEvent(
+        event._id.toString(), 
+        data.seatingChart
+      );
+      
+      await Seat.insertMany(seats, { session: mongoSession });
+
+      await mongoSession.commitTransaction();
+
+      return NextResponse.json({
+        success: true,
+        event: event.toJSON(),
+        totalSeats: seats.length
+      }, { status: 201 });
+
+    } catch (error) {
+      if (mongoSession) {
+        await mongoSession.abortTransaction();
+      }
+      throw error;
+    }
 
   } catch (error) {
     console.error('Error creating event:', error);
-    return NextResponse.json(
-      { error: 'Error creating event' },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Error al crear el evento'
+    }, { status: 500 });
+  } finally {
+    if (mongoSession) {
+      await mongoSession.endSession();
+    }
   }
 }

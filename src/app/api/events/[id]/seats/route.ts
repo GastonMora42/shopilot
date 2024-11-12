@@ -19,10 +19,11 @@ export async function GET(
 
     console.log('Found seats:', allSeats);
 
+    // Mantener el formato numérico para los IDs de asientos
     const occupiedSeats = allSeats
       .filter(seat => seat.status !== 'AVAILABLE')
       .map(seat => ({
-        seatId: seat.seatId,
+        seatId: seat.seatId,  // Mantener formato "1-1"
         status: seat.status,
         type: seat.type,
         section: seat.section
@@ -77,7 +78,7 @@ export async function POST(
       );
     }
 
-    // Verificar disponibilidad
+    // Los seatIds ya vienen en formato "1-1"
     const seats = await Seat.find({
       eventId: params.id,
       seatId: { $in: seatIds }
@@ -102,7 +103,7 @@ export async function POST(
     }
 
     // Configurar reserva temporal
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
 
     // Reservar asientos
     const result = await Seat.updateMany(
@@ -123,16 +124,45 @@ export async function POST(
           temporaryReservation: {
             sessionId,
             expiresAt
-          }
+          },
+          lastReservationAttempt: new Date()
         }
       }
     );
 
-    console.log('Reserved seats:', result);
+    if (result.modifiedCount !== seatIds.length) {
+      // Revertir cambios si no se pudieron reservar todos los asientos
+      await Seat.updateMany(
+        {
+          eventId: params.id,
+          seatId: { $in: seatIds },
+          'temporaryReservation.sessionId': sessionId
+        },
+        {
+          $set: { status: 'AVAILABLE' },
+          $unset: { 
+            temporaryReservation: 1,
+            lastReservationAttempt: 1
+          }
+        }
+      );
+
+      return NextResponse.json({
+        error: 'No se pudieron reservar todos los asientos seleccionados',
+        unavailableSeats: seatIds
+      }, { status: 409 });
+    }
+
+    // Obtener asientos actualizados
+    const updatedSeats = await Seat.find({
+      eventId: params.id,
+      seatId: { $in: seatIds }
+    });
 
     return NextResponse.json({
       success: true,
       reservedCount: result.modifiedCount,
+      seats: updatedSeats,
       expiresAt: expiresAt.toISOString()
     });
 

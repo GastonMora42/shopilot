@@ -1,11 +1,9 @@
 // app/api/events/[id]/seats/route.ts
 import dbConnect from '@/app/lib/mongodb';
-import { Seat, ISeat } from '@/app/models/Seat';
+import { Seat } from '@/app/models/Seat';
 import { NextResponse } from 'next/server';
 import { isValidObjectId } from 'mongoose';
 
-// app/api/events/[id]/seats/route.ts
-// app/api/events/[id]/seats/route.ts
 export async function GET(
   _req: Request,
   { params }: { params: { id: string } }
@@ -15,19 +13,19 @@ export async function GET(
     
     console.log('Fetching seats for event:', params.id);
 
-    // Primero, buscar todos los asientos
     const allSeats = await Seat.find({ 
       eventId: params.id 
-    });
+    }).select('-__v');
 
     console.log('Found seats:', allSeats);
 
-    // Filtrar los ocupados
     const occupiedSeats = allSeats
       .filter(seat => seat.status !== 'AVAILABLE')
       .map(seat => ({
-        seatId: seat.number,  // Importante: usar el número como seatId
-        status: seat.status
+        seatId: seat.seatId,
+        status: seat.status,
+        type: seat.type,
+        section: seat.section
       }));
 
     console.log('Filtered occupied seats:', occupiedSeats);
@@ -38,7 +36,11 @@ export async function GET(
       debug: {
         totalSeats: allSeats.length,
         occupiedCount: occupiedSeats.length,
-        statuses: allSeats.map(s => ({ id: s.number, status: s.status }))
+        statuses: allSeats.map(s => ({ 
+          id: s.seatId, 
+          status: s.status,
+          reservation: s.temporaryReservation 
+        }))
       }
     });
 
@@ -51,14 +53,132 @@ export async function GET(
   }
 }
 
+export async function POST(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await dbConnect();
+    const { seatIds, sessionId } = await req.json();
+
+    if (!isValidObjectId(params.id)) {
+      return NextResponse.json(
+        { error: 'ID de evento inválido' },
+        { status: 400 }
+      );
+    }
+
+    if (!seatIds?.length || !sessionId) {
+      return NextResponse.json(
+        { error: 'Datos inválidos' },
+        { status: 400 }
+      );
+    }
+
+    // Verificar disponibilidad
+    const seats = await Seat.find({
+      eventId: params.id,
+      seatId: { $in: seatIds }
+    });
+
+    const unavailableSeats = seats.filter(seat => 
+      seat.status !== 'AVAILABLE' && 
+      !(seat.status === 'RESERVED' && 
+        seat.temporaryReservation?.sessionId === sessionId)
+    );
+
+    if (unavailableSeats.length > 0) {
+      return NextResponse.json({
+        error: 'Algunos asientos no están disponibles',
+        unavailableSeats: unavailableSeats.map(seat => ({
+          seatId: seat.seatId,
+          status: seat.status,
+          type: seat.type,
+          section: seat.section
+        }))
+      }, { status: 409 });
+    }
+
+    // Configurar reserva temporal
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
+
+    // Reservar asientos
+    const result = await Seat.updateMany(
+      {
+        eventId: params.id,
+        seatId: { $in: seatIds },
+        $or: [
+          { status: 'AVAILABLE' },
+          {
+            status: 'RESERVED',
+            'temporaryReservation.sessionId': sessionId
+          }
+        ]
+      },
+      {
+        $set: {
+          status: 'RESERVED',
+          temporaryReservation: {
+            sessionId,
+            expiresAt
+          },
+          lastReservationAttempt: new Date()
+        }
+      }
+    );
+
+    if (result.modifiedCount !== seatIds.length) {
+      // Revertir cambios si no se pudieron reservar todos los asientos
+      await Seat.updateMany(
+        {
+          eventId: params.id,
+          seatId: { $in: seatIds },
+          'temporaryReservation.sessionId': sessionId
+        },
+        {
+          $set: { status: 'AVAILABLE' },
+          $unset: { 
+            temporaryReservation: 1,
+            lastReservationAttempt: 1
+          }
+        }
+      );
+
+      return NextResponse.json({
+        error: 'No se pudieron reservar todos los asientos seleccionados',
+        unavailableSeats: seatIds
+      }, { status: 409 });
+    }
+
+    // Obtener asientos actualizados
+    const updatedSeats = await Seat.find({
+      eventId: params.id,
+      seatId: { $in: seatIds }
+    });
+
+    return NextResponse.json({
+      success: true,
+      reservedCount: result.modifiedCount,
+      seats: updatedSeats,
+      expiresAt: expiresAt.toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error reserving seats:', error);
+    return NextResponse.json(
+      { error: 'Error al reservar los asientos' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function PATCH(
   req: Request,
   { params }: { params: { id: string } }
 ) {
   try {
     await dbConnect();
-    const body = await req.json();
-    const { seatIds, status } = body;
+    const { seatIds, status, sessionId } = await req.json();
 
     if (!isValidObjectId(params.id)) {
       return NextResponse.json(
@@ -74,14 +194,38 @@ export async function PATCH(
       );
     }
 
-    // Actualizar asientos
+    const updateQuery = status === 'AVAILABLE' 
+      ? {
+          $set: { status },
+          $unset: { 
+            temporaryReservation: 1,
+            ticketId: 1,
+            lastReservationAttempt: 1
+          }
+        }
+      : {
+          $set: {
+            status,
+            ...(sessionId && {
+              temporaryReservation: {
+                sessionId,
+                expiresAt: new Date(Date.now() + 15 * 60 * 1000)
+              }
+            }),
+            lastReservationAttempt: new Date()
+          }
+        };
+
     const result = await Seat.updateMany(
       {
         eventId: params.id,
         seatId: { $in: seatIds },
-        status: 'AVAILABLE' // Solo actualizar si están disponibles
+        $or: [
+          { status: 'AVAILABLE' },
+          { 'temporaryReservation.sessionId': sessionId }
+        ]
       },
-      { status }
+      updateQuery
     );
 
     if (result.modifiedCount === 0) {
@@ -91,7 +235,6 @@ export async function PATCH(
       );
     }
 
-    // Obtener asientos actualizados
     const updatedSeats = await Seat.find({
       eventId: params.id,
       seatId: { $in: seatIds }
@@ -107,93 +250,6 @@ export async function PATCH(
     console.error('Error updating seats:', error);
     return NextResponse.json(
       { error: 'Error al actualizar los asientos' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    await dbConnect();
-    const body = await req.json();
-    const { seatIds } = body;
-
-    if (!isValidObjectId(params.id)) {
-      return NextResponse.json(
-        { error: 'ID de evento inválido' },
-        { status: 400 }
-      );
-    }
-
-    if (!seatIds?.length) {
-      return NextResponse.json(
-        { error: 'Selecciona asientos válidos' },
-        { status: 400 }
-      );
-    }
-
-    // Verificar disponibilidad
-    const seats = await Seat.find({
-      eventId: params.id,
-      seatId: { $in: seatIds }
-    });
-
-    const unavailableSeats = seats.filter(seat => seat.status !== 'AVAILABLE');
-
-    if (unavailableSeats.length > 0) {
-      return NextResponse.json({
-        error: 'Algunos asientos no están disponibles',
-        unavailableSeats: unavailableSeats.map(seat => ({
-          seatId: seat.seatId,
-          status: seat.status,
-          type: seat.type
-        }))
-      }, { status: 409 });
-    }
-
-    // Reservar asientos
-    const result = await Seat.updateMany(
-      {
-        eventId: params.id,
-        seatId: { $in: seatIds },
-        status: 'AVAILABLE'
-      },
-      { status: 'RESERVED' }
-    );
-
-    // Programar liberación automática
-    setTimeout(async () => {
-      try {
-        await Seat.updateMany(
-          {
-            eventId: params.id,
-            seatId: { $in: seatIds },
-            status: 'RESERVED' // Solo liberar si siguen reservados
-          },
-          { status: 'AVAILABLE' }
-        );
-        console.log('Seats released:', seatIds);
-      } catch (error) {
-        console.error('Error releasing seats:', error);
-      }
-    }, 15 * 60 * 1000); // 15 minutos
-
-    return NextResponse.json({
-      success: true,
-      reservedCount: result.modifiedCount,
-      seats: await Seat.find({
-        eventId: params.id,
-        seatId: { $in: seatIds }
-      })
-    });
-
-  } catch (error) {
-    console.error('Error reserving seats:', error);
-    return NextResponse.json(
-      { error: 'Error al reservar los asientos' },
       { status: 500 }
     );
   }

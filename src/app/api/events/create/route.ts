@@ -8,6 +8,7 @@ import { authOptions } from '@/app/lib/auth';
 
 // Definir tipos para la estructura de seatingChart
 interface Section {
+  name: string;
   rowStart: number;
   rowEnd: number;
   columnStart: number;
@@ -27,23 +28,27 @@ async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart
   
   for (let row = 0; row < seatingChart.rows; row++) {
     for (let col = 0; col < seatingChart.columns; col++) {
-      const section = seatingChart.sections.find(
-        (s: Section) => 
-          row >= s.rowStart && 
-          row <= s.rowEnd && 
-          col >= s.columnStart && 
-          col <= s.columnEnd
+      const rowLetter = String.fromCharCode(65 + row);
+      const colNumber = (col + 1).toString().padStart(2, '0');
+      const seatId = `${rowLetter}${colNumber}`;
+
+      const section = seatingChart.sections.find(s => 
+        row >= s.rowStart && 
+        row <= s.rowEnd && 
+        col >= s.columnStart && 
+        col <= s.columnEnd
       );
 
       if (section) {
         seats.push({
           eventId,
+          seatId,
           row,
           column: col,
-          number: `${String.fromCharCode(65 + row)}${col + 1}`,
           status: 'AVAILABLE',
+          type: section.type,
           price: section.price,
-          type: section.type
+          section: section.name
         });
       }
     }

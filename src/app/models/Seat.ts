@@ -3,15 +3,19 @@ import mongoose, { Model } from 'mongoose';
 
 export interface ISeat {
   eventId: mongoose.Types.ObjectId;
+  seatId: string;      // Nuevo formato: 'A01', 'B02', etc.
   row: number;
   column: number;
-  number: string;
   status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
-  price: number;
-  seatId: string;
   type: 'REGULAR' | 'VIP' | 'DISABLED';
+  price: number;
+  section: string;     // Nombre de la sección
   ticketId?: mongoose.Types.ObjectId;
-  reservationExpires?: Date;
+  temporaryReservation?: {
+    sessionId: string;
+    expiresAt: Date;
+  };
+  lastReservationAttempt?: Date;
 }
 
 interface ISeatModel extends Model<ISeat> {
@@ -24,7 +28,11 @@ const SeatSchema = new mongoose.Schema({
     ref: 'Event',
     required: true
   },
-  number: {
+  seatId: {
+    type: String,
+    required: true
+  },
+  section: {
     type: String,
     required: true
   },
@@ -41,10 +49,6 @@ const SeatSchema = new mongoose.Schema({
     enum: ['AVAILABLE', 'OCCUPIED', 'RESERVED'],
     default: 'AVAILABLE'
   },
-  ticketId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Ticket'
-  },
   type: {
     type: String,
     enum: ['REGULAR', 'VIP', 'DISABLED'],
@@ -54,36 +58,47 @@ const SeatSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  reservationExpires: {
-    type: Date,
-    index: { expires: 0 } // TTL index para expiración automática
+  ticketId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Ticket'
   },
   temporaryReservation: {
-    sessionId: String,
-    expiresAt: Date
+    sessionId: {
+      type: String
+    },
+    expiresAt: {
+      type: Date,
+      index: { expires: 900 } // 15 minutos
+    }
   },
-  lastReservationAttempt: Date
+  lastReservationAttempt: {
+    type: Date
+  }
 }, {
   timestamps: true
 });
 
-
-// Índices para optimización
-SeatSchema.index({ eventId: 1, number: 1 }, { unique: true });
+// Índices optimizados
+SeatSchema.index({ eventId: 1, seatId: 1 }, { unique: true });
 SeatSchema.index({ eventId: 1, status: 1 });
 SeatSchema.index({ ticketId: 1 });
-SeatSchema.index({ reservationExpires: 1 }, { expireAfterSeconds: 900 }); // 15 minutos
+SeatSchema.index({ 'temporaryReservation.expiresAt': 1 });
 
+// Método para liberar asientos expirados
 SeatSchema.statics.releaseExpiredSeats = async function(eventId: string) {
   const result = await this.updateMany(
     {
       eventId,
       status: 'RESERVED',
-      reservationExpires: { $lt: new Date() }
+      'temporaryReservation.expiresAt': { $lt: new Date() }
     },
     {
       $set: { status: 'AVAILABLE' },
-      $unset: { ticketId: 1, reservationExpires: 1 }
+      $unset: { 
+        ticketId: 1,
+        temporaryReservation: 1,
+        lastReservationAttempt: 1
+      }
     }
   );
 
@@ -96,7 +111,17 @@ SeatSchema.statics.releaseExpiredSeats = async function(eventId: string) {
   return result;
 };
 
-// Exportar con el tipo correcto
+// Middleware pre-save para generar seatId si no existe
+SeatSchema.pre('save', function(next) {
+  if (!this.seatId) {
+    const rowLetter = String.fromCharCode(65 + this.row);
+    const colNumber = (this.column + 1).toString().padStart(2, '0');
+    this.seatId = `${rowLetter}${colNumber}`;
+  }
+  next();
+});
+
+// Exportar modelo
 const Seat = (mongoose.models.Seat || mongoose.model<ISeat, ISeatModel>('Seat', SeatSchema)) as ISeatModel;
 
 export { Seat };

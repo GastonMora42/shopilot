@@ -22,20 +22,16 @@ export async function POST(req: Request) {
   let session = null;
 
   try {
-    // Parsear el cuerpo de la notificación
     const body: { data: { id: string } } = await req.json();
     console.log('Webhook recibido:', body);
 
-    // Solo procesar notificaciones de tipo 'payment'
     if (!body.data?.id) {
       console.log('Webhook ignorado - falta ID de pago');
       return NextResponse.json({ message: 'Webhook ignorado' }, { status: 200 });
     }
 
-    // Obtener los detalles del pago
     const paymentInfo = await payment.get({ id: body.data.id }) as unknown as PaymentInfo;
 
-    // Validar información necesaria del pago
     if (!paymentInfo || !paymentInfo.id || !paymentInfo.status || !paymentInfo.external_reference) {
       console.error('Información de pago incompleta:', paymentInfo);
       return NextResponse.json({ error: 'Información de pago incompleta' }, { status: 200 });
@@ -51,20 +47,30 @@ export async function POST(req: Request) {
     session = await mongoose.startSession();
     session.startTransaction();
 
-    // Si el pago está aprobado
+    // Buscar el ticket independientemente del estado del pago
+    const ticket = await Ticket.findById(paymentInfo.external_reference)
+      .session(session)
+      .populate('eventId');
+
+    if (!ticket) {
+      if (session) await session.abortTransaction();
+      return NextResponse.json({ message: 'Ticket no encontrado' }, { status: 200 });
+    }
+
+    console.log('Ticket encontrado:', {
+      ticketId: ticket._id,
+      currentStatus: ticket.status,
+      seats: ticket.seats
+    });
+
+    // Manejar pago aprobado
     if (paymentInfo.status === "approved") {
-      // Buscar y actualizar el ticket
-      const ticket = await Ticket.findById(paymentInfo.external_reference).session(session);
-      
-      if (!ticket || ticket.status !== 'PENDING') {
-        console.log('Ticket no encontrado o no pendiente:', {
-          ticketId: paymentInfo.external_reference,
-          status: ticket?.status
-        });
-        if (session) {
-          await session.abortTransaction();
-        }
-        return NextResponse.json({ message: 'Ticket no encontrado o ya procesado' }, { status: 200 });
+      if (ticket.status !== 'PENDING') {
+        await session.abortTransaction();
+        return NextResponse.json({ 
+          message: 'Ticket ya procesado', 
+          currentStatus: ticket.status 
+        }, { status: 200 });
       }
 
       // Actualizar ticket
@@ -72,21 +78,20 @@ export async function POST(req: Request) {
       ticket.paymentId = String(paymentInfo.id);
       await ticket.save({ session });
 
-      // Actualizar asientos
+      // Marcar asientos como ocupados
       const seatResult = await Seat.updateMany(
         {
           eventId: ticket.eventId,
-          number: { $in: ticket.seats },
-          status: 'RESERVED',
-          ticketId: ticket._id
+          seatId: { $in: ticket.seats },
+          status: 'RESERVED'
         },
         {
           $set: { 
-            status: 'OCCUPIED'
+            status: 'OCCUPIED',
+            ticketId: ticket._id
           },
           $unset: {
-            temporaryReservation: 1,
-            reservationExpires: 1
+            temporaryReservation: 1
           }
         },
         { session }
@@ -94,7 +99,10 @@ export async function POST(req: Request) {
 
       if (seatResult.modifiedCount !== ticket.seats.length) {
         await session.abortTransaction();
-        console.error('No se pudieron actualizar todos los asientos');
+        console.error('Error actualizando asientos:', {
+          expected: ticket.seats.length,
+          updated: seatResult.modifiedCount
+        });
         return NextResponse.json({ 
           error: 'Error en la actualización de asientos' 
         }, { status: 200 });
@@ -102,7 +110,7 @@ export async function POST(req: Request) {
 
       await session.commitTransaction();
 
-      // Enviar email de confirmación (fuera de la transacción)
+      // Enviar email fuera de la transacción
       try {
         await sendTicketEmail({
           ticket: {
@@ -118,105 +126,92 @@ export async function POST(req: Request) {
       } catch (emailError) {
         console.error('Error enviando email:', emailError);
       }
-
-      return NextResponse.json({
-        success: true,
-        message: 'Webhook procesado exitosamente',
-        data: {
-          ticketId: ticket._id,
-          paymentId: ticket.paymentId,
-          status: paymentInfo.status
-        }
-      }, { status: 200 });
     }
-    // Si el pago es rechazado o cancelado
-    else if (paymentInfo.status === 'rejected' || paymentInfo.status === 'cancelled') {
-      const ticket = await Ticket.findById(paymentInfo.external_reference).session(session);
-      
-      if (!ticket || ticket.status !== 'PENDING') {
-        console.log('Ticket no encontrado o ya procesado para pago fallido:', {
-          ticketId: paymentInfo.external_reference,
-          status: ticket?.status
-        });
-        if (session) {
-          await session.abortTransaction();
-        }
-        return NextResponse.json({ message: 'Ticket no encontrado o ya procesado' }, { status: 200 });
+    // Manejar pago rechazado o cancelado
+    else if (['rejected', 'cancelled', 'refunded'].includes(paymentInfo.status)) {
+      if (ticket.status !== 'PENDING') {
+        await session.abortTransaction();
+        return NextResponse.json({ 
+          message: 'Ticket ya procesado', 
+          currentStatus: ticket.status 
+        }, { status: 200 });
       }
 
-      // Actualizar el ticket
+      // Actualizar ticket
       ticket.status = 'CANCELLED';
       ticket.paymentId = String(paymentInfo.id);
       await ticket.save({ session });
 
-      // Liberar asientos
+      // Liberar asientos reservados
       const seatResult = await Seat.updateMany(
         {
           eventId: ticket.eventId,
-          number: { $in: ticket.seats },
-          status: 'RESERVED',
-          ticketId: ticket._id
+          seatId: { $in: ticket.seats },
+          status: 'RESERVED'
         },
         {
-          $set: {
-            status: 'AVAILABLE'
-          },
+          $set: { status: 'AVAILABLE' },
           $unset: {
             ticketId: 1,
-            temporaryReservation: 1,
-            reservationExpires: 1
+            temporaryReservation: 1
           }
         },
         { session }
       );
 
-      if (seatResult.modifiedCount !== ticket.seats.length) {
-        await session.abortTransaction();
-        console.error('No se pudieron liberar todos los asientos');
-        return NextResponse.json({ 
-          error: 'Error en la liberación de asientos' 
-        }, { status: 200 });
-      }
-
-      await session.commitTransaction();
-
-      console.log('Asientos liberados por pago fallido:', {
+      console.log('Resultado de liberación de asientos:', {
         ticketId: ticket._id,
-        paymentId: String(paymentInfo.id),
         seats: ticket.seats,
-        seatsUpdated: seatResult.modifiedCount
+        updated: seatResult.modifiedCount
       });
 
-      return NextResponse.json({
-        success: true,
-        message: 'Webhook procesado exitosamente',
-        data: {
-          ticketId: ticket._id,
-          paymentId: String(paymentInfo.id),
-          status: paymentInfo.status
-        }
-      }, { status: 200 });
+      await session.commitTransaction();
+    }
+    // Estados pendientes o en proceso
+    else if (['pending', 'in_process', 'authorized'].includes(paymentInfo.status)) {
+      // Mantener los asientos como RESERVED
+      console.log('Pago pendiente, manteniendo reserva:', {
+        ticketId: ticket._id,
+        paymentStatus: paymentInfo.status
+      });
+      
+      // Extender el tiempo de reserva si es necesario
+      await Seat.updateMany(
+        {
+          eventId: ticket.eventId,
+          seatId: { $in: ticket.seats },
+          status: 'RESERVED'
+        },
+        {
+          $set: {
+            'temporaryReservation.expiresAt': new Date(Date.now() + 15 * 60 * 1000)
+          }
+        },
+        { session }
+      );
+
+      await session.commitTransaction();
     }
 
-    // Si el estado de pago no es ni aprobado ni rechazado/cancelado, ignorar
-    console.log('Webhook ignorado, estado de pago no válido:', paymentInfo.status);
-    if (session) {
-      await session.abortTransaction();
-    }
-    return NextResponse.json({ message: 'Webhook ignorado' }, { status: 200 });
+    return NextResponse.json({
+      success: true,
+      message: 'Webhook procesado exitosamente',
+      data: {
+        ticketId: ticket._id,
+        paymentId: String(paymentInfo.id),
+        status: paymentInfo.status,
+        ticketStatus: ticket.status
+      }
+    }, { status: 200 });
 
   } catch (error) {
-    if (session) {
-      await session.abortTransaction();
-    }
+    if (session) await session.abortTransaction();
     console.error('Error procesando webhook:', error);
     return NextResponse.json(
       { error: 'Error al procesar el webhook' },
       { status: 200 }
     );
   } finally {
-    if (session) {
-      await session.endSession();
-    }
+    if (session) await session.endSession();
   }
 }

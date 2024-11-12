@@ -21,6 +21,19 @@ interface SeatProps {
   onClick: (seatId: string, type: 'REGULAR' | 'VIP' | 'DISABLED') => void; // Corregido aquí
 }
 
+// components/SeatSelector.tsx
+interface SeatSelectorProps {
+  seatingChart: IEvent['seatingChart'];
+  selectedSeats: string[];
+  occupiedSeats: Array<{
+    seatId: string;
+    status: SeatStatus;
+  }>;
+  onSeatSelect: (seats: string[]) => Promise<void>;
+  reservationTimeout?: number | null; // Agregado como opcional
+  maxSeats?: number;
+}
+
 const Seat = ({
   seatId,
   type,

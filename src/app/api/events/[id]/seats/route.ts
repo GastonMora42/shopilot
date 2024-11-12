@@ -61,6 +61,8 @@ export async function POST(
     await dbConnect();
     const { seatIds, sessionId } = await req.json();
 
+    console.log('Attempting to reserve seats:', { seatIds, sessionId });
+
     if (!isValidObjectId(params.id)) {
       return NextResponse.json(
         { error: 'ID de evento inválido' },
@@ -100,7 +102,7 @@ export async function POST(
     }
 
     // Configurar reserva temporal
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     // Reservar asientos
     const result = await Seat.updateMany(
@@ -121,45 +123,16 @@ export async function POST(
           temporaryReservation: {
             sessionId,
             expiresAt
-          },
-          lastReservationAttempt: new Date()
+          }
         }
       }
     );
 
-    if (result.modifiedCount !== seatIds.length) {
-      // Revertir cambios si no se pudieron reservar todos los asientos
-      await Seat.updateMany(
-        {
-          eventId: params.id,
-          seatId: { $in: seatIds },
-          'temporaryReservation.sessionId': sessionId
-        },
-        {
-          $set: { status: 'AVAILABLE' },
-          $unset: { 
-            temporaryReservation: 1,
-            lastReservationAttempt: 1
-          }
-        }
-      );
-
-      return NextResponse.json({
-        error: 'No se pudieron reservar todos los asientos seleccionados',
-        unavailableSeats: seatIds
-      }, { status: 409 });
-    }
-
-    // Obtener asientos actualizados
-    const updatedSeats = await Seat.find({
-      eventId: params.id,
-      seatId: { $in: seatIds }
-    });
+    console.log('Reserved seats:', result);
 
     return NextResponse.json({
       success: true,
       reservedCount: result.modifiedCount,
-      seats: updatedSeats,
       expiresAt: expiresAt.toISOString()
     });
 

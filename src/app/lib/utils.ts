@@ -192,3 +192,16 @@ export function getTimeRemaining(endDate: Date | string): {
     seconds
   };
 }
+
+export const generateSeatId = (rowIndex: number, colIndex: number): string => {
+  const rowLetter = String.fromCharCode(65 + rowIndex);
+  const colNumber = colIndex + 1;
+  return `${rowLetter}${colNumber}`;
+};
+
+export const parseSeatId = (seatId: string): { row: number, column: number } => {
+  const rowLetter = seatId.charAt(0);
+  const rowIndex = rowLetter.charCodeAt(0) - 65;
+  const colIndex = parseInt(seatId.slice(1)) - 1;
+  return { row: rowIndex, column: colIndex };
+};

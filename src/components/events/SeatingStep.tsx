@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "../ui/Button";
+import { cn } from "@/app/lib/utils";
 
 interface SeatingStepData {
   rows: number;
@@ -8,10 +9,10 @@ interface SeatingStepData {
     name: string;
     type: 'REGULAR' | 'VIP' | 'DISABLED';
     price: number;
-    rowStart: number;     // Comenzará desde 1 en lugar de 0
-    rowEnd: number;       // Terminará en el número real de fila
-    columnStart: number;  // Comenzará desde 1 en lugar de 0
-    columnEnd: number;    // Terminará en el número real de columna
+    rowStart: number;
+    rowEnd: number;
+    columnStart: number;
+    columnEnd: number;
   }>;
 }
 
@@ -20,15 +21,19 @@ interface SeatingStepProps {
   onChange: (data: SeatingStepData) => void;
 }
 
+const generateSeatId = (rowIndex: number, colIndex: number): string => {
+  const rowLetter = String.fromCharCode(65 + rowIndex); // Convierte 0->A, 1->B, etc.
+  const colNumber = colIndex + 1; // Los números de columna empiezan en 1
+  return `${rowLetter}${colNumber}`;
+};
+
 export function SeatingStep({ data, onChange }: SeatingStepProps) {
   const [showPreview, setShowPreview] = useState(true);
-
 
   const handleDimensionChange = (field: 'rows' | 'columns', value: number) => {
     onChange({
       ...data,
       [field]: value,
-      // Ajustar secciones si las dimensiones cambian
       sections: data.sections.map(section => ({
         ...section,
         rowEnd: field === 'rows' ? Math.min(section.rowEnd, value - 1) : section.rowEnd,
@@ -37,27 +42,23 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
     });
   };
 
-  const generateSeatId = (rowIndex: number, colIndex: number): string => {
-    const row = rowIndex + 1;
-    const col = colIndex + 1;
-    return `${row}-${col}`;
-  };
-
   const getSectionInfo = (rowIndex: number, colIndex: number) => {
-    const section = data.sections.find(
-      s => 
-        rowIndex >= s.rowStart &&
-        rowIndex <= s.rowEnd &&
-        colIndex >= s.columnStart &&
-        colIndex <= s.columnEnd
+    const section = data.sections.find(s => 
+      rowIndex >= s.rowStart &&
+      rowIndex <= s.rowEnd &&
+      colIndex >= s.columnStart &&
+      colIndex <= s.columnEnd
     );
 
-    return section ? {
-      sectionName: section.name,
-      sectionType: section.type,
-      sectionPrice: section.price,
-      seatId: generateSeatId(rowIndex, colIndex)
-    } : null;
+    if (section) {
+      return {
+        sectionName: section.name,
+        sectionType: section.type,
+        sectionPrice: section.price,
+        seatId: generateSeatId(rowIndex, colIndex)
+      };
+    }
+    return null;
   };
 
   return (
@@ -70,7 +71,7 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
           <input
             type="number"
             min="1"
-            max="50"
+            max="26" // Limitado a letras del alfabeto
             className="w-full p-2 border rounded"
             value={data.rows}
             onChange={e => handleDimensionChange('rows', parseInt(e.target.value))}
@@ -106,9 +107,9 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
         {showPreview && (
           <div className="bg-gray-50 p-4 rounded-lg overflow-auto">
             <div className="flex mb-2">
-              <div className="w-10"></div> {/* Espacio para números de columna */}
+              <div className="w-10"></div>
               {Array.from({ length: data.columns }).map((_, colIndex) => (
-                <div key={colIndex} className="w-6 text-center text-xs text-gray-500">
+                <div key={colIndex} className="w-8 text-center text-xs text-gray-500">
                   {colIndex + 1}
                 </div>
               ))}
@@ -125,16 +126,18 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
                       return (
                         <div
                           key={`${rowIndex}-${colIndex}`}
-                          className={`
-                            w-6 h-6 rounded-sm border
-                            ${getSeatColor(sectionInfo?.sectionType)}
-                            transition-all duration-200
-                            hover:scale-110
-                          `}
+                          className={cn(
+                            "w-8 h-8 rounded-sm border flex items-center justify-center",
+                            "text-xs font-medium",
+                            getSeatColor(sectionInfo?.sectionType),
+                            "transition-all duration-200 hover:scale-110"
+                          )}
                           title={sectionInfo ? 
                             `${sectionInfo.seatId} - ${sectionInfo.sectionName} - $${sectionInfo.sectionPrice}` 
                             : 'No asignado'}
-                        />
+                        >
+                          {sectionInfo?.seatId}
+                        </div>
                       );
                     })}
                   </div>

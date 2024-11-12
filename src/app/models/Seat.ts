@@ -3,18 +3,18 @@ import mongoose, { Model } from 'mongoose';
 
 export interface ISeat {
   eventId: mongoose.Types.ObjectId;
-  seatId: string;      // Nuevo formato: 'A01', 'B02', etc.
-  row: number;
-  column: number;
+  seatId: string;      // Formato: 'A1', 'B2', etc.
+  row: number;         // 0 para A, 1 para B, etc.
+  column: number;      // 0 para 1, 1 para 2, etc.
   status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
   type: 'REGULAR' | 'VIP' | 'DISABLED';
   price: number;
-  section: string;     // Nombre de la sección
+  section: string;
   ticketId?: mongoose.Types.ObjectId;
   temporaryReservation?: {
     sessionId: string;
     expiresAt: Date;
-  };
+  }
   lastReservationAttempt?: Date;
 }
 

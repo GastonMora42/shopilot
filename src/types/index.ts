@@ -137,3 +137,15 @@ export interface MercadoPagoWebhookData {
     external_reference: string;
   };
 }
+
+export interface SeatReservation {
+  sessionId: string;
+  expiresAt: Date;
+}
+
+export interface ReservationResponse {
+  success: boolean;
+  expiresAt: string;
+  error?: string;
+  unavailableSeats?: string[];
+}

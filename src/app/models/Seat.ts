@@ -57,10 +57,16 @@ const SeatSchema = new mongoose.Schema({
   reservationExpires: {
     type: Date,
     index: { expires: 0 } // TTL index para expiración automática
-  }
+  },
+  temporaryReservation: {
+    sessionId: String,
+    expiresAt: Date
+  },
+  lastReservationAttempt: Date
 }, {
   timestamps: true
 });
+
 
 // Índices para optimización
 SeatSchema.index({ eventId: 1, number: 1 }, { unique: true });

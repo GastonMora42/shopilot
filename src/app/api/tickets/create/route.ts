@@ -1,4 +1,4 @@
-// app/api/tickets/route.ts
+// app/api/tickets/create/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Event } from '@/app/models/Event';

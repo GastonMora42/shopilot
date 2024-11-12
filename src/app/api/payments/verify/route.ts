@@ -1,40 +1,67 @@
-// app/api/payments/verify/route.ts
-import { NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/mongodb';
-import { Ticket } from '@/app/models/Ticket';
+import { Seat } from "@/app/models/Seat";
+import { Ticket } from "@/app/models/Ticket";
+import mongoose from "mongoose";
+import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { ticketId, paymentId } = await req.json();
-    
-    console.log('Verifying payment:', { ticketId, paymentId });
 
-    if (!ticketId || !paymentId) {
-      return NextResponse.json(
-        { error: 'Datos incompletos' },
-        { status: 400 }
-      );
-    }
-
-    await dbConnect();
-
-    // Buscar y actualizar el ticket
-    const ticket = await Ticket.findByIdAndUpdate(
-      ticketId,
+    // Verificar y actualizar ticket
+    const ticket = await Ticket.findOneAndUpdate(
+      {
+        _id: ticketId,
+        status: 'PENDING'
+      },
       {
         status: 'PAID',
         paymentId
       },
-      { new: true, populate: 'eventId' }
+      { 
+        new: true, 
+        session,
+        populate: 'eventId'
+      }
     );
 
     if (!ticket) {
+      await session.abortTransaction();
       return NextResponse.json(
-        { error: 'Ticket no encontrado' },
+        { error: 'Ticket no encontrado o ya procesado' },
         { status: 404 }
       );
     }
 
+    // Confirmar asientos
+    const seatResult = await Seat.updateMany(
+      {
+        eventId: ticket.eventId,
+        number: { $in: ticket.seats },
+        status: 'RESERVED',
+        ticketId: ticket._id
+      },
+      {
+        $set: { status: 'OCCUPIED' },
+        $unset: {
+          temporaryReservation: 1,
+          reservationExpires: 1
+        }
+      },
+      { session }
+    );
+
+    if (seatResult.modifiedCount !== ticket.seats.length) {
+      await session.abortTransaction();
+      return NextResponse.json(
+        { error: 'Error actualizando asientos' },
+        { status: 500 }
+      );
+    }
+
+    await session.commitTransaction();
     return NextResponse.json({
       success: true,
       ticket: {

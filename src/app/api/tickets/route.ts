@@ -33,13 +33,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // Calcular precio total
+    // Calcular precio total (modificado para trabajar con formato numérico)
     const total = seats.reduce((sum: number, seat: string) => {
-      const row = seat.charAt(0);
-      const rowIndex = row.charCodeAt(0) - 65;
+      const [row, col] = seat.split('-');
+      const rowNumber = parseInt(row);
       
       const section = event.seatingChart.sections.find((s: { rowStart: number; rowEnd: number; }) => 
-        rowIndex >= s.rowStart && rowIndex <= s.rowEnd
+        rowNumber >= s.rowStart && rowNumber <= s.rowEnd
       );
 
       if (!section) {
@@ -48,59 +48,55 @@ export async function POST(req: Request) {
 
       return sum + section.price;
     }, 0);
- 
-        session = await mongoose.startSession();
-        session.startTransaction();
-    
-        // Verificar que los asientos estén disponibles y reservados para esta sesión
-        const seatsStatus = await Seat.find({
-          eventId,
-          number: { $in: seats },
-          $or: [
-            { status: { $ne: 'AVAILABLE' } },
-            {
-              status: 'RESERVED',
-              'temporaryReservation.sessionId': { $ne: sessionId }
-            }
-          ]
-        }).session(session);
-    
-        if (seatsStatus.length > 0) {
-          throw new Error('Algunos asientos no están disponibles o no están reservados para esta sesión');
+
+    session = await mongoose.startSession();
+    session.startTransaction();
+
+    // Verificar disponibilidad usando seatId en lugar de number
+    const seatsStatus = await Seat.find({
+      eventId,
+      seatId: { $in: seats }, // Cambiado de number a seatId
+      $or: [
+        { status: { $ne: 'AVAILABLE' } },
+        {
+          status: 'RESERVED',
+          'temporaryReservation.sessionId': { $ne: sessionId }
         }
-    
-        // Crear ticket
-        const [newTicket] = await Ticket.create([{
-          eventId,
-          seats,
-          qrCode: await generateQRCode(),
-          status: 'PENDING',
-          buyerInfo: {
-            ...buyerInfo,
-            email: buyerInfo.email.toLowerCase().trim()
-          },
-          price: total
-        }], { session });
-    
-        if (!newTicket) {
-          throw new Error('Error al crear el ticket');
+      ]
+    }).session(session);
+
+    if (seatsStatus.length > 0) {
+      throw new Error('Algunos asientos no están disponibles o no están reservados para esta sesión');
+    }
+
+    // Crear ticket
+    const [newTicket] = await Ticket.create([{
+      eventId,
+      seats, // Estos son los seatIds en formato numérico
+      qrCode: await generateQRCode(),
+      status: 'PENDING',
+      buyerInfo: {
+        ...buyerInfo,
+        email: buyerInfo.email.toLowerCase().trim()
+      },
+      price: total
+    }], { session });
+
+    // Actualizar estado de asientos
+    const seatUpdateResult = await Seat.updateMany(
+      {
+        eventId,
+        seatId: { $in: seats }, // Cambiado de number a seatId
+        'temporaryReservation.sessionId': sessionId
+      },
+      {
+        $set: {
+          ticketId: newTicket._id,
+          status: 'RESERVED'
         }
-    
-        // Actualizar estado de asientos
-        const seatUpdateResult = await Seat.updateMany(
-          {
-            eventId,
-            number: { $in: seats },
-            'temporaryReservation.sessionId': sessionId
-          },
-          {
-            $set: {
-              ticketId: newTicket._id,
-              status: 'RESERVED'
-            }
-          },
-          { session }
-        );
+      },
+      { session }
+    );
     
         if (seatUpdateResult.modifiedCount !== seats.length) {
           throw new Error('No se pudieron actualizar todos los asientos');

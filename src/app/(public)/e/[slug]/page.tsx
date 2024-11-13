@@ -56,6 +56,11 @@ export default function PublicEventPage() {
     }
   }, [event?._id]);
 
+  useEffect(() => {
+    console.log('Current selected seats:', selectedSeats);
+    console.log('Current occupied seats:', occupiedSeats);
+  }, [selectedSeats, occupiedSeats]);
+
   const showToast = (message: string) => {
     setNotificationMessage(message);
     setShowNotification(true);
@@ -79,21 +84,24 @@ export default function PublicEventPage() {
 
   const fetchOccupiedSeats = async () => {
     if (!event?._id) return;
-
+  
     try {
       const response = await fetch(`/api/events/${event._id}/seats`);
       if (!response.ok) throw new Error('Error al obtener asientos');
       
       const data = await response.json();
+      console.log('Seats data:', data); // Para debugging
       
       if (data.occupiedSeats) {
         const formattedSeats = data.occupiedSeats.map((seat: any) => ({
-          seatId: seat.seatId,
+          seatId: seat.seatId, // Ya viene en formato "1-1"
           status: seat.status
         }));
+        
+        console.log('Formatted occupied seats:', formattedSeats);
         setOccupiedSeats(formattedSeats);
-
-        // Actualizar asientos seleccionados si alguno ya no está disponible
+  
+        // Actualizar selección si algún asiento ya no está disponible
         setSelectedSeats(prev => 
           prev.filter(seatId => 
             !formattedSeats.some(
@@ -110,48 +118,36 @@ export default function PublicEventPage() {
     }
   };
 
-  const calculateTotal = () => {
-    if (!event) return 0;
-    
-    return selectedSeats.reduce((total, seatId) => {
-      const [row] = seatId.split('');
-      const rowIndex = row.charCodeAt(0) - 65;
-      
-      const section = event.seatingChart.sections.find(section =>
-        rowIndex >= section.rowStart &&
-        rowIndex <= section.rowEnd
-      );
-      
-      return total + (section?.price || 0);
-    }, 0);
-  };
 
   const handleSeatSelection = async (newSelectedSeats: string[]) => {
     try {
+      console.log('Attempting to select seats:', newSelectedSeats); // Para debugging
+  
       if (!sessionId || !event?._id) {
         showToast('Error de sesión. Por favor, recarga la página.');
         return;
       }
-
-      const response = await fetch(`/api/events/${event._id}/seats/reserve`, {
+  
+      const response = await fetch(`/api/events/${event._id}/seats`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          seatIds: newSelectedSeats,
+          seatIds: newSelectedSeats, // Estos ya vienen en formato "1-1"
           sessionId 
         })
       });
-
+  
       const data = await response.json();
+      console.log('API Response:', data); // Para debugging
       
       if (!response.ok) {
         if (data.unavailableSeats) {
           setOccupiedSeats(prev => [
             ...prev,
-            ...data.unavailableSeats.map((seatId: string) => ({
-              seatId,
+            ...data.unavailableSeats.map((seat: any) => ({
+              seatId: seat.seatId,
               status: 'OCCUPIED'
             }))
           ]);
@@ -161,26 +157,19 @@ export default function PublicEventPage() {
         }
         throw new Error(data.error || 'Error al reservar asientos');
       }
-
+  
       setSelectedSeats(newSelectedSeats);
-      setReservationTimeout(data.expiresAt);
-
-      // Programar actualización antes de expiración
-      const timeoutMs = new Date(data.expiresAt).getTime() - Date.now();
-      if (timeoutMs > 0) {
-        setTimeout(() => {
-          fetchOccupiedSeats();
-          if (selectedSeats.length > 0) {
-            showToast('Tu reserva está por expirar');
-          }
-        }, timeoutMs - 60000); // 1 minuto antes de expirar
+      if (data.expiresAt) {
+        setReservationTimeout(new Date(data.expiresAt).getTime());
       }
+  
     } catch (error) {
       console.error('Error selecting seats:', error);
       showToast('Error al seleccionar asientos. Por favor, intenta de nuevo.');
       await fetchOccupiedSeats();
     }
   };
+
   const handlePurchase = async (buyerInfo: {
     name: string;
     email: string;
@@ -267,6 +256,34 @@ export default function PublicEventPage() {
     } catch (error) {
       console.error('Error sharing:', error);
     }
+  };
+
+  const calculateTotal = () => {
+    if (!event) return 0;
+    
+    return selectedSeats.reduce((total, seatId) => {
+      const [rowNum] = seatId.split('-'); // Ejemplo: "1-1" nos da ["1", "1"]
+      const rowNumber = parseInt(rowNum, 10); // Convertimos a número
+      
+      const section = event.seatingChart.sections.find(section => {
+        // Comprobamos si la fila está dentro del rango de la sección
+        return rowNumber >= section.rowStart && rowNumber <= section.rowEnd;
+      });
+  
+      if (!section) {
+        console.warn(`No se encontró sección para el asiento ${seatId}`);
+        return total;
+      }
+  
+      console.log('Calculando precio para:', {
+        seatId,
+        rowNumber,
+        sectionName: section.name,
+        price: section.price
+      });
+  
+      return total + section.price;
+    }, 0);
   };
 
   if (loading) {
@@ -427,14 +444,25 @@ export default function PublicEventPage() {
                   <CardTitle>Resumen de compra</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex justify-between">
-                    <span>Asientos seleccionados:</span>
-                    <span>{selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Ninguno'}</span>
-                  </div>
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>Total:</span>
-                    <span>${calculateTotal()}</span>
-                  </div>
+                <div className="flex justify-between text-lg font-bold">
+  <span>Total:</span>
+  <span>
+    ${calculateTotal().toLocaleString('es-ES')}
+  </span>
+</div>
+                <div className="flex justify-between">
+  <span>Asientos seleccionados:</span>
+  <span>
+    {selectedSeats.length > 0 
+      ? selectedSeats.map(seatId => {
+          const [row, col] = seatId.split('-');
+          const displayId = `${String.fromCharCode(64 + parseInt(row))}${col}`;
+          return displayId;
+        }).join(', ')
+      : 'Ninguno'
+    }
+  </span>
+</div>
 
                   {showBuyerForm ? (
                     <BuyerForm

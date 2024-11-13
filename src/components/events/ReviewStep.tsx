@@ -64,10 +64,6 @@ export function ReviewStep({ data, onSubmit }: ReviewStepProps) {
           ))}
         </div>
       </div>
-
-      <button onClick={onSubmit} className="mt-4 bg-blue-500 text-white p-2 rounded">
-        Confirmar Pedido
-      </button>
     </div>
   );
 }

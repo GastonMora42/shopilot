@@ -36,9 +36,9 @@ export default function NewEventPage() {
           name: 'Regular',
           type: 'REGULAR' as const,
           price: 1000,
-          rowStart: 0,
+          rowStart: 1,
           rowEnd: 7,
-          columnStart: 0,
+          columnStart: 1,
           columnEnd: 10
         },
         {
@@ -47,7 +47,7 @@ export default function NewEventPage() {
           price: 2000,
           rowStart: 8,
           rowEnd: 10,
-          columnStart: 0,
+          columnStart: 1,
           columnEnd: 10
         }
       ]
@@ -67,26 +67,45 @@ export default function NewEventPage() {
   const handleSeatingChange = (seating: unknown) => {
     if (typeof seating === "object" && seating !== null && "rows" in seating && "columns" in seating) {
       const validSeating = seating as Seating;
-      setEventData(prev => ({
-        ...prev,
-        seatingChart: {
-          ...prev.seatingChart,
-          rows: validSeating.rows,
-          columns: validSeating.columns
-        }
-      }));
+      setEventData(prev => {
+        // Ajustar las secciones existentes si es necesario
+        const adjustedSections = prev.seatingChart.sections.map(section => ({
+          ...section,
+          rowEnd: Math.min(section.rowEnd, validSeating.rows),
+          columnEnd: Math.min(section.columnEnd, validSeating.columns)
+        }));
+  
+        return {
+          ...prev,
+          seatingChart: {
+            ...prev.seatingChart,
+            rows: validSeating.rows,
+            columns: validSeating.columns,
+            sections: adjustedSections
+          }
+        };
+      });
     } else {
       console.error("Invalid seating format");
     }
   };
-
+  
   const handleSectionsChange = (sections: unknown) => {
     if (Array.isArray(sections)) {
+      // Validar que todas las secciones tengan el formato correcto
+      const validSections = sections.map(section => ({
+        ...section,
+        rowStart: Math.max(1, section.rowStart),
+        columnStart: Math.max(1, section.columnStart),
+        rowEnd: Math.min(section.rowEnd, eventData.seatingChart.rows),
+        columnEnd: Math.min(section.columnEnd, eventData.seatingChart.columns)
+      }));
+  
       setEventData(prev => ({
         ...prev,
         seatingChart: {
           ...prev.seatingChart,
-          sections,
+          sections: validSections,
         },
       }));
     } else {
@@ -103,7 +122,18 @@ export default function NewEventPage() {
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
-
+  
+      // Validar secciones antes de enviar
+      const invalidSections = eventData.seatingChart.sections.filter(section => 
+        section.rowStart < 1 || 
+        section.columnStart < 1 ||
+        section.rowEnd > eventData.seatingChart.rows ||
+        section.columnEnd > eventData.seatingChart.columns
+      );
+  
+      if (invalidSections.length > 0) {
+        throw new Error('Hay secciones con límites inválidos');
+      }
       // Otros pasos de envío del formulario
       if (imageFile) {
         const formData = new FormData();
@@ -146,7 +176,7 @@ export default function NewEventPage() {
       router.push(`/events/${eventCreationData._id}`);
     } catch (error) {
       console.error('Error:', error);
-      alert(error || 'Ocurrió un error al crear el evento');
+      alert(error instanceof Error ? error.message : 'Ocurrió un error al crear el evento');
     } finally {
       setIsSubmitting(false);
     }
@@ -190,6 +220,20 @@ export default function NewEventPage() {
         return false;
     }
   };
+
+  const invalidSections = eventData.seatingChart.sections.filter(section => 
+    section.rowStart < 1 || 
+    section.columnStart < 1 ||
+    section.rowEnd > eventData.seatingChart.rows ||
+    section.columnEnd > eventData.seatingChart.columns
+  );
+
+  if (invalidSections.length > 0) {
+    return { 
+      isValid: false, 
+      message: 'Hay secciones con límites inválidos' 
+    };
+  }
 
   const currentStep = steps[step];
 

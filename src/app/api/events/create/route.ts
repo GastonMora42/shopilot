@@ -28,29 +28,27 @@ async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart
   const seats = [];
   
   // Validar límites
-  if (seatingChart.rows > 26) { // Límite de A-Z
+  if (seatingChart.rows > 26) {
     throw new Error('Número de filas excede el límite (máximo 26)');
   }
 
-  for (let row = 0; row < seatingChart.rows; row++) {
-    for (let col = 0; col < seatingChart.columns; col++) {
+  for (let rowIndex = 1; rowIndex <= seatingChart.rows; rowIndex++) {
+    for (let colIndex = 1; colIndex <= seatingChart.columns; colIndex++) {
       const section = seatingChart.sections.find(s => 
-        row >= s.rowStart && 
-        row <= s.rowEnd && 
-        col >= s.columnStart && 
-        col <= s.columnEnd
+        rowIndex >= s.rowStart && 
+        rowIndex <= s.rowEnd && 
+        colIndex >= s.columnStart && 
+        colIndex <= s.columnEnd
       );
 
       if (section) {
-        const rowNumber = row + 1;
-        const colNumber = col + 1;
-        const seatId = `${rowNumber}-${colNumber}`; // Formato: "1-1"
+        const seatId = `${rowIndex}-${colIndex}`;
 
         seats.push({
           eventId,
           seatId,
-          row: rowNumber,
-          column: colNumber,
+          row: rowIndex,
+          column: colIndex,
           status: 'AVAILABLE',
           type: section.type,
           price: section.price,
@@ -62,8 +60,16 @@ async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart
     }
   }
   
+  console.log('Generated seats:', {
+    total: seats.length,
+    firstSeat: seats[0],
+    lastSeat: seats[seats.length - 1]
+  });
+  
   return seats;
 }
+
+// app/api/events/create/route.ts
 
 function validateSeatingChart(seatingChart: SeatingChart): string | null {
   if (!seatingChart.rows || seatingChart.rows < 1) {
@@ -78,12 +84,14 @@ function validateSeatingChart(seatingChart: SeatingChart): string | null {
     return 'Debe definir al menos una sección';
   }
 
+  // Los índices ahora empiezan en 1
   for (const section of seatingChart.sections) {
-    if (section.rowStart < 0 || section.rowEnd >= seatingChart.rows) {
-      return 'Límites de fila inválidos en sección';
+    // Ajustar la validación para el nuevo formato de índices
+    if (section.rowStart < 1 || section.rowEnd > seatingChart.rows) {
+      return `Límites de fila inválidos en sección ${section.name}. Debe estar entre 1 y ${seatingChart.rows}`;
     }
-    if (section.columnStart < 0 || section.columnEnd >= seatingChart.columns) {
-      return 'Límites de columna inválidos en sección';
+    if (section.columnStart < 1 || section.columnEnd > seatingChart.columns) {
+      return `Límites de columna inválidos en sección ${section.name}. Debe estar entre 1 y ${seatingChart.columns}`;
     }
     if (section.price < 0) {
       return 'Precio inválido en sección';
@@ -93,8 +101,22 @@ function validateSeatingChart(seatingChart: SeatingChart): string | null {
     }
   }
 
+  // Verificar que las secciones no se superpongan
+  for (let i = 0; i < seatingChart.sections.length; i++) {
+    for (let j = i + 1; j < seatingChart.sections.length; j++) {
+      const secA = seatingChart.sections[i];
+      const secB = seatingChart.sections[j];
+      
+      if (!(secA.rowEnd < secB.rowStart || secA.rowStart > secB.rowEnd ||
+            secA.columnEnd < secB.columnStart || secA.columnStart > secB.columnEnd)) {
+        return `Las secciones ${secA.name} y ${secB.name} se superponen`;
+      }
+    }
+  }
+
   return null;
 }
+
 
 export async function POST(req: Request) {
   let mongoSession = null;

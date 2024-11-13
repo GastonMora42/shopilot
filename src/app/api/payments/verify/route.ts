@@ -1,7 +1,8 @@
-import { Seat } from "@/app/models/Seat";
-import { Ticket } from "@/app/models/Ticket";
-import mongoose from "mongoose";
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
+import dbConnect from '@/app/lib/mongodb';
+import { Seat } from '@/app/models/Seat';
+import { Ticket } from '@/app/models/Ticket';
+import mongoose from 'mongoose';
 
 export async function POST(req: Request) {
   const session = await mongoose.startSession();
@@ -10,7 +11,16 @@ export async function POST(req: Request) {
   try {
     const { ticketId, paymentId } = await req.json();
 
-    // Verificar y actualizar ticket
+    if (!ticketId || !paymentId) {
+      return NextResponse.json(
+        { error: 'Datos incompletos' },
+        { status: 400 }
+      );
+    }
+
+    await dbConnect();
+
+    // Buscar y actualizar el ticket
     const ticket = await Ticket.findOneAndUpdate(
       {
         _id: ticketId,
@@ -20,8 +30,8 @@ export async function POST(req: Request) {
         status: 'PAID',
         paymentId
       },
-      { 
-        new: true, 
+      {
+        new: true,
         session,
         populate: 'eventId'
       }
@@ -35,7 +45,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Confirmar asientos
+    // Actualizar el estado de los asientos
     const seatResult = await Seat.updateMany(
       {
         eventId: ticket.eventId,
@@ -77,7 +87,6 @@ export async function POST(req: Request) {
         paymentId: ticket.paymentId
       }
     });
-
   } catch (error) {
     console.error('Verification error:', error);
     return NextResponse.json({

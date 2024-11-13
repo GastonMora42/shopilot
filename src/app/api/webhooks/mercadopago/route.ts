@@ -78,35 +78,35 @@ export async function POST(req: Request) {
       ticket.paymentId = String(paymentInfo.id);
       await ticket.save({ session });
 
-      // Marcar asientos como ocupados
-      const seatResult = await Seat.updateMany(
-        {
-          eventId: ticket.eventId,
-          seatId: { $in: ticket.seats },
-          status: 'RESERVED'
-        },
-        {
-          $set: { 
-            status: 'OCCUPIED',
-            ticketId: ticket._id
-          },
-          $unset: {
-            temporaryReservation: 1
-          }
-        },
-        { session }
-      );
+// Marcar asientos como ocupados
+const seatResult = await Seat.updateMany(
+  {
+    eventId: ticket.eventId,
+    seatId: { $in: ticket.seatId },
+    status: 'RESERVED'
+  },
+  {
+    $set: { 
+      status: 'OCCUPIED',
+      ticketId: ticket._id
+    },
+    $unset: {
+      temporaryReservation: 1
+    }
+  },
+  { session }
+);
 
-      if (seatResult.modifiedCount !== ticket.seats.length) {
-        await session.abortTransaction();
-        console.error('Error actualizando asientos:', {
-          expected: ticket.seats.length,
-          updated: seatResult.modifiedCount
-        });
-        return NextResponse.json({ 
-          error: 'Error en la actualización de asientos' 
-        }, { status: 200 });
-      }
+if (seatResult.modifiedCount !== ticket.seats.length) {
+  await session.abortTransaction();
+  console.error('Error actualizando asientos:', {
+    expected: ticket.seats.length,
+    updated: seatResult.modifiedCount
+  });
+  return NextResponse.json({ 
+    error: 'Error en la actualización de asientos' 
+  }, { status: 200 });
+}
 
       await session.commitTransaction();
 

@@ -82,25 +82,25 @@ export async function POST(req: Request) {
       price: total
     }], { session });
 
-    // Actualizar estado de asientos
-    const seatUpdateResult = await Seat.updateMany(
-      {
-        eventId,
-        seatId: { $in: seats }, // Cambiado de number a seatId
-        'temporaryReservation.sessionId': sessionId
-      },
-      {
-        $set: {
-          ticketId: newTicket._id,
-          status: 'RESERVED'
-        }
-      },
-      { session }
-    );
-    
-        if (seatUpdateResult.modifiedCount !== seats.length) {
-          throw new Error('No se pudieron actualizar todos los asientos');
-        }
+// Actualizar estado de asientos
+const seatUpdateResult = await Seat.updateMany(
+  {
+    eventId,
+    seatId: { $in: Seat }, // Cambiado de number a seatId
+    'temporaryReservation.sessionId': sessionId
+  },
+  {
+    $set: {
+      ticketId: newTicket._id,
+      status: 'RESERVED'
+    }
+  },
+  { session }
+);
+
+if (seatUpdateResult.modifiedCount !== seats.length) {
+  throw new Error('No se pudieron actualizar todos los asientos');
+}
     
         // Crear preferencia de MercadoPago
         const preference = await createPreference({

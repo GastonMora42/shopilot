@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     const seatResult = await Seat.updateMany(
       {
         eventId: ticket.eventId,
-        number: { $in: ticket.seats },
+        number: { $in: ticket.seatId },
         status: 'RESERVED',
         ticketId: ticket._id
       },
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
         eventName: ticket.eventId.name,
         date: ticket.eventId.date,
         location: ticket.eventId.location,
-        seats: ticket.seats,
+        seats: ticket.seatId,
         qrCode: ticket.qrCode,
         buyerInfo: ticket.buyerInfo,
         price: ticket.price,

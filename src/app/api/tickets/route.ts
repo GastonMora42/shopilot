@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       eventId,
       seatId: { $in: seats }, // Cambiado de number a seatId
       $or: [
-        { status: { $ne: 'AVAILABLE' } },
+        { status: { $ne: 'RESERVED'} }, //Cambiamos aqui
         {
           status: 'RESERVED',
           'temporaryReservation.sessionId': { $ne: sessionId }

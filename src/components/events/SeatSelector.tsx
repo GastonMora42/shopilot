@@ -2,12 +2,13 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal, ModalContent, ModalFooter, ModalHeader } from '@/components/ui/Modal';
 import { cn } from '@/app/lib/utils';
 import { IEvent, ISection } from '@/types';
+import { CountdownTimer } from './CountdownTimer';
 
 type SeatStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
 
@@ -72,6 +73,7 @@ const Seat = ({
 );
 export function SeatSelector({
   seatingChart,
+  reservationTimeout,
   selectedSeats,
   occupiedSeats,
   onSeatSelect,
@@ -187,6 +189,11 @@ export function SeatSelector({
         >
           Ver Mapa de Asientos
         </Button>
+        <AnimatePresence>
+        {reservationTimeout && reservationTimeout > Date.now() && (
+          <CountdownTimer expiresAt={reservationTimeout} />
+        )}
+      </AnimatePresence>
       </div>
 
       <Modal 

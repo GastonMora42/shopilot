@@ -3,30 +3,33 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Seat } from '@/app/models/Seat';
 
-export async function POST(req: Request) {
+// app/api/seats/cleanup/route.ts o similar
+export async function GET() {
   try {
     await dbConnect();
-    
+
     const result = await Seat.updateMany(
       {
         status: 'RESERVED',
-        reservationExpires: { $lt: new Date() }
+        'temporaryReservation.expiresAt': { $lt: new Date() }
       },
       {
         $set: { status: 'AVAILABLE' },
-        $unset: { ticketId: 1, reservationExpires: 1 }
+        $unset: { 
+          temporaryReservation: 1,
+          lastReservationAttempt: 1
+        }
       }
     );
 
     return NextResponse.json({
       success: true,
-      releasedSeats: result.modifiedCount
+      clearedSeats: result.modifiedCount
     });
-
   } catch (error) {
-    console.error('Error cleaning up seats:', error);
+    console.error('Error in cleanup:', error);
     return NextResponse.json(
-      { error: 'Error cleaning up seats' },
+      { error: 'Error en la limpieza de asientos' },
       { status: 500 }
     );
   }

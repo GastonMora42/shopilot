@@ -68,7 +68,7 @@ const SeatSchema = new mongoose.Schema({
     },
     expiresAt: {
       type: Date,
-      index: { expires: 900 } // 15 minutos
+      index: { expires: 600 } // 15 minutos
     }
   },
   lastReservationAttempt: {
@@ -82,7 +82,7 @@ const SeatSchema = new mongoose.Schema({
 SeatSchema.index({ eventId: 1, seatId: 1 }, { unique: true });
 SeatSchema.index({ eventId: 1, status: 1 });
 SeatSchema.index({ ticketId: 1 });
-SeatSchema.index({ 'temporaryReservation.expiresAt': 1 });
+SeatSchema.index({ 'temporaryReservation.expiresAt': 1 }, { expireAfterSeconds: 600 }); // 10 minutos = 600 segundos
 
 // Método para liberar asientos expirados
 SeatSchema.statics.releaseExpiredSeats = async function(eventId: string) {

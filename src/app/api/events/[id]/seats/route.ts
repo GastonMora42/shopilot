@@ -103,32 +103,32 @@ export async function POST(
     }
 
     // Configurar reserva temporal
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
+// Cambiar de 15 minutos a 10 minutos
+const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutos
 
-    // Reservar asientos
-    const result = await Seat.updateMany(
+const result = await Seat.updateMany(
+  {
+    eventId: params.id,
+    seatId: { $in: seatIds },
+    $or: [
+      { status: 'AVAILABLE' },
       {
-        eventId: params.id,
-        seatId: { $in: seatIds },
-        $or: [
-          { status: 'AVAILABLE' },
-          {
-            status: 'RESERVED',
-            'temporaryReservation.sessionId': sessionId
-          }
-        ]
-      },
-      {
-        $set: {
-          status: 'RESERVED',
-          temporaryReservation: {
-            sessionId,
-            expiresAt
-          },
-          lastReservationAttempt: new Date()
-        }
+        status: 'RESERVED',
+        'temporaryReservation.sessionId': sessionId
       }
-    );
+    ]
+  },
+  {
+    $set: {
+      status: 'RESERVED',
+      temporaryReservation: {
+        sessionId,
+        expiresAt
+      },
+      lastReservationAttempt: new Date()
+    }
+  }
+);
 
     if (result.modifiedCount !== seatIds.length) {
       // Revertir cambios si no se pudieron reservar todos los asientos

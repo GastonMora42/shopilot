@@ -49,10 +49,20 @@ export default function PublicEventPage() {
 
   useEffect(() => {
     if (event?._id) {
-      fetchOccupiedSeats();
-      const interval = setInterval(fetchOccupiedSeats, 30000);
+      const pollSeats = async () => {
+        await fetchOccupiedSeats();
+      };
+  
+      // Polling inicial
+      pollSeats();
+  
+      // Configurar intervalo
+      const interval = setInterval(pollSeats, 150000); // Cada 15 segundos
       setPollingInterval(interval);
-      return () => clearInterval(interval);
+  
+      return () => {
+        if (interval) clearInterval(interval);
+      };
     }
   }, [event?._id]);
 
@@ -119,127 +129,164 @@ export default function PublicEventPage() {
   };
 
 
-  const handleSeatSelection = async (newSelectedSeats: string[]) => {
-    try {
-      console.log('Attempting to select seats:', newSelectedSeats); // Para debugging
-  
-      if (!sessionId || !event?._id) {
-        showToast('Error de sesión. Por favor, recarga la página.');
+// En PublicEventPage
+const handleSeatSelection = async (newSelectedSeats: string[]) => {
+  try {
+    console.log('Starting seat selection:', {
+      current: selectedSeats,
+      new: newSelectedSeats,
+      sessionId
+    });
+
+    if (!sessionId || !event?._id) {
+      showToast('Error de sesión. Por favor, recarga la página.');
+      return;
+    }
+
+    // Primero verificar disponibilidad
+    const verifyResponse = await fetch(`/api/events/${event._id}/seats/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        seatIds: newSelectedSeats,
+        sessionId 
+      })
+    });
+
+    const verifyData = await verifyResponse.json();
+    
+    if (!verifyResponse.ok) {
+      throw new Error(verifyData.error || 'Error al verificar asientos');
+    }
+
+    // Si los asientos están disponibles, hacer la reserva
+    const reserveResponse = await fetch(`/api/events/${event._id}/seats`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        seatIds: newSelectedSeats,
+        sessionId 
+      })
+    });
+
+    const reserveData = await reserveResponse.json();
+    
+    if (!reserveResponse.ok) {
+      if (reserveData.unavailableSeats) {
+        setOccupiedSeats(prev => [
+          ...prev,
+          ...reserveData.unavailableSeats.map((seat: any) => ({
+            seatId: seat.seatId,
+            status: 'RESERVED'
+          }))
+        ]);
+        showToast('Algunos asientos ya no están disponibles');
+        await fetchOccupiedSeats();
         return;
       }
-  
-      const response = await fetch(`/api/events/${event._id}/seats`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          seatIds: newSelectedSeats, // Estos ya vienen en formato "1-1"
-          sessionId 
-        })
-      });
-  
-      const data = await response.json();
-      console.log('API Response:', data); // Para debugging
-      
-      if (!response.ok) {
-        if (data.unavailableSeats) {
-          setOccupiedSeats(prev => [
-            ...prev,
-            ...data.unavailableSeats.map((seat: any) => ({
-              seatId: seat.seatId,
-              status: 'OCCUPIED'
-            }))
-          ]);
-          showToast('Algunos asientos ya no están disponibles');
-          await fetchOccupiedSeats();
-          return;
+      throw new Error(reserveData.error || 'Error al reservar asientos');
+    }
+
+    // Actualizar estado local solo si la reserva fue exitosa
+    setSelectedSeats(newSelectedSeats);
+    if (reserveData.expiresAt) {
+      const expiresAt = new Date(reserveData.expiresAt).getTime();
+      setReservationTimeout(expiresAt);
+
+      // Programar notificación 1 minuto antes de expirar
+      const timeoutMs = expiresAt - Date.now();
+      if (timeoutMs > 0) {
+        setTimeout(() => {
+          fetchOccupiedSeats();
+          if (newSelectedSeats.length > 0) {
+            showToast('¡Tu reserva expirará en 1 minuto!');
+          }
+        }, timeoutMs - 60000); // 1 minuto antes
+
+        // Agregar una notificación a los 5 minutos
+        if (timeoutMs > 300000) { // 5 minutos en milisegundos
+          setTimeout(() => {
+            if (selectedSeats.length > 0) {
+              showToast('Te quedan 5 minutos para completar tu compra');
+            }
+          }, timeoutMs - 300000);
         }
-        throw new Error(data.error || 'Error al reservar asientos');
       }
-  
-      setSelectedSeats(newSelectedSeats);
-      if (data.expiresAt) {
-        setReservationTimeout(new Date(data.expiresAt).getTime());
-      }
-  
-    } catch (error) {
-      console.error('Error selecting seats:', error);
-      showToast('Error al seleccionar asientos. Por favor, intenta de nuevo.');
-      await fetchOccupiedSeats();
     }
-  };
 
-  const handlePurchase = async (buyerInfo: {
-    name: string;
-    email: string;
-    dni: string;
-    phone?: string;
-  }) => {
-    setIsProcessing(true);
-    try {
-      if (!sessionId || !event?._id) {
-        throw new Error('Sesión inválida');
-      }
+  } catch (error) {
+    console.error('Error selecting seats:', error);
+    showToast('Error al seleccionar asientos. Por favor, intenta de nuevo.');
+    await fetchOccupiedSeats();
+  }
+};
 
-      // Verificar estado actual de los asientos
-      const checkResponse = await fetch(`/api/events/${event._id}/seats/verify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          seatIds: selectedSeats,
-          sessionId
-        })
-      });
-      
-      const checkData = await checkResponse.json();
-      
-      if (!checkResponse.ok) {
-        throw new Error(checkData.error || 'Los asientos seleccionados no están disponibles');
-      }
-
-      const purchaseResponse = await fetch('/api/tickets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          eventId: event._id,
-          seats: selectedSeats,
-          buyerInfo,
-          sessionId
-        })
-      });
-
-      const purchaseData = await purchaseResponse.json();
-      
-      if (!purchaseResponse.ok) {
-        throw new Error(purchaseData.error || 'Error al procesar la compra');
-      }
-
-      if (purchaseData.checkoutUrl) {
-        // Almacenar datos de la compra en localStorage para recuperación post-pago
-        localStorage.setItem('lastPurchaseAttempt', JSON.stringify({
-          eventId: event._id,
-          ticketId: purchaseData.ticket?.id,
-          seats: selectedSeats,
-          timestamp: new Date().toISOString()
-        }));
-
-        window.location.href = purchaseData.checkoutUrl;
-      } else {
-        throw new Error('No se pudo obtener el link de pago');
-      }
-    } catch (error) {
-      console.error('Purchase error:', error);
-      showToast(error instanceof Error ? error.message : 'Error al procesar la compra');
-      await fetchOccupiedSeats();
-    } finally {
-      setIsProcessing(false);
+const handlePurchase = async (buyerInfo: {
+  name: string;
+  email: string;
+  dni: string;
+  phone?: string;
+}) => {
+  setIsProcessing(true);
+  try {
+    if (!sessionId || !event?._id) {
+      throw new Error('Sesión inválida');
     }
-  };
+
+    // Verificar que todos los asientos seleccionados estén reservados para esta sesión
+    const verifyResponse = await fetch(`/api/events/${event._id}/seats/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        seatIds: selectedSeats,
+        sessionId
+      })
+    });
+
+    if (!verifyResponse.ok) {
+      const verifyData = await verifyResponse.json();
+      throw new Error(verifyData.error || 'Los asientos seleccionados no están disponibles');
+    }
+
+    // Proceder con la compra
+    const purchaseResponse = await fetch('/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventId: event._id,
+        seats: selectedSeats,
+        buyerInfo,
+        sessionId
+      })
+    });
+
+    const purchaseData = await purchaseResponse.json();
+    
+    if (!purchaseResponse.ok) {
+      throw new Error(purchaseData.error || 'Error al procesar la compra');
+    }
+
+    if (purchaseData.checkoutUrl) {
+      localStorage.setItem('lastPurchaseAttempt', JSON.stringify({
+        eventId: event._id,
+        ticketId: purchaseData.ticket?.id,
+        seats: selectedSeats,
+        sessionId,
+        timestamp: new Date().toISOString()
+      }));
+
+      window.location.href = purchaseData.checkoutUrl;
+    } else {
+      throw new Error('No se pudo obtener el link de pago');
+    }
+  } catch (error) {
+    console.error('Purchase error:', error);
+    showToast(error instanceof Error ? error.message : 'Error al procesar la compra');
+    await fetchOccupiedSeats();
+  } finally {
+    setIsProcessing(false);
+  }
+};
 
   const handleShare = async () => {
     try {
@@ -402,14 +449,14 @@ export default function PublicEventPage() {
 
                     <TabsContent value="seating">
                       <div className="bg-white rounded-lg p-4">
-                        <SeatSelector
-                          seatingChart={event.seatingChart}
-                          selectedSeats={selectedSeats}
-                          occupiedSeats={occupiedSeats}
-                          onSeatSelect={handleSeatSelection}
-                          reservationTimeout={reservationTimeout}
-                          maxSeats={6}
-                        />
+                      <SeatSelector
+  seatingChart={event.seatingChart}
+  selectedSeats={selectedSeats}
+  occupiedSeats={occupiedSeats}
+  onSeatSelect={handleSeatSelection}
+  reservationTimeout={reservationTimeout}
+  maxSeats={6}
+/>
                       </div>
                     </TabsContent>
 

@@ -53,7 +53,6 @@ export async function POST(req: Request) {
       Key: fileName,
       Body: buffer,
       ContentType: file.type,
-      ACL: 'public-read',
     });
 
     console.log('Sending file to S3...');

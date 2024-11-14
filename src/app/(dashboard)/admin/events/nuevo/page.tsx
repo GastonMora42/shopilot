@@ -114,68 +114,86 @@ export default function NewEventPage() {
     }
   };
 
-  const handleSubmit = async () => {
-    try {
-      setIsSubmitting(true);
-  
-      // Validar secciones antes de enviar
-      const invalidSections = eventData.seatingChart.sections.filter(section => 
-        section.rowStart < 1 || 
-        section.columnStart < 1 ||
-        section.rowEnd > eventData.seatingChart.rows ||
-        section.columnEnd > eventData.seatingChart.columns
-      );
-  
-      if (invalidSections.length > 0) {
-        throw new Error('Hay secciones con límites inválidos');
-      }
-      // Otros pasos de envío del formularios
-      if (imageFile) {
-        const formData = new FormData();
-        formData.append('file', imageFile);
+// En NewEventPage, fuera de handleSubmit
+const handleImageUpload = async (file: File) => {
+  try {
+    console.log('Starting client-side upload...');
+    const formData = new FormData();
+    formData.append('file', file);
 
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData
+    });
 
-        const data = await response.json();
-        if (data.url) {
-          setEventData(prev => ({
-            ...prev,
-            imageUrl: data.url
-          }));
-        } else {
-          console.error('Error al subir la imagen:', data.error);
-        }
-      }
+    const data = await response.json();
+    console.log('Upload response:', data);
 
-      const formattedData = {
-        ...eventData,
-        date: new Date(eventData.date).toISOString()
-      };
-
-      const response = await fetch('/api/events/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formattedData)
-      });
-
-      const eventCreationData = await response.json();
-
-      if (!response.ok) {
-        throw new Error(eventCreationData.error || 'Error al crear el evento');
-      }
-
-      alert('¡Evento creado exitosamente!');
-      router.push(`/events/${eventCreationData._id}`);
-    } catch (error) {
-      console.error('Error:', error);
-      alert(error instanceof Error ? error.message : 'Ocurrió un error al crear el evento');
-    } finally {
-      setIsSubmitting(false);
+    if (!response.ok) {
+      throw new Error(data.error || 'Error al subir la imagen');
     }
-  };
+
+    setEventData(prev => ({
+      ...prev,
+      imageUrl: data.url
+    }));
+    
+    return data.url;
+  } catch (error) {
+    console.error('Client-side upload error:', error);
+    throw error;
+  }
+};
+
+// Modifica el handleSubmit para que use la función handleImageUpload
+const handleSubmit = async () => {
+  try {
+    setIsSubmitting(true);
+
+    // Validar secciones...
+    if (invalidSections.length > 0) {
+      throw new Error('Hay secciones con límites inválidos');
+    }
+
+    let imageUrl = eventData.imageUrl;
+    
+    // Subir imagen si existe
+    if (imageFile) {
+      try {
+        imageUrl = await handleImageUpload(imageFile);
+      } catch (error) {
+        console.error('Error al subir la imagen:', error);
+        throw new Error('Error al subir la imagen');
+      }
+    }
+
+    const formattedData = {
+      ...eventData,
+      imageUrl, // Usar la URL de la imagen subida
+      date: new Date(eventData.date).toISOString()
+    };
+
+    const response = await fetch('/api/events/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formattedData)
+    });
+
+    const eventCreationData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(eventCreationData.error || 'Error al crear el evento');
+    }
+
+    alert('¡Evento creado exitosamente!');
+    router.push(`/events/${eventCreationData._id}`);
+  } catch (error) {
+    console.error('Error:', error);
+    alert(error instanceof Error ? error.message : 'Ocurrió un error al crear el evento');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const steps: Record<StepType, {
     title: string;

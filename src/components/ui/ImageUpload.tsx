@@ -16,16 +16,18 @@ export function ImageUpload({ onImageUpload, currentImageUrl, className = '' }: 
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileChange = (file: File) => {
-    if (file) {
-      // Validar tipo de archivo
+// Y en el handleFileChange:
+const handleFileChange = async (file: File) => {
+  if (file) {
+    try {
+      setIsLoading(true);
+      
+      // Validaciones...
       if (!file.type.startsWith('image/')) {
         alert('Por favor selecciona un archivo de imagen válido');
         return;
       }
 
-      // Validar tamaño (5MB)
       if (file.size > 5 * 1024 * 1024) {
         alert('La imagen debe ser menor a 5MB');
         return;
@@ -39,9 +41,15 @@ export function ImageUpload({ onImageUpload, currentImageUrl, className = '' }: 
       reader.readAsDataURL(file);
 
       // Notificar al componente padre
-      onImageUpload(file);
+      await onImageUpload(file);
+    } catch (error) {
+      console.error('Error processing image:', error);
+      alert('Error al procesar la imagen');
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }
+};
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();

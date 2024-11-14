@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useMemo, memo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Calendar, Clock, MapPin, Share2, AlertCircle, X } from 'lucide-react';
@@ -14,348 +14,54 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Toast } from '@/components/ui/Toast';
 import DebugPanel from '@/components/DebugPanel';
+import { PurchaseSummary } from '@/components/ui/PurchaseSummary';
+import { AdaptiveHeader } from '@/components/ui/AdaptativeHeader';
 
 interface OccupiedSeat {
   seatId: string;
   status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
 }
 
-export default function PublicEventPage() {
-  const params = useParams();
-  const router = useRouter();
-  const [event, setEvent] = useState<IEvent | null>(null);
-  const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
-  const [occupiedSeats, setOccupiedSeats] = useState<OccupiedSeat[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showBuyerForm, setShowBuyerForm] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [reservationTimeout, setReservationTimeout] = useState<number | null>(null);
-  const [showNotification, setShowNotification] = useState(false);
-  const [notificationMessage, setNotificationMessage] = useState('');
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+interface UIState {
+  loading: boolean;
+  error: string | null;
+  showBuyerForm: boolean;
+  isProcessing: boolean;
+  showNotification: boolean;
+  notificationMessage: string;
+  activeTab: string;
+}
 
-  useEffect(() => {
-    setSessionId(crypto.randomUUID());
-    fetchEvent();
+interface ControlState {
+  sessionId: string;
+  reservationTimeout: number | null;
+  pollingInterval: NodeJS.Timeout | null;
+}
 
-    return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (event?._id) {
-      const pollSeats = async () => {
-        await fetchOccupiedSeats();
-      };
-  
-      // Polling inicial
-      pollSeats();
-  
-      // Configurar intervalo
-      const interval = setInterval(pollSeats, 150000); // Cada 15 minutos
-      setPollingInterval(interval);
-  
-      return () => {
-        if (interval) clearInterval(interval);
-      };
-    }
-  }, [event?._id]);
-
-  useEffect(() => {
-    console.log('Current selected seats:', selectedSeats);
-    console.log('Current occupied seats:', occupiedSeats);
-  }, [selectedSeats, occupiedSeats]);
-
-  const showToast = (message: string) => {
-    setNotificationMessage(message);
-    setShowNotification(true);
-    setTimeout(() => setShowNotification(false), 5000);
-  };
-
-  const fetchEvent = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/events/public/${params.slug}`);
-      if (!response.ok) throw new Error('Evento no encontrado');
-      const data = await response.json();
-      setEvent(data);
-    } catch (error) {
-      setError('Error al cargar el evento');
-      showToast('No se pudo cargar el evento. Por favor, intenta de nuevo.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchOccupiedSeats = async () => {
-    if (!event?._id) return;
-  
-    try {
-      const response = await fetch(`/api/events/${event._id}/seats`);
-      if (!response.ok) throw new Error('Error al obtener asientos');
-      
-      const data = await response.json();
-      console.log('Seats data:', data); // Para debugging
-      
-      if (data.occupiedSeats) {
-        const formattedSeats = data.occupiedSeats.map((seat: any) => ({
-          seatId: seat.seatId, // Ya viene en formato "1-1"
-          status: seat.status
-        }));
-        
-        console.log('Formatted occupied seats:', formattedSeats);
-        setOccupiedSeats(formattedSeats);
-  
-        // Actualizar selección si algún asiento ya no está disponible
-        setSelectedSeats(prev => 
-          prev.filter(seatId => 
-            !formattedSeats.some(
-              (seat: { seatId: string; status: string; }) => 
-                seat.seatId === seatId && 
-                ['OCCUPIED', 'RESERVED'].includes(seat.status)
-            )
-          )
-        );
-      }
-    } catch (error) {
-      console.error('Error fetching occupied seats:', error);
-      showToast('Error al actualizar el estado de los asientos');
-    }
-  };
-
-
-// En PublicEventPage
-const handleSeatSelection = async (newSelectedSeats: string[]) => {
-  try {
-    console.log('Starting seat selection:', {
-      current: selectedSeats,
-      new: newSelectedSeats,
-      sessionId
-    });
-
-    if (!sessionId || !event?._id) {
-      showToast('Error de sesión. Por favor, recarga la página.');
-      return;
-    }
-
-    // Primero verificar disponibilidad
-    const verifyResponse = await fetch(`/api/events/${event._id}/seats/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        seatIds: newSelectedSeats,
-        sessionId 
-      })
-    });
-
-    const verifyData = await verifyResponse.json();
-    
-    if (!verifyResponse.ok) {
-      throw new Error(verifyData.error || 'Error al verificar asientos');
-    }
-
-    // Si los asientos están disponibles, hacer la reserva
-    const reserveResponse = await fetch(`/api/events/${event._id}/seats`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        seatIds: newSelectedSeats,
-        sessionId 
-      })
-    });
-
-    const reserveData = await reserveResponse.json();
-    
-    if (!reserveResponse.ok) {
-      if (reserveData.unavailableSeats) {
-        setOccupiedSeats(prev => [
-          ...prev,
-          ...reserveData.unavailableSeats.map((seat: any) => ({
-            seatId: seat.seatId,
-            status: 'RESERVED'
-          }))
-        ]);
-        showToast('Algunos asientos ya no están disponibles');
-        await fetchOccupiedSeats();
-        return;
-      }
-      throw new Error(reserveData.error || 'Error al reservar asientos');
-    }
-
-    // Actualizar estado local solo si la reserva fue exitosa
-    setSelectedSeats(newSelectedSeats);
-    if (reserveData.expiresAt) {
-      const expiresAt = new Date(reserveData.expiresAt).getTime();
-      setReservationTimeout(expiresAt);
-
-      // Programar notificación 1 minuto antes de expirar
-      const timeoutMs = expiresAt - Date.now();
-      if (timeoutMs > 0) {
-        setTimeout(() => {
-          fetchOccupiedSeats();
-          if (newSelectedSeats.length > 0) {
-            showToast('¡Tu reserva expirará en 1 minuto!');
-          }
-        }, timeoutMs - 60000); // 1 minuto antes
-
-        // Agregar una notificación a los 5 minutos
-        if (timeoutMs > 300000) { // 5 minutos en milisegundos
-          setTimeout(() => {
-            if (selectedSeats.length > 0) {
-              showToast('Te quedan 5 minutos para completar tu compra');
-            }
-          }, timeoutMs - 300000);
-        }
-      }
-    }
-
-  } catch (error) {
-    console.error('Error selecting seats:', error);
-    showToast('Error al seleccionar asientos. Por favor, intenta de nuevo.');
-    await fetchOccupiedSeats();
-  }
-};
-
-const handlePurchase = async (buyerInfo: {
-  name: string;
-  email: string;
-  dni: string;
-  phone?: string;
-}) => {
-  setIsProcessing(true);
-  try {
-    if (!sessionId || !event?._id) {
-      throw new Error('Sesión inválida');
-    }
-
-    // Verificar que todos los asientos seleccionados estén reservados para esta sesión
-    const verifyResponse = await fetch(`/api/events/${event._id}/seats/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        seatIds: selectedSeats,
-        sessionId
-      })
-    });
-
-    if (!verifyResponse.ok) {
-      const verifyData = await verifyResponse.json();
-      throw new Error(verifyData.error || 'Los asientos seleccionados no están disponibles');
-    }
-
-    // Proceder con la compra
-    const purchaseResponse = await fetch('/api/tickets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        eventId: event._id,
-        seats: selectedSeats,
-        buyerInfo,
-        sessionId
-      })
-    });
-
-    const purchaseData = await purchaseResponse.json();
-    
-    if (!purchaseResponse.ok) {
-      throw new Error(purchaseData.error || 'Error al procesar la compra');
-    }
-
-    if (purchaseData.checkoutUrl) {
-      localStorage.setItem('lastPurchaseAttempt', JSON.stringify({
-        eventId: event._id,
-        ticketId: purchaseData.ticket?.id,
-        seats: selectedSeats,
-        sessionId,
-        timestamp: new Date().toISOString()
-      }));
-
-      window.location.href = purchaseData.checkoutUrl;
-    } else {
-      throw new Error('No se pudo obtener el link de pago');
-    }
-  } catch (error) {
-    console.error('Purchase error:', error);
-    showToast(error instanceof Error ? error.message : 'Error al procesar la compra');
-    await fetchOccupiedSeats();
-  } finally {
-    setIsProcessing(false);
-  }
-};
-
-  const handleShare = async () => {
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: event?.name,
-          text: `¡Mira este evento: ${event?.name}!`,
-          url: window.location.href
-        });
-      } else {
-        await navigator.clipboard.writeText(window.location.href);
-        showToast('¡Link copiado al portapapeles!');
-      }
-    } catch (error) {
-      console.error('Error sharing:', error);
-    }
-  };
-
-  const calculateTotal = () => {
-    if (!event) return 0;
-    
-    return selectedSeats.reduce((total, seatId) => {
-      const [rowNum] = seatId.split('-'); // Ejemplo: "1-1" nos da ["1", "1"]
-      const rowNumber = parseInt(rowNum, 10); // Convertimos a número
-      
-      const section = event.seatingChart.sections.find(section => {
-        // Comprobamos si la fila está dentro del rango de la sección
-        return rowNumber >= section.rowStart && rowNumber <= section.rowEnd;
-      });
-  
-      if (!section) {
-        console.warn(`No se encontró sección para el asiento ${seatId}`);
-        return total;
-      }
-  
-      console.log('Calculando precio para:', {
-        seatId,
-        rowNumber,
-        sectionName: section.name,
-        price: section.price
-      });
-  
-      return total + section.price;
-    }, 0);
-  };
-
-  // Componente para el fondo animado
-const AnimatedBackground = ({ imageUrl }: { imageUrl: string }) => {
+// Componente de fondo animado optimizado
+const AnimatedBackground = memo(({ imageUrl }: { imageUrl: string }) => {
   const controls = useAnimation();
 
   useEffect(() => {
-    const animateBackground = async () => {
-      while (true) {
+    let isMounted = true;
+
+    const animate = async () => {
+      while (isMounted) {
         await controls.start({
-          scale: 1.1,
-          x: 10,
-          y: 10,
-          transition: { duration: 20, ease: "linear" }
-        });
-        await controls.start({
-          scale: 1.15,
-          x: -10,
-          y: -10,
-          transition: { duration: 20, ease: "linear" }
+          scale: [1.1, 1.15, 1.1],
+          x: [10, -10, 10],
+          y: [10, -10, 10],
+          transition: {
+            duration: 30,
+            ease: "linear",
+            repeat: Infinity
+          }
         });
       }
     };
 
-    animateBackground();
+    animate();
+    return () => { isMounted = false; };
   }, [controls]);
 
   return (
@@ -371,14 +77,16 @@ const AnimatedBackground = ({ imageUrl }: { imageUrl: string }) => {
         fill
         className="object-cover blur-md brightness-50"
         priority
-        quality={30}
+        quality={75}
+        loading="eager"
+        sizes="100vw"
       />
     </motion.div>
   );
-};
+});
 
-// Componente para la imagen principal
-const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: string }) => {
+// Componente de imagen del evento optimizado
+const EventImage = memo(({ imageUrl, eventName }: { imageUrl: string; eventName: string }) => {
   const [imageLoading, setImageLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -386,7 +94,7 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
   return (
     <>
       <motion.div
-        className="relative w-full h-[400px] overflow-hidden rounded-t-lg"
+        className="relative w-full h-[400px] overflow-hidden rounded-t-lg cursor-pointer"
         onHoverStart={() => setIsHovered(true)}
         onHoverEnd={() => setIsHovered(false)}
         onClick={() => setShowModal(true)}
@@ -396,9 +104,7 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
         )}
         <motion.div
           className="relative w-full h-full"
-          animate={{
-            scale: isHovered ? 1.05 : 1
-          }}
+          animate={{ scale: isHovered ? 1.05 : 1 }}
           transition={{ duration: 0.3 }}
         >
           <Image
@@ -473,9 +179,300 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
       </AnimatePresence>
     </>
   );
-};
+});
 
-  if (loading) {
+// Componente principal
+export default function PublicEventPage() {
+  const params = useParams();
+  const router = useRouter();
+  
+  // Estados principales
+  const [event, setEvent] = useState<IEvent | null>(null);
+  const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
+  const [occupiedSeats, setOccupiedSeats] = useState<OccupiedSeat[]>([]);
+
+  // Estado UI
+  const [uiState, setUiState] = useState<UIState>({
+    loading: true,
+    error: null,
+    showBuyerForm: false,
+    isProcessing: false,
+    showNotification: false,
+    notificationMessage: '',
+    activeTab: 'description'
+  });
+
+  // Estado de control
+  const [controlState, setControlState] = useState<ControlState>({
+    sessionId: crypto.randomUUID(),
+    reservationTimeout: null,
+    pollingInterval: null
+  });
+
+  // Función para mostrar notificaciones
+  const showToast = useCallback((message: string) => {
+    setUiState(prev => ({
+      ...prev,
+      showNotification: true,
+      notificationMessage: message
+    }));
+    setTimeout(() => {
+      setUiState(prev => ({
+        ...prev,
+        showNotification: false
+      }));
+    }, 5000);
+  }, []);
+
+  // Fetch inicial del evento
+  const fetchEvent = useCallback(async () => {
+    try {
+      setUiState(prev => ({ ...prev, loading: true }));
+      const response = await fetch(`/api/events/public/${params.slug}`);
+      if (!response.ok) throw new Error('Evento no encontrado');
+      const data = await response.json();
+      setEvent(data);
+    } catch (error) {
+      setUiState(prev => ({
+        ...prev,
+        error: 'Error al cargar el evento'
+      }));
+      showToast('No se pudo cargar el evento. Por favor, intenta de nuevo.');
+    } finally {
+      setUiState(prev => ({ ...prev, loading: false }));
+    }
+  }, [params.slug, showToast]);
+  // Continuación de PublicEventPage.tsx
+
+  // Fetch de asientos ocupados
+  const fetchOccupiedSeats = useCallback(async () => {
+    if (!event?._id) return;
+  
+    try {
+      const response = await fetch(`/api/events/${event._id}/seats`);
+      if (!response.ok) throw new Error('Error al obtener asientos');
+      
+      const data = await response.json();
+      
+      if (data.occupiedSeats) {
+        const formattedSeats = data.occupiedSeats.map((seat: any) => ({
+          seatId: seat.seatId,
+          status: seat.status
+        }));
+        
+        setOccupiedSeats(formattedSeats);
+  
+        // Actualizar selección si algún asiento ya no está disponible
+        setSelectedSeats(prev => 
+          prev.filter(seatId => 
+            !formattedSeats.some(
+              (seat: { seatId: string; status: string; }) => 
+                seat.seatId === seatId && 
+                ['OCCUPIED', 'RESERVED'].includes(seat.status)
+            )
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching occupied seats:', error);
+      showToast('Error al actualizar el estado de los asientos');
+    }
+  }, [event?._id, showToast]);
+
+  // Manejo de selección de asientos
+  const handleSeatSelection = useCallback(async (newSelectedSeats: string[]) => {
+    try {
+      if (!controlState.sessionId || !event?._id) {
+        showToast('Error de sesión. Por favor, recarga la página.');
+        return;
+      }
+
+      // Verificar disponibilidad
+      const verifyResponse = await fetch(`/api/events/${event._id}/seats/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          seatIds: newSelectedSeats,
+          sessionId: controlState.sessionId 
+        })
+      });
+
+      const verifyData = await verifyResponse.json();
+      
+      if (!verifyResponse.ok) {
+        throw new Error(verifyData.error || 'Error al verificar asientos');
+      }
+
+      // Reservar asientos
+      const reserveResponse = await fetch(`/api/events/${event._id}/seats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          seatIds: newSelectedSeats,
+          sessionId: controlState.sessionId 
+        })
+      });
+
+      const reserveData = await reserveResponse.json();
+      
+      if (!reserveResponse.ok) {
+        if (reserveData.unavailableSeats) {
+          setOccupiedSeats(prev => [
+            ...prev,
+            ...reserveData.unavailableSeats.map((seat: any) => ({
+              seatId: seat.seatId,
+              status: 'RESERVED'
+            }))
+          ]);
+          showToast('Algunos asientos ya no están disponibles');
+          await fetchOccupiedSeats();
+          return;
+        }
+        throw new Error(reserveData.error || 'Error al reservar asientos');
+      }
+
+      // Actualizar estado local
+      setSelectedSeats(newSelectedSeats);
+      if (reserveData.expiresAt) {
+        const expiresAt = new Date(reserveData.expiresAt).getTime();
+        setControlState(prev => ({
+          ...prev,
+          reservationTimeout: expiresAt
+        }));
+
+        // Gestión de notificaciones de tiempo
+        const timeoutMs = expiresAt - Date.now();
+        if (timeoutMs > 0) {
+          // Notificación 1 minuto antes
+          setTimeout(() => {
+            if (newSelectedSeats.length > 0) {
+              showToast('¡Tu reserva expirará en 1 minuto!');
+            }
+          }, timeoutMs - 60000);
+
+          // Notificación 5 minutos antes
+          if (timeoutMs > 300000) {
+            setTimeout(() => {
+              if (newSelectedSeats.length > 0) {
+                showToast('Te quedan 5 minutos para completar tu compra');
+              }
+            }, timeoutMs - 300000);
+          }
+        }
+      }
+
+    } catch (error) {
+      console.error('Error selecting seats:', error);
+      showToast('Error al seleccionar asientos. Por favor, intenta de nuevo.');
+      await fetchOccupiedSeats();
+    }
+  }, [event?._id, controlState.sessionId, fetchOccupiedSeats, showToast]);
+
+  // Manejo de compra
+  const handlePurchase = useCallback(async (buyerInfo: {
+    name: string;
+    email: string;
+    dni: string;
+    phone?: string;
+  }) => {
+    setUiState(prev => ({ ...prev, isProcessing: true }));
+    try {
+      if (!controlState.sessionId || !event?._id) {
+        throw new Error('Sesión inválida');
+      }
+
+      // Verificar reserva de asientos
+      const verifyResponse = await fetch(`/api/events/${event._id}/seats/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          seatIds: selectedSeats,
+          sessionId: controlState.sessionId
+        })
+      });
+
+      if (!verifyResponse.ok) {
+        const verifyData = await verifyResponse.json();
+        throw new Error(verifyData.error || 'Los asientos seleccionados no están disponibles');
+      }
+
+      // Procesar compra
+      const purchaseResponse = await fetch('/api/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: event._id,
+          seats: selectedSeats,
+          buyerInfo,
+          sessionId: controlState.sessionId
+        })
+      });
+
+      const purchaseData = await purchaseResponse.json();
+      
+      if (!purchaseResponse.ok) {
+        throw new Error(purchaseData.error || 'Error al procesar la compra');
+      }
+
+      if (purchaseData.checkoutUrl) {
+        // Guardar información de compra en localStorage
+        localStorage.setItem('lastPurchaseAttempt', JSON.stringify({
+          eventId: event._id,
+          ticketId: purchaseData.ticket?.id,
+          seats: selectedSeats,
+          sessionId: controlState.sessionId,
+          timestamp: new Date().toISOString()
+        }));
+
+        window.location.href = purchaseData.checkoutUrl;
+      } else {
+        throw new Error('No se pudo obtener el link de pago');
+      }
+    } catch (error) {
+      console.error('Purchase error:', error);
+      showToast(error instanceof Error ? error.message : 'Error al procesar la compra');
+      await fetchOccupiedSeats();
+    } finally {
+      setUiState(prev => ({ ...prev, isProcessing: false }));
+    }
+  }, [event?._id, selectedSeats, controlState.sessionId, fetchOccupiedSeats, showToast]);
+
+  // Manejo de compartir
+  const handleShare = useCallback(async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: event?.name,
+          text: `¡Mira este evento: ${event?.name}!`,
+          url: window.location.href
+        });
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        showToast('¡Link copiado al portapapeles!');
+      }
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  }, [event?.name, showToast]);
+
+  // Effects
+  useEffect(() => {
+    fetchEvent();
+  }, [fetchEvent]);
+
+  useEffect(() => {
+    if (event?._id) {
+      fetchOccupiedSeats();
+      const interval = setInterval(fetchOccupiedSeats, 150000);
+      setControlState(prev => ({ ...prev, pollingInterval: interval }));
+
+      return () => clearInterval(interval);
+    }
+  }, [event?._id, fetchOccupiedSeats]);
+  // Continuación de PublicEventPage.tsx
+
+  // Renderizado condicional para estado de carga
+  if (uiState.loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <motion.div
@@ -490,12 +487,13 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
     );
   }
 
-  if (error) {
+  // Renderizado condicional para errores
+  if (uiState.error) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <Alert variant="error" className="max-w-md">
           <AlertCircle className="h-5 w-5" />
-          <p>{error}</p>
+          <p>{uiState.error}</p>
           <Button variant="outline" onClick={() => router.push('/')}>
             Volver al inicio
           </Button>
@@ -504,6 +502,7 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
     );
   }
 
+  // Renderizado condicional si no hay evento
   if (!event) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -515,32 +514,19 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
           </Button>
         </Alert>
       </div>
-      
     );
   }
 
-  function setActiveTab(_arg0: string): void {
-    throw new Error('Function not implemented.');
-  }
-
+  // Renderizado principal
   return (
     <>
-      {event?.imageUrl && <AnimatedBackground imageUrl={event.imageUrl} />}
+      {event.imageUrl && <AnimatedBackground imageUrl={event.imageUrl} />}
+      
       <div className="min-h-screen">
-        <header className="bg-white/80 backdrop-blur-sm shadow-sm">
-          <div className="container mx-auto px-4 py-6">
-            <motion.h1 
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-3xl font-bold text-gray-900"
-            >
-              {event.name}
-            </motion.h1>
-          </div>
-        </header>
-  
+      <AdaptiveHeader title={event.name} />
         <main className="container mx-auto px-4 py-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Columna principal con información del evento */}
             <div className="md:col-span-2">
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -548,34 +534,35 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
               >
                 <Card className="backdrop-blur-sm bg-white/90">
                   <CardHeader className="p-0">
-                    {event?.imageUrl && (
+                    {event.imageUrl && (
                       <EventImage 
                         imageUrl={event.imageUrl} 
                         eventName={event.name} 
                       />
                     )}
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center space-x-2 text-gray-500">
-                      <Calendar className="h-5 w-5" />
-                      <span>{new Date(event.date).toLocaleDateString('es-ES', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}</span>
-                      <Clock className="h-5 w-5 ml-4" />
-                      <span>{new Date(event.date).toLocaleTimeString('es-ES', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}</span>
-                    </div>
+                  <CardContent className="space-y-8"> 
+  <div className="flex items-center space-x-2 text-gray-500 pt-6">
+    <Calendar className="h-5 w-5" />
+    <span>{new Date(event.date).toLocaleDateString('es-ES', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })}</span>
+    <Clock className="h-5 w-5 ml-4" />
+    <span>{new Date(event.date).toLocaleTimeString('es-ES', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })}</span>
+  </div>
                     <div className="flex items-center space-x-2 text-gray-500">
                       <MapPin className="h-5 w-5" />
                       <span>{event.location}</span>
                     </div>
-  
-                    <Tabs defaultValue="description">
+
+                    {/* Tabs de información */}
+                    <Tabs defaultValue="description" className="mt-6">
                       <TabsList>
                         <TabsTrigger value="description">Descripción</TabsTrigger>
                         <TabsTrigger value="seating">Asientos</TabsTrigger>
@@ -583,32 +570,24 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
                       </TabsList>
                       
                       <TabsContent value="description">
-                        <p className="text-gray-700">{event.description}</p>
+                        <div className="prose max-w-none">
+                          <p className="text-gray-700">{event.description}</p>
+                        </div>
                       </TabsContent>
-<TabsContent value="seating" className="relative">
-  <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-    <div className="bg-white rounded-lg p-6 m-4 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold">Mapa de Asientos</h3>
-        <button 
-          onClick={() => setActiveTab('description')} 
-          className="text-gray-500 hover:text-gray-700"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-      <SeatSelector
-        seatingChart={event.seatingChart}
-        selectedSeats={selectedSeats}
-        occupiedSeats={occupiedSeats}
-        onSeatSelect={handleSeatSelection}
-        reservationTimeout={reservationTimeout}
-        maxSeats={6}
-      />
-    </div>
-  </div>
-</TabsContent>
-  
+
+                      <TabsContent value="seating">
+                        <div className="relative">
+                          <SeatSelector
+                            seatingChart={event.seatingChart}
+                            selectedSeats={selectedSeats}
+                            occupiedSeats={occupiedSeats}
+                            onSeatSelect={handleSeatSelection}
+                            reservationTimeout={controlState.reservationTimeout}
+                            maxSeats={6}
+                          />
+                        </div>
+                      </TabsContent>
+
                       <TabsContent value="prices">
                         <div className="space-y-2">
                           {event.seatingChart.sections.map((section) => (
@@ -619,7 +598,9 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
                               className="flex justify-between items-center bg-gray-50 p-2 rounded"
                             >
                               <span>{section.name}</span>
-                              <span className="font-semibold">${section.price}</span>
+                              <span className="font-semibold">
+                                ${section.price.toLocaleString('es-ES')}
+                              </span>
                             </motion.div>
                           ))}
                         </div>
@@ -629,65 +610,43 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
                 </Card>
               </motion.div>
             </div>
-  
+
+            {/* Columna lateral con resumen y acciones */}
             <div className="space-y-4">
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
               >
-                <Card className="backdrop-blur-sm bg-white/90">
-                  <CardHeader>
-                    <CardTitle>Resumen de compra</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex justify-between text-lg font-bold">
-                      <span>Total:</span>
-                      <span>${calculateTotal().toLocaleString('es-ES')}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Asientos seleccionados:</span>
-                      <span>
-                        {selectedSeats.length > 0 
-                          ? selectedSeats.map(seatId => {
-                              const [row, col] = seatId.split('-');
-                              const displayId = `${String.fromCharCode(64 + parseInt(row))}${col}`;
-                              return displayId;
-                            }).join(', ')
-                          : 'Ninguno'
-                        }
-                      </span>
-                    </div>
-  
-                    {showBuyerForm ? (
-                      <BuyerForm
-                        onSubmit={handlePurchase}
-                        isLoading={isProcessing}
-                      />
-                    ) : (
-                      <Button
-                        className="w-full"
-                        disabled={selectedSeats.length === 0}
-                        onClick={() => setShowBuyerForm(true)}
-                      >
-                        Continuar con la compra
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-  
-                <Card className="backdrop-blur-sm bg-white/90">
+                {/* Resumen de compra */}
+                <PurchaseSummary
+                  selectedSeats={selectedSeats}
+                  sections={event.seatingChart.sections}
+                  isProcessing={uiState.isProcessing}
+                  showBuyerForm={uiState.showBuyerForm}
+                  setShowBuyerForm={(show) => setUiState(prev => ({ ...prev, showBuyerForm: show }))}
+                  onSubmit={handlePurchase} onPurchase={function (): void {
+                    throw new Error('Function not implemented.');
+                  } }                />
+
+                {/* Compartir */}
+                <Card className="backdrop-blur-sm bg-white/90 mt-4">
                   <CardHeader>
                     <CardTitle>Compartir Evento</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="flex justify-center">
-                      <Button variant="outline" size="icon" onClick={handleShare}>
+                      <Button 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={handleShare}
+                      >
                         <Share2 className="h-5 w-5" />
                       </Button>
                     </div>
                   </CardContent>
                 </Card>
-  
+
+                {/* Panel de debug en desarrollo */}
                 {process.env.NODE_ENV === 'development' && (
                   <DebugPanel eventId={event._id} />
                 )}
@@ -695,16 +654,20 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
             </div>
           </div>
         </main>
-  
+
+        {/* Sistema de notificaciones */}
         <AnimatePresence>
-          {showNotification && (
+          {uiState.showNotification && (
             <Toast
-              message={notificationMessage}
-              onClose={() => setShowNotification(false)}
+              message={uiState.notificationMessage}
+              onClose={() => setUiState(prev => ({
+                ...prev,
+                showNotification: false
+              }))}
             />
           )}
         </AnimatePresence>
       </div>
     </>
-  )
-  }
+  );
+}

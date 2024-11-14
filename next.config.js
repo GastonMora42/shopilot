@@ -1,8 +1,38 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ['localhost', 'storage.googleapis.com',
-      'storage.cloud.google.com']
+    domains: [
+      'localhost', 
+      'storage.googleapis.com',
+      'storage.cloud.google.com',
+      'shopilot-images-events.s3.us-east-1.amazonaws.com'
+    ],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'storage.googleapis.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'storage.cloud.google.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'shopilot-images-events.s3.us-east-1.amazonaws.com',
+        port: '',
+        pathname: '/events/**',
+      },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '',
+        pathname: '/**',
+      }
+    ]
   },
   webpack: (config) => {
     config.resolve.alias.canvas = false;

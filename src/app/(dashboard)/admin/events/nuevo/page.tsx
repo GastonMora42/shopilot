@@ -192,7 +192,7 @@ const handleSubmit = async () => {
     }
 
     alert('¡Evento creado exitosamente!');
-    router.push(`/events/${eventCreationData._id}`);
+    router.push(`/admin/events`);
   } catch (error) {
     console.error('Error:', error);
     alert(error instanceof Error ? error.message : 'Ocurrió un error al crear el evento');

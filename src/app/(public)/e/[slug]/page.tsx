@@ -284,40 +284,30 @@ export default function PublicEventPage() {
   }, [event?._id, showToast]);
 
   // Manejo de selección de asientos
-// En el mismo archivo, reemplaza la función handleSeatSelection actual
-// En el mismo archivo, reemplaza la función handleSeatSelection actual
-const handleSeatSelection = useCallback(async (newSelectedSeats: string[]) => {
-  try {
-    console.log('Debug - Selección actual:', {
-      actuales: selectedSeats,
-      nuevos: newSelectedSeats,
-      ocupados: occupiedSeats
-    });
+  const handleSeatSelection = useCallback(async (newSelectedSeats: string[]) => {
+    try {
+      if (!controlState.sessionId || !event?._id) {
+        showToast('Error de sesión. Por favor, recarga la página.');
+        return;
+      }
 
-    if (!controlState.sessionId || !event?._id) {
-      showToast('Error de sesión. Por favor, recarga la página.');
-      return;
-    }
+      // Verificar disponibilidad
+      const verifyResponse = await fetch(`/api/events/${event._id}/seats/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          seatIds: newSelectedSeats,
+          sessionId: controlState.sessionId 
+        })
+      });
 
-    // Verificación previa de disponibilidad
-    const verifyResponse = await fetch(`/api/events/${event._id}/seats/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        seatIds: newSelectedSeats,
-        sessionId: controlState.sessionId 
-      })
-    });
+      const verifyData = await verifyResponse.json();
+      
+      if (!verifyResponse.ok) {
+        throw new Error(verifyData.error || 'Error al verificar asientos');
+      }
 
-    const verifyData = await verifyResponse.json();
-    
-    if (!verifyResponse.ok) {
-      console.error('Error verificación:', verifyData);
-      throw new Error(verifyData.error || 'Error al verificar asientos');
-    }
-
-    // Solo si la verificación es exitosa, procedemos con la reserva
-    if (verifyData.available) {
+      // Reservar asientos
       const reserveResponse = await fetch(`/api/events/${event._id}/seats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -331,26 +321,13 @@ const handleSeatSelection = useCallback(async (newSelectedSeats: string[]) => {
       
       if (!reserveResponse.ok) {
         if (reserveData.unavailableSeats) {
-          // Actualizar occupied seats de manera más precisa
-          setOccupiedSeats(prev => {
-            const updatedSeats = [...prev];
-            reserveData.unavailableSeats.forEach((seat: any) => {
-              const index = updatedSeats.findIndex(s => s.seatId === seat.seatId);
-              if (index !== -1) {
-                updatedSeats[index] = {
-                  ...updatedSeats[index],
-                  status: seat.status
-                };
-              } else {
-                updatedSeats.push({
-                  seatId: seat.seatId,
-                  status: seat.status
-                });
-              }
-            });
-            return updatedSeats;
-          });
-          
+          setOccupiedSeats(prev => [
+            ...prev,
+            ...reserveData.unavailableSeats.map((seat: any) => ({
+              seatId: seat.seatId,
+              status: 'RESERVED'
+            }))
+          ]);
           showToast('Algunos asientos ya no están disponibles');
           await fetchOccupiedSeats();
           return;
@@ -358,10 +335,8 @@ const handleSeatSelection = useCallback(async (newSelectedSeats: string[]) => {
         throw new Error(reserveData.error || 'Error al reservar asientos');
       }
 
-      // Actualizar estado local solo si la reserva fue exitosa
+      // Actualizar estado local
       setSelectedSeats(newSelectedSeats);
-      
-      // Manejar timeout de reserva
       if (reserveData.expiresAt) {
         const expiresAt = new Date(reserveData.expiresAt).getTime();
         setControlState(prev => ({
@@ -369,49 +344,34 @@ const handleSeatSelection = useCallback(async (newSelectedSeats: string[]) => {
           reservationTimeout: expiresAt
         }));
 
-        // Programar notificaciones y actualizaciones
+        // Gestión de notificaciones de tiempo
         const timeoutMs = expiresAt - Date.now();
         if (timeoutMs > 0) {
-          // Actualización periódica mientras haya asientos seleccionados
-          const updateInterval = setInterval(() => {
-            if (newSelectedSeats.length > 0) {
-              fetchOccupiedSeats();
-            } else {
-              clearInterval(updateInterval);
-            }
-          }, 10000); // Cada 10 segundos
-
-          // Limpiar el intervalo cuando expire la reserva
+          // Notificación 1 minuto antes
           setTimeout(() => {
-            clearInterval(updateInterval);
-            fetchOccupiedSeats();
-          }, timeoutMs);
+            if (newSelectedSeats.length > 0) {
+              showToast('¡Tu reserva expirará en 1 minuto!');
+            }
+          }, timeoutMs - 60000);
 
-          // Notificaciones
-          if (timeoutMs > 300000) { // 5 minutos
+          // Notificación 5 minutos antes
+          if (timeoutMs > 300000) {
             setTimeout(() => {
               if (newSelectedSeats.length > 0) {
                 showToast('Te quedan 5 minutos para completar tu compra');
               }
             }, timeoutMs - 300000);
           }
-
-          setTimeout(() => {
-            if (newSelectedSeats.length > 0) {
-              showToast('¡Tu reserva expirará en 1 minuto!');
-              fetchOccupiedSeats();
-            }
-          }, Math.max(0, timeoutMs - 60000));
         }
       }
-    }
 
-  } catch (error) {
-    console.error('Error en selección de asientos:', error);
-    showToast('Error al seleccionar asientos. Por favor, intenta de nuevo.');
-    await fetchOccupiedSeats();
-  }
-}, [event?._id, controlState.sessionId, selectedSeats, occupiedSeats, fetchOccupiedSeats, showToast]);
+    } catch (error) {
+      console.error('Error selecting seats:', error);
+      showToast('Error al seleccionar asientos. Por favor, intenta de nuevo.');
+      await fetchOccupiedSeats();
+    }
+  }, [event?._id, controlState.sessionId, fetchOccupiedSeats, showToast]);
+
   // Manejo de compra
   const handlePurchase = useCallback(async (buyerInfo: {
     name: string;

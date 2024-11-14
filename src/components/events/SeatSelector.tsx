@@ -71,10 +71,6 @@ const Seat = ({
     </span>
   </motion.button>
 );
-// components/SeatSelector.tsx
-
-// ... (imports se mantienen igual)
-
 export function SeatSelector({
   seatingChart,
   reservationTimeout,
@@ -85,56 +81,45 @@ export function SeatSelector({
 }: SeatSelectorProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [, setSelectedSection] = useState<ISection | null>(null);
-  
-  // Mejorar la detección de asientos ocupados/reservados
   const isSeatOccupied = useCallback((seatId: string): boolean => {
-    const seat = occupiedSeats.find(s => s.seatId === seatId);
-    return seat?.status === 'OCCUPIED';
+    return occupiedSeats.some(seat => 
+      seat.seatId === seatId && seat.status === 'OCCUPIED'
+    );
   }, [occupiedSeats]);
 
   const isSeatReserved = useCallback((seatId: string): boolean => {
-    const seat = occupiedSeats.find(s => s.seatId === seatId);
-    return seat?.status === 'RESERVED';
+    return occupiedSeats.some(seat => 
+      seat.seatId === seatId && seat.status === 'RESERVED'
+    );
   }, [occupiedSeats]);
 
-  const handleSeatClick = useCallback(async (seatId: string, type: 'REGULAR' | 'VIP' | 'DISABLED') => {
+  const handleSeatClick = async (seatId: string, type: 'REGULAR' | 'VIP' | 'DISABLED') => {
     try {
       if (type === 'DISABLED') return;
       
-      console.log('Seat click debug:', {
-        seatId,
-        type,
-        isOccupied: isSeatOccupied(seatId),
-        isReserved: isSeatReserved(seatId),
-        currentSelection: selectedSeats
-      });
+      // Convertir el seatId de formato visual a formato DB si es necesario
+      const actualSeatId = seatId; // Ya debe venir en formato correcto "9-4"
+      console.log('Clicking seat:', { seatId: actualSeatId });
 
-      // Verificar si el asiento está realmente disponible
-      if (isSeatOccupied(seatId) || isSeatReserved(seatId)) {
-        console.log('Asiento no disponible:', seatId);
-        return;
-      }
-
-      const isCurrentlySelected = selectedSeats.includes(seatId);
+      const isCurrentlySelected = selectedSeats.includes(actualSeatId);
       
-      // Verificar límite de selección
       if (!isCurrentlySelected && selectedSeats.length >= maxSeats) {
         alert(`No puedes seleccionar más de ${maxSeats} asientos`);
         return;
       }
 
       const newSelectedSeats = isCurrentlySelected
-        ? selectedSeats.filter(id => id !== seatId)
-        : [...selectedSeats, seatId];
+        ? selectedSeats.filter(id => id !== actualSeatId)
+        : [...selectedSeats, actualSeatId];
 
-      console.log('Nueva selección:', newSelectedSeats);
+      console.log('New selection:', newSelectedSeats);
       await onSeatSelect(newSelectedSeats);
     } catch (error) {
       console.error('Error al seleccionar asiento:', error);
     }
-  }, [selectedSeats, maxSeats, isSeatOccupied, isSeatReserved, onSeatSelect]);
+  };
 
-  const renderSectionGrid = useCallback((section: ISection) => {
+  const renderSectionGrid = (section: ISection) => {
     const rows = section.rowEnd - section.rowStart + 1;
     const cols = section.columnEnd - section.columnStart + 1;
 
@@ -163,25 +148,18 @@ export function SeatSelector({
                 <div className="flex gap-2">
                   {Array.from({ length: cols }).map((_, colIdx) => {
                     const actualCol = section.columnStart + colIdx;
+                    // Este es el ID que usaremos para la base de datos
                     const seatId = `${actualRow}-${actualCol}`;
+                    // Este es el ID que mostraremos al usuario
                     const displayId = `${String.fromCharCode(65 + rowIdx)}${colIdx + 1}`;
 
-                    // Debug para el asiento A1
-                    if (displayId === 'A1') {
-                      console.log('Debug A1:', {
-                        seatId,
-                        displayId,
-                        isOccupied: isSeatOccupied(seatId),
-                        isReserved: isSeatReserved(seatId),
-                        occupiedSeats: occupiedSeats
-                      });
-                    }
+                    console.log('Rendering seat:', { seatId, displayId });
 
                     return (
                       <Seat
                         key={seatId}
-                        seatId={seatId}
-                        displayId={displayId}
+                        seatId={seatId} // Formato DB
+                        displayId={displayId} // Formato visual
                         type={section.type}
                         isSelected={selectedSeats.includes(seatId)}
                         isOccupied={isSeatOccupied(seatId)}
@@ -198,23 +176,10 @@ export function SeatSelector({
         </div>
       </div>
     );
-  }, [selectedSeats, occupiedSeats, handleSeatClick, isSeatOccupied, isSeatReserved]);
+  };
 
-  // Mostrar los asientos seleccionados en formato legible
-  const formatSelectedSeats = useCallback((seats: string[]) => {
-    return seats.map(seatId => {
-      const [row, col] = seatId.split('-');
-      return `${String.fromCharCode(64 + parseInt(row))}${col}`;
-    }).sort().join(', ');
-  }, []);
-
-
- 
-
-return (
-  <div className="space-y-6 max-w-full overflow-x-auto pb-4">
-    {/* ... (resto del JSX se mantiene igual) ... */}
-    
+  return (
+    <div className="space-y-6 max-w-full overflow-x-auto pb-4">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h2 className="text-lg font-semibold">Seleccionar Asientos</h2>
         <Button
@@ -280,13 +245,14 @@ return (
           </div>
         </ModalFooter>
       </Modal>
+
       <div className="flex flex-col md:flex-row gap-2 justify-between items-center bg-gray-50 p-3 rounded-lg">
         <Badge variant="outline" className="text-sm">
           Asientos seleccionados: {selectedSeats.length} / {maxSeats}
         </Badge>
         {selectedSeats.length > 0 && (
           <div className="text-sm text-gray-600">
-            {formatSelectedSeats(selectedSeats)}
+            {selectedSeats.sort().join(', ')}
           </div>
         )}
       </div>

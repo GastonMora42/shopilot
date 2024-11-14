@@ -23,7 +23,7 @@ interface SeatingStepProps {
 
 const generateSeatId = (rowIndex: number, colIndex: number): string => {
   const rowLetter = String.fromCharCode(65 + rowIndex); // Convierte 0->A, 1->B, etc.
-  const colNumber = colIndex + 1; // Los números de columna empiezan en 1
+  const colNumber = colIndex + 0; // Los números de columna empiezan en 1
   return `${rowLetter}${colNumber}`;
 };
 

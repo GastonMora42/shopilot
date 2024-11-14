@@ -1,4 +1,3 @@
-// app/(public)/payment/success/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -29,74 +28,89 @@ export default function PaymentSuccessPage() {
   const [ticket, setTicket] = useState<TicketData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [verificationAttempts, setVerificationAttempts] = useState(0);
   const { downloadPDF, loading: pdfLoading } = usePDFDownload();
 
-  useEffect(() => {
-// En PaymentSuccessPage, actualiza la función verifyPayment:
-// app/(public)/payment/success/page.tsx
-const verifyPayment = async () => {
-  try {
-    const ticketId = searchParams.get('ticketId') || searchParams.get('external_reference');
-    const paymentId = searchParams.get('payment_id');
+  const verifyPayment = async () => {
+    try {
+      const ticketId = searchParams.get('ticketId') || searchParams.get('external_reference');
+      const paymentId = searchParams.get('payment_id');
 
-    console.log('Verifying payment:', { ticketId, paymentId });
-
-    if (!ticketId || !paymentId) {
-      throw new Error('Datos de pago incompletos');
-    }
-
-    const response = await fetch('/api/payments/verify', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+      console.log('Intento de verificación:', {
+        intento: verificationAttempts + 1,
         ticketId,
         paymentId
-      })
-    });
+      });
 
-    const data = await response.json();
+      if (!ticketId || !paymentId) {
+        throw new Error('Información de pago incompleta');
+      }
 
-    if (!response.ok) {
-      throw new Error(data.error || 'Error al verificar el pago');
+      const response = await fetch('/api/payments/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ticketId,
+          paymentId
+        })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Error en la verificación del pago');
+      }
+
+      const data = await response.json();
+      setTicket(data.ticket);
+      
+      // Si el ticket está pagado, detener las verificaciones
+      if (data.ticket.status === 'PAID') {
+        return true;
+      }
+      
+      return false;
+
+    } catch (error) {
+      console.error('Error en verificación:', error);
+      setError(error instanceof Error ? error.message : 'Error al procesar el pago');
+      return false;
+    } finally {
+      setVerificationAttempts(prev => prev + 1);
     }
+  };
 
-    setTicket(data.ticket);
-  } catch (error) {
-    console.error('Error:', error);
-    setError(error instanceof Error ? error.message : 'Error al procesar el pago');
-  } finally {
-    setLoading(false);
-  }
-};
-    // Verificar inmediatamente
-    verifyPayment();
-
-    // Reintentar cada 5 segundos por 1 minuto si el ticket está pendiente
-    const maxAttempts = 12;
-    let attempts = 0;
-    const interval = setInterval(async () => {
-      if (attempts >= maxAttempts || ticket?.status === 'PAID') {
-        clearInterval(interval);
-        if (!ticket && attempts >= maxAttempts) {
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    
+    const startVerification = async () => {
+      setLoading(true);
+      const isComplete = await verifyPayment();
+      
+      if (!isComplete && verificationAttempts < 12) { // 1 minuto (12 intentos * 5 segundos)
+        timeoutId = setTimeout(startVerification, 5000);
+      } else {
+        setLoading(false);
+        if (!ticket && verificationAttempts >= 12) {
           setError('No se pudo confirmar el pago después de varios intentos');
         }
-        return;
       }
-      attempts++;
-      await verifyPayment();
-    }, 5000);
+    };
 
-    return () => clearInterval(interval);
-  }, [searchParams]);
+    startVerification();
 
-  if (loading) {
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [searchParams]); // Solo depende de searchParams
+
+  if (loading && verificationAttempts < 12) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-lg mb-2">Procesando el pago...</p>
-          <p className="text-sm text-gray-500">Esto puede tomar unos momentos</p>
+          <p className="text-lg mb-2">Verificando el pago...</p>
+          <p className="text-sm text-gray-500">Intento {verificationAttempts} de 12</p>
         </div>
       </div>
     );
@@ -115,6 +129,8 @@ const verifyPayment = async () => {
       </div>
     );
   }
+
+  // ... resto del código del return con el ticket ...
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">

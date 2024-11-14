@@ -18,7 +18,7 @@ export async function POST(req: Request) {
 
     await dbConnect();
 
-    // Buscar y actualizar el ticket
+    // Buscar y actualizar el tickets
     const ticket = await Ticket.findByIdAndUpdate(
       ticketId,
       {

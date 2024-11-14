@@ -1,3 +1,4 @@
+//api/webhooks/mercadopago/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';

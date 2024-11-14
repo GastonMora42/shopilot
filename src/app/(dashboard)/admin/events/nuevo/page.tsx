@@ -10,6 +10,7 @@ import { SeatingStep } from '@/components/events/SeatingStep';
 import { PricingStep } from '@/components/events/PricingSteps';
 import { ReviewStep } from '@/components/events/ReviewStep';
 import { StepIndicator } from '@/components/events/StepIndicator';
+import { ImageUpload } from '@/components/ui/ImageUpload';
 
 type StepType = 'info' | 'seating' | 'pricing' | 'review';
 
@@ -113,12 +114,6 @@ export default function NewEventPage() {
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      setImageFile(e.target.files[0]);
-    }
-  };
-
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
@@ -134,7 +129,7 @@ export default function NewEventPage() {
       if (invalidSections.length > 0) {
         throw new Error('Hay secciones con límites inválidos');
       }
-      // Otros pasos de envío del formulario
+      // Otros pasos de envío del formularios
       if (imageFile) {
         const formData = new FormData();
         formData.append('file', imageFile);
@@ -269,7 +264,14 @@ export default function NewEventPage() {
         </Button>
 
         <div>
-          <input type="file" onChange={handleImageUpload} />
+        <div className="mb-6">
+  <h3 className="text-lg font-semibold mb-2">Imagen del Evento</h3>
+  <ImageUpload
+    onImageUpload={(file) => setImageFile(file)}
+    currentImageUrl={eventData.imageUrl}
+    className="w-full max-w-xl mx-auto"
+  />
+</div>
           <Button
             onClick={() => {
               if (!validateStep(step)) {

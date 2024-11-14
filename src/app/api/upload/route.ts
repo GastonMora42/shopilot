@@ -1,24 +1,8 @@
 // app/api/upload/route.ts
 import { NextResponse } from 'next/server';
-import { Storage } from '@google-cloud/storage';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { s3Client, S3_BUCKET } from '@/app/lib/s3Config';
 import { v4 as uuidv4 } from 'uuid';
-
-// Configuración de Google Cloud Storage
-const GOOGLE_CLOUD_PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID || '';
-const GOOGLE_CLOUD_BUCKET = process.env.GOOGLE_CLOUD_BUCKET || '';
-const GOOGLE_CLOUD_PRIVATE_KEY = process.env.GOOGLE_CLOUD_PRIVATE_KEY || '';
-const GOOGLE_CLOUD_CLIENT_EMAIL = process.env.GOOGLE_CLOUD_CLIENT_EMAIL || '';
-
-// Inicializar Google Cloud Storage
-const storage = new Storage({
-  projectId: GOOGLE_CLOUD_PROJECT_ID,
-  credentials: {
-    private_key: GOOGLE_CLOUD_PRIVATE_KEY.replace(/\\n/g, '\n'),
-    client_email: GOOGLE_CLOUD_CLIENT_EMAIL
-  }
-});
-
-const bucket = storage.bucket(GOOGLE_CLOUD_BUCKET);
 
 export async function POST(req: Request) {
   try {
@@ -32,39 +16,42 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generar nombre único para el archivo
-    const fileName = `events/${uuidv4()}-${file.name.replace(/\s+/g, '-')}`;
-    
-    // Convertir el archivo a buffer
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    // Crear el archivo en GCS
-    const blob = bucket.file(fileName);
-    const blobStream = blob.createWriteStream({
-      metadata: {
-        contentType: file.type,
-      },
-      public: true, // Hacer el archivo público
-    });
-
-    // Manejar errores en el stream
-    const streamError = await new Promise((resolve, reject) => {
-      blobStream.on('error', (err) => reject(err));
-      blobStream.on('finish', () => resolve(null));
-      blobStream.end(buffer);
-    });
-
-    if (streamError) {
-      throw streamError;
+    // Validaciones
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      return NextResponse.json(
+        { error: 'Tipo de archivo no permitido' },
+        { status: 400 }
+      );
     }
 
-    // Generar URL pública
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      return NextResponse.json(
+        { error: 'Archivo demasiado grande' },
+        { status: 400 }
+      );
+    }
+
+    const fileName = `events/${uuidv4()}-${file.name.replace(/\s+/g, '-')}`;
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    const command = new PutObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: fileName,
+      Body: buffer,
+      ContentType: file.type,
+      ACL: 'public-read', // Solo si quieres que las imágenes sean públicas
+    });
+
+    await s3Client.send(command);
+
+    // URL pública de S3
+    const fileUrl = `https://${S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
 
     return NextResponse.json({ 
       success: true,
-      url: publicUrl 
+      url: fileUrl 
     });
 
   } catch (error) {

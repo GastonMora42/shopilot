@@ -2,8 +2,9 @@ import { motion } from "framer-motion";
 import { Calendar, Clock, MapPin } from "lucide-react";
 import { memo } from "react";
 
-// components/events/EventHeader.tsx
-export const EventHeader = memo(({ name }: { name: string }) => (
+// Opción 1: Usando function declaration (recomendada)
+export const EventHeader = memo(function EventHeader({ name }: { name: string }) {
+  return (
     <header className="bg-white/80 backdrop-blur-sm shadow-sm">
       <div className="container mx-auto px-4 py-6">
         <motion.h1 
@@ -15,10 +16,17 @@ export const EventHeader = memo(({ name }: { name: string }) => (
         </motion.h1>
       </div>
     </header>
-  ));
-  
-  // components/events/EventDetails.tsx
-  export const EventDetails = memo(({ date, location }: { date: string, location: string }) => (
+  );
+});
+
+export const EventDetails = memo(function EventDetails({ 
+  date, 
+  location 
+}: { 
+  date: string;
+  location: string;
+}) {
+  return (
     <div className="space-y-4">
       <div className="flex items-center space-x-2 text-gray-500">
         <Calendar className="h-5 w-5" />
@@ -39,5 +47,5 @@ export const EventHeader = memo(({ name }: { name: string }) => (
         <span>{location}</span>
       </div>
     </div>
-  ));
-  
+  );
+});

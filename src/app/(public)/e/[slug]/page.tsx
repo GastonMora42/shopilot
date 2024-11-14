@@ -39,9 +39,8 @@ interface ControlState {
 }
 
 // Componente de fondo animado optimizado
-const AnimatedBackground = memo(({ imageUrl }: { imageUrl: string }) => {
+const AnimatedBackground = memo(function AnimatedBackground({ imageUrl }: { imageUrl: string }) {
   const controls = useAnimation();
-
   useEffect(() => {
     let isMounted = true;
 
@@ -86,11 +85,17 @@ const AnimatedBackground = memo(({ imageUrl }: { imageUrl: string }) => {
 });
 
 // Componente de imagen del evento optimizado
-const EventImage = memo(({ imageUrl, eventName }: { imageUrl: string; eventName: string }) => {
+const EventImage = memo(function EventImage({ 
+  imageUrl, 
+  eventName 
+}: { 
+  imageUrl: string; 
+  eventName: string; 
+}) {
   const [imageLoading, setImageLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-
+  
   return (
     <>
       <motion.div

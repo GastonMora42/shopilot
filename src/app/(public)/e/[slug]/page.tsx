@@ -519,7 +519,7 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
     );
   }
 
-  function setActiveTab(arg0: string): void {
+  function setActiveTab(_arg0: string): void {
     throw new Error('Function not implemented.');
   }
 
@@ -585,7 +585,6 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
                       <TabsContent value="description">
                         <p className="text-gray-700">{event.description}</p>
                       </TabsContent>
-                      // En tu TabsContent de seating:
 <TabsContent value="seating" className="relative">
   <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
     <div className="bg-white rounded-lg p-6 m-4 max-w-4xl w-full max-h-[90vh] overflow-y-auto">

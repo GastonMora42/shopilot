@@ -7,7 +7,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/lib/auth';
 import mongoose from 'mongoose'
 
-// Definir tipos para la estructura de seatingChart
+// Definir tipos para la estrsuctura de seatingChart
 interface Section {
   name: string;
   rowStart: number;
@@ -139,6 +139,7 @@ export async function POST(req: Request) {
     }
 
     const data = await req.json();
+    console.log('Received event data:', data); // Debug log
 
     // Validar seatingChart
     const validationError = validateSeatingChart(data.seatingChart);
@@ -154,9 +155,10 @@ export async function POST(req: Request) {
     mongoSession.startTransaction();
 
     try {
-      // Crear el evento
+      // Crear el evento con imageUrl
       const [event] = await Event.create([{
         ...data,
+        imageUrl: data.imageUrl || '', // Aseguramos que imageUrl esté incluido
         organizerId: user._id,
         mercadopago: {
           accessToken: user.mercadopago.accessToken,
@@ -164,6 +166,11 @@ export async function POST(req: Request) {
         },
         published: false
       }], { session: mongoSession });
+
+      console.log('Created event with image:', {
+        eventId: event._id,
+        imageUrl: event.imageUrl
+      }); // Debug log
 
       // Generar y crear los asientos
       const seats = await generateSeatsForEvent(
@@ -175,9 +182,13 @@ export async function POST(req: Request) {
 
       await mongoSession.commitTransaction();
 
+      // Incluir imageUrl en la respuesta
+      const eventJSON = event.toJSON();
+      console.log('Final event data:', eventJSON); // Debug log
+
       return NextResponse.json({
         success: true,
-        event: event.toJSON(),
+        event: eventJSON,
         totalSeats: seats.length
       }, { status: 201 });
 

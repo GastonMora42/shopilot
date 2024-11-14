@@ -150,28 +150,33 @@ const handleSubmit = async () => {
   try {
     setIsSubmitting(true);
 
-    // Validar secciones...
-    if (invalidSections.length > 0) {
-      throw new Error('Hay secciones con límites inválidos');
-    }
+    let imageUrl = eventData.imageUrl; // Mantener la URL existente si hay una
 
-    let imageUrl = eventData.imageUrl;
-    
-    // Subir imagen si existe
     if (imageFile) {
-      try {
-        imageUrl = await handleImageUpload(imageFile);
-      } catch (error) {
-        console.error('Error al subir la imagen:', error);
-        throw new Error('Error al subir la imagen');
+      const formData = new FormData();
+      formData.append('file', imageFile);
+
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      const uploadData = await uploadResponse.json();
+      if (!uploadResponse.ok) {
+        throw new Error(uploadData.error || 'Error al subir la imagen');
       }
+
+      imageUrl = uploadData.url;
+      console.log('Image URL after upload:', imageUrl); // Para debugging
     }
 
     const formattedData = {
       ...eventData,
-      imageUrl, // Usar la URL de la imagen subida
+      imageUrl, // Asegurarte de incluir esto
       date: new Date(eventData.date).toISOString()
     };
+
+    console.log('Sending event data:', formattedData); // Para debugging
 
     const response = await fetch('/api/events/create', {
       method: 'POST',
@@ -180,6 +185,7 @@ const handleSubmit = async () => {
     });
 
     const eventCreationData = await response.json();
+    console.log('Response from event creation:', eventCreationData); // Para debugging
 
     if (!response.ok) {
       throw new Error(eventCreationData.error || 'Error al crear el evento');

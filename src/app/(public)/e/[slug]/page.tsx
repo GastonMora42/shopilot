@@ -519,6 +519,10 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
     );
   }
 
+  function setActiveTab(arg0: string): void {
+    throw new Error('Function not implemented.');
+  }
+
   return (
     <>
       {event?.imageUrl && <AnimatedBackground imageUrl={event.imageUrl} />}
@@ -581,19 +585,30 @@ const EventImage = ({ imageUrl, eventName }: { imageUrl: string; eventName: stri
                       <TabsContent value="description">
                         <p className="text-gray-700">{event.description}</p>
                       </TabsContent>
-  
-                      <TabsContent value="seating">
-                        <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4">
-                          <SeatSelector
-                            seatingChart={event.seatingChart}
-                            selectedSeats={selectedSeats}
-                            occupiedSeats={occupiedSeats}
-                            onSeatSelect={handleSeatSelection}
-                            reservationTimeout={reservationTimeout}
-                            maxSeats={6}
-                          />
-                        </div>
-                      </TabsContent>
+                      // En tu TabsContent de seating:
+<TabsContent value="seating" className="relative">
+  <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
+    <div className="bg-white rounded-lg p-6 m-4 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold">Mapa de Asientos</h3>
+        <button 
+          onClick={() => setActiveTab('description')} 
+          className="text-gray-500 hover:text-gray-700"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <SeatSelector
+        seatingChart={event.seatingChart}
+        selectedSeats={selectedSeats}
+        occupiedSeats={occupiedSeats}
+        onSeatSelect={handleSeatSelection}
+        reservationTimeout={reservationTimeout}
+        maxSeats={6}
+      />
+    </div>
+  </div>
+</TabsContent>
   
                       <TabsContent value="prices">
                         <div className="space-y-2">

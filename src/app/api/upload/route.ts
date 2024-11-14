@@ -15,7 +15,6 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-
     // Validaciones
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
@@ -24,6 +23,7 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
 
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
@@ -36,18 +36,26 @@ export async function POST(req: Request) {
     const fileName = `events/${uuidv4()}-${file.name.replace(/\s+/g, '-')}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
+    console.log('Attempting to upload:', {
+      bucket: S3_BUCKET,
+      region: process.env.AWS_REGION,
+      fileName,
+      fileType: file.type
+    });
+
     const command = new PutObjectCommand({
       Bucket: S3_BUCKET,
       Key: fileName,
       Body: buffer,
       ContentType: file.type,
-      ACL: 'public-read', // Solo si quieres que las imágenes sean públicas
+      ACL: 'public-read',
     });
 
     await s3Client.send(command);
 
-    // URL pública de S3
     const fileUrl = `https://${S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
+    
+    console.log('Upload successful:', fileUrl);
 
     return NextResponse.json({ 
       success: true,
@@ -55,9 +63,9 @@ export async function POST(req: Request) {
     });
 
   } catch (error) {
-    console.error('Error al subir archivo:', error);
+    console.error('Error detallado:', error);
     return NextResponse.json(
-      { error: 'Error al subir el archivo' },
+      { error: error instanceof Error ? error.message : 'Error al subir el archivo' },
       { status: 500 }
     );
   }

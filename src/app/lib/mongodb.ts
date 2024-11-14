@@ -1,64 +1,69 @@
 // app/lib/mongodb.ts
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI!;
-
-if (!MONGODB_URI) {
-  throw new Error('Please define MONGODB_URI environment variable');
-}
-
-// Definir interface para el cache global
-interface GlobalMongoDB {
-  conn: Connection | null;
-  promise: Promise<Connection> | null;
-}
-
-// Definir tipo para la conexión
-type Connection = typeof mongoose;
-
-// Declarar el tipo global
-declare global {
-  var mongoose: GlobalMongoDB | undefined;
-}
-
-// Inicializar el cache
-const cached: GlobalMongoDB = global.mongoose ?? {
-  conn: null,
-  promise: null,
+// Tipo para la conexión global de Mongoose
+type MongooseConnection = {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
 };
 
-// Asignar al global si no existe
-if (!global.mongoose) {
-  global.mongoose = cached;
+// Declaración del tipo global
+declare global {
+  // eslint-disable-next-line no-var
+  var mongooseGlobal: MongooseConnection | undefined;
 }
 
-async function dbConnect(): Promise<Connection> {
-  if (cached.conn) {
-    return cached.conn;
-  }
+const MONGODB_URI = process.env.MONGODB_URI;
 
-  if (!cached.promise) {
-    const opts = {
-      bufferCommands: false,
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
-      family: 4
-    };
+if (!MONGODB_URI) {
+  throw new Error(
+    'Por favor define la variable de entorno MONGODB_URI'
+  );
+}
 
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-      return mongoose;
-    });
-  }
+// Inicializar la conexión
+let cached = global.mongooseGlobal;
 
+if (!cached) {
+  cached = global.mongooseGlobal = {
+    conn: null,
+    promise: null
+  };
+}
+
+async function dbConnect(): Promise<typeof mongoose> {
   try {
-    cached.conn = await cached.promise;
-  } catch (e) {
-    cached.promise = null;
-    throw e;
-  }
+    // Si ya existe una conexión, la retornamos
+    if (cached?.conn) {
+      return cached.conn;
+    }
 
-  return cached.conn;
+    // Si no hay una promesa de conexión pendiente, la creamos
+    if (!cached?.promise) {
+      const opts = {
+        bufferCommands: false,
+        maxPoolSize: 10,
+        serverSelectionTimeoutMS: 10000,
+        socketTimeoutMS: 45000,
+        family: 4
+      };
+
+      cached!.promise = mongoose.connect(MONGODB_URI!, opts);
+    }
+
+    // Esperamos la conexión y la guardamos
+    try {
+      cached!.conn = await cached!.promise;
+    } catch (e) {
+      cached!.promise = null;
+      throw e;
+    }
+
+    return cached!.conn;
+  } catch (error) {
+    console.error('Error conectando a MongoDB:', error);
+    throw new Error('No se pudo conectar a la base de datos');
+  }
 }
 
 export default dbConnect;

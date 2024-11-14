@@ -83,7 +83,7 @@ export async function POST(req: Request) {
 const seatResult = await Seat.updateMany(
   {
     eventId: ticket.eventId,
-    seatId: { $in: ticket.seatId },
+    seatId: { $in: ticket.seats },  // ✅ CORRECCIÓN
     status: 'RESERVED'
   },
   {
@@ -92,7 +92,8 @@ const seatResult = await Seat.updateMany(
       ticketId: ticket._id
     },
     $unset: {
-      temporaryReservation: 1
+      temporaryReservation: 1,
+      lastReservationAttempt: 1  // También limpiamos esto
     }
   },
   { session }

@@ -29,7 +29,7 @@ export default function PaymentErrorPage() {
         </Button>
         
         <Button variant="outline" asChild className="w-full">
-          <Link href="/contact">
+          <Link href="/contacto">
             Contactar soporte
           </Link>
         </Button>

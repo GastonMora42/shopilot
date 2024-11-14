@@ -95,35 +95,29 @@ export function SeatSelector({
 
   const handleSeatClick = async (seatId: string, type: 'REGULAR' | 'VIP' | 'DISABLED') => {
     try {
-        if (type === 'DISABLED') return;
+      if (type === 'DISABLED') return;
+      
+      // Convertir el seatId de formato visual a formato DB si es necesario
+      const actualSeatId = seatId; // Ya debe venir en formato correcto "9-4"
+      console.log('Clicking seat:', { seatId: actualSeatId });
 
-        // Verificar si el asiento está ocupado o reservado
-        const isCurrentlyOccupied = isSeatOccupied(seatId);
-        const isCurrentlyReserved = isSeatReserved(seatId);
+      const isCurrentlySelected = selectedSeats.includes(actualSeatId);
+      
+      if (!isCurrentlySelected && selectedSeats.length >= maxSeats) {
+        alert(`No puedes seleccionar más de ${maxSeats} asientos`);
+        return;
+      }
 
-        if (isCurrentlyOccupied || isCurrentlyReserved) {
-            alert("Este asiento no está disponible. Selecciona otro asiento.");
-            return;
-        }
+      const newSelectedSeats = isCurrentlySelected
+        ? selectedSeats.filter(id => id !== actualSeatId)
+        : [...selectedSeats, actualSeatId];
 
-        const isCurrentlySelected = selectedSeats.includes(seatId);
-
-        if (!isCurrentlySelected && selectedSeats.length >= maxSeats) {
-            alert(`No puedes seleccionar más de ${maxSeats} asientos`);
-            return;
-        }
-
-        const newSelectedSeats = isCurrentlySelected
-            ? selectedSeats.filter(id => id !== seatId)
-            : [...selectedSeats, seatId];
-
-        console.log('New selection:', newSelectedSeats);
-        await onSeatSelect(newSelectedSeats);
+      console.log('New selection:', newSelectedSeats);
+      await onSeatSelect(newSelectedSeats);
     } catch (error) {
-        console.error('Error al seleccionar asiento:', error);
+      console.error('Error al seleccionar asiento:', error);
     }
-};
-
+  };
 
   const renderSectionGrid = (section: ISection) => {
     const rows = section.rowEnd - section.rowStart + 1;

@@ -57,7 +57,7 @@ export default function PublicEventPage() {
       pollSeats();
   
       // Configurar intervalo
-      const interval = setInterval(pollSeats, 150000); // Cada 15 segundos
+      const interval = setInterval(pollSeats, 150000); // Cada 15 minutos
       setPollingInterval(interval);
   
       return () => {

@@ -1,15 +1,13 @@
+// app/api/payments/verify/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
-import { Seat } from '@/app/models/Seat';
 import { Ticket } from '@/app/models/Ticket';
-import mongoose from 'mongoose';
 
 export async function POST(req: Request) {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     const { ticketId, paymentId } = await req.json();
+    
+    console.log('Verifying payment:', { ticketId, paymentId });
 
     if (!ticketId || !paymentId) {
       return NextResponse.json(
@@ -21,57 +19,22 @@ export async function POST(req: Request) {
     await dbConnect();
 
     // Buscar y actualizar el ticket
-    const ticket = await Ticket.findOneAndUpdate(
-      {
-        _id: ticketId,
-        status: 'PENDING'
-      },
+    const ticket = await Ticket.findByIdAndUpdate(
+      ticketId,
       {
         status: 'PAID',
         paymentId
       },
-      {
-        new: true,
-        session,
-        populate: 'eventId'
-      }
+      { new: true, populate: 'eventId' }
     );
 
     if (!ticket) {
-      await session.abortTransaction();
       return NextResponse.json(
-        { error: 'Ticket no encontrado o ya procesado' },
+        { error: 'Ticket no encontrado' },
         { status: 404 }
       );
     }
 
-    // Actualizar el estado de los asientos
-    const seatResult = await Seat.updateMany(
-      {
-        eventId: ticket.eventId,
-        number: { $in: ticket.seatId },
-        status: 'RESERVED',
-        ticketId: ticket._id
-      },
-      {
-        $set: { status: 'OCCUPIED' },
-        $unset: {
-          temporaryReservation: 1,
-          reservationExpires: 1
-        }
-      },
-      { session }
-    );
-
-    if (seatResult.modifiedCount !== ticket.seats.length) {
-      await session.abortTransaction();
-      return NextResponse.json(
-        { error: 'Error actualizando asientos' },
-        { status: 500 }
-      );
-    }
-
-    await session.commitTransaction();
     return NextResponse.json({
       success: true,
       ticket: {
@@ -80,13 +43,14 @@ export async function POST(req: Request) {
         eventName: ticket.eventId.name,
         date: ticket.eventId.date,
         location: ticket.eventId.location,
-        seats: ticket.seatId,
+        seats: ticket.seats,
         qrCode: ticket.qrCode,
         buyerInfo: ticket.buyerInfo,
         price: ticket.price,
         paymentId: ticket.paymentId
       }
     });
+
   } catch (error) {
     console.error('Verification error:', error);
     return NextResponse.json({

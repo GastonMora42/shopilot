@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 import { memo } from "react";
 
-export const AdaptiveHeader = memo(({ title }: { title: string }) => (
+export const AdaptiveHeader = memo(function AdaptiveHeader({ title }: { title: string }) {
+    return (
     <header className="relative">
       <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-transparent" />
       <div className="container mx-auto px-4 py-6 relative z-10">
@@ -14,5 +15,7 @@ export const AdaptiveHeader = memo(({ title }: { title: string }) => (
         </motion.h1>
       </div>
     </header>
-  ));
+  );
+});
+  
   

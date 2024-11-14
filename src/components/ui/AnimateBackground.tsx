@@ -2,15 +2,15 @@ import { motion, useAnimation } from "framer-motion";
 import { memo, useEffect } from "react";
 import Image from 'next/image';
 // components/events/AnimatedBackground.tsx
-export const AnimatedBackground = memo(({ 
-    imageUrl,
-    quality = 75,
-    priority = true 
-  }: { 
-    imageUrl: string,
-    quality?: number,
-    priority?: boolean
-  }) => {
+export const AnimatedBackground = memo(function AnimatedBackground({ 
+  imageUrl,
+  quality = 75,
+  priority = true 
+}: { 
+  imageUrl: string;
+  quality?: number;
+  priority?: boolean;
+}) {
     const controls = useAnimation();
   
     useEffect(() => {

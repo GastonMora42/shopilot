@@ -109,7 +109,7 @@ export function QrScanner() {
     return () => {
       stopScanning();
     };
-  }, [scanner]);
+  }, [startScanning, stopScanning]); 
 
   return (
     <div className="space-y-4">

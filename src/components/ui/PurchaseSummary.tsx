@@ -21,14 +21,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "./Card";
     onSubmit: (buyerInfo: any) => Promise<void>;
   }
   
-  export const PurchaseSummary = memo(({
+  export const PurchaseSummary = memo(function PurchaseSummary({
     selectedSeats,
     sections,
     isProcessing,
     showBuyerForm,
     setShowBuyerForm,
     onSubmit
-  }: PurchaseSummaryProps) => {
+  }: PurchaseSummaryProps) {
     const total = useMemo(() => 
       selectedSeats.reduce((sum, seatId) => 
         sum + calculateSeatPrice(seatId, sections), 0

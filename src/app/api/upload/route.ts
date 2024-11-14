@@ -6,55 +6,46 @@ import { v4 as uuidv4 } from 'uuid';
 
 export async function POST(req: Request) {
   try {
-    console.log('Starting upload process...');
+    // Log inicial
+    console.log('Starting upload process to S3...');
     
+    // Log de variables de entorno (sin mostrar valores completos)
+    console.log('Environment check:', {
+      hasBucket: !!process.env.AWS_S3_BUCKET,
+      hasRegion: !!process.env.AWS_REGION,
+      hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
+      hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY
+    });
+
     const formData = await req.formData();
     const file = formData.get('file') as File;
-    
+
     if (!file) {
-      console.log('No file found in request');
+      console.log('No file received in request');
       return NextResponse.json(
         { error: 'No se subió ningún archivo' },
         { status: 400 }
       );
     }
 
-    console.log('File details:', {
+    // Log de información del archivo
+    console.log('File received:', {
       name: file.name,
       type: file.type,
       size: file.size
     });
 
-    // Validaciones
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
-      console.log('Invalid file type:', file.type);
-      return NextResponse.json(
-        { error: 'Tipo de archivo no permitido' },
-        { status: 400 }
-      );
-    }
-
-    const maxSize = 5 * 1024 * 1024;
-    if (file.size > maxSize) {
-      console.log('File too large:', file.size);
-      return NextResponse.json(
-        { error: 'Archivo demasiado grande' },
-        { status: 400 }
-      );
+    if (!S3_BUCKET) {
+      throw new Error('S3 bucket name not configured');
     }
 
     const fileName = `events/${uuidv4()}-${file.name.replace(/\s+/g, '-')}`;
-    console.log('Generated filename:', fileName);
-
     const buffer = Buffer.from(await file.arrayBuffer());
-    console.log('Buffer created, size:', buffer.length);
 
-    console.log('S3 config:', {
+    console.log('Preparing S3 upload:', {
       bucket: S3_BUCKET,
-      region: process.env.AWS_REGION,
-      hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
-      hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY
+      fileName,
+      fileSize: buffer.length
     });
 
     const command = new PutObjectCommand({
@@ -65,12 +56,11 @@ export async function POST(req: Request) {
       ACL: 'public-read',
     });
 
-    console.log('Attempting to upload to S3...');
+    console.log('Sending file to S3...');
     await s3Client.send(command);
-    console.log('Upload to S3 successful');
+    console.log('File uploaded successfully to S3');
 
     const fileUrl = `https://${S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
-    console.log('Generated URL:', fileUrl);
 
     return NextResponse.json({ 
       success: true,
@@ -78,15 +68,25 @@ export async function POST(req: Request) {
     });
 
   } catch (error) {
-    console.error('Upload error details:', {
+    // Log detallado del error
+    console.error('Error in upload process:', {
       error,
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined
     });
 
+    // Verificar si es un error de AWS
+    if (error instanceof Error && error.message.includes('AWS')) {
+      console.error('AWS Error:', error);
+      return NextResponse.json(
+        { error: 'Error de configuración de AWS' },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { 
-        error: error instanceof Error ? error.message : 'Error al subir el archivo',
+        error: 'Error al subir el archivo',
         details: process.env.NODE_ENV === 'development' ? error : undefined
       },
       { status: 500 }

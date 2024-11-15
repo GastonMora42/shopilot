@@ -16,9 +16,15 @@ import DebugPanel from '@/components/DebugPanel';
 import { PurchaseSummary } from '@/components/ui/PurchaseSummary';
 import { AdaptiveHeader } from '@/components/ui/AdaptativeHeader';
 
+interface TemporaryReservation {
+  sessionId: string;
+  expiresAt: Date;
+}
+
 interface OccupiedSeat {
   seatId: string;
   status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
+  temporaryReservation?: TemporaryReservation;
 }
 
 interface UIState {
@@ -253,35 +259,39 @@ export default function PublicEventPage() {
     if (!event?._id) return;
   
     try {
+      console.log('Fetching seats for event:', event._id);
       const response = await fetch(`/api/events/${event._id}/seats`);
-      if (!response.ok) throw new Error('Error al obtener asientos');
+      
+      if (!response.ok) {
+        throw new Error('Error al obtener asientos');
+      }
       
       const data = await response.json();
-      
+      console.log('Received seats data:', data);
+  
       if (data.occupiedSeats) {
-        const formattedSeats = data.occupiedSeats.map((seat: any) => ({
-          seatId: seat.seatId,
-          status: seat.status
-        }));
-        
-        setOccupiedSeats(formattedSeats);
+        // Actualizar estado de asientos ocupados
+        setOccupiedSeats(data.occupiedSeats);
   
         // Actualizar selección si algún asiento ya no está disponible
         setSelectedSeats(prev => 
-          prev.filter(seatId => 
-            !formattedSeats.some(
-              (seat: { seatId: string; status: string; }) => 
-                seat.seatId === seatId && 
-                ['OCCUPIED', 'RESERVED'].includes(seat.status)
-            )
-          )
+          prev.filter(seatId => {
+            const seat = data.occupiedSeats.find((s: OccupiedSeat) => s.seatId === seatId);
+            if (!seat) return true;
+            if (seat.status === 'AVAILABLE') return true;
+            if (seat.status === 'RESERVED' && 
+                seat.temporaryReservation?.sessionId === controlState.sessionId) {
+              return true;
+            }
+            return false;
+          })
         );
       }
     } catch (error) {
       console.error('Error fetching occupied seats:', error);
       showToast('Error al actualizar el estado de los asientos');
     }
-  }, [event?._id, showToast]);
+  }, [event?._id, controlState.sessionId, showToast]);
 
   // Manejo de selección de asientos
   const handleSeatSelection = useCallback(async (newSelectedSeats: string[]) => {
@@ -464,12 +474,13 @@ export default function PublicEventPage() {
     fetchEvent();
   }, [fetchEvent]);
 
+  // Polling de estado
   useEffect(() => {
     if (event?._id) {
       fetchOccupiedSeats();
-      const interval = setInterval(fetchOccupiedSeats, 150000);
+      const interval = setInterval(fetchOccupiedSeats, 30000); // cada 30 segundos
       setControlState(prev => ({ ...prev, pollingInterval: interval }));
-
+  
       return () => clearInterval(interval);
     }
   }, [event?._id, fetchOccupiedSeats]);
@@ -581,14 +592,15 @@ export default function PublicEventPage() {
 
                       <TabsContent value="seating">
                         <div className="relative">
-                          <SeatSelector
-                            seatingChart={event.seatingChart}
-                            selectedSeats={selectedSeats}
-                            occupiedSeats={occupiedSeats}
-                            onSeatSelect={handleSeatSelection}
-                            reservationTimeout={controlState.reservationTimeout}
-                            maxSeats={6}
-                          />
+                        <SeatSelector
+      eventId={event._id}
+      seatingChart={event.seatingChart}
+      selectedSeats={selectedSeats}
+      occupiedSeats={occupiedSeats}
+      onSeatSelect={handleSeatSelection}
+      reservationTimeout={controlState.reservationTimeout}
+      maxSeats={6}
+    />
                         </div>
                       </TabsContent>
 

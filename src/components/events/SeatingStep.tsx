@@ -1,4 +1,5 @@
-import { useState } from "react";
+// components/events/SeatingStep.tsx
+import { useState, useCallback } from "react";
 import { Button } from "../ui/Button";
 import { cn } from "@/app/lib/utils";
 
@@ -21,33 +22,41 @@ interface SeatingStepProps {
   onChange: (data: SeatingStepData) => void;
 }
 
-const generateSeatId = (rowIndex: number, colIndex: number): string => {
-  const rowLetter = String.fromCharCode(65 + rowIndex); // Convierte 0->A, 1->B, etc.
-  const colNumber = colIndex + 0; // Los números de columna empiezan en 1
-  return `${rowLetter}${colNumber}`;
-};
-
 export function SeatingStep({ data, onChange }: SeatingStepProps) {
   const [showPreview, setShowPreview] = useState(true);
 
-  const handleDimensionChange = (field: 'rows' | 'columns', value: number) => {
+  // Convertir índices a formato de base de datos
+  const generateSeatId = useCallback((rowIndex: number, colIndex: number): string => {
+    // Formato base de datos: "1-1", "2-1", etc.
+    return `${rowIndex + 1}-${colIndex + 1}`;
+  }, []);
+
+  // Convertir índices a formato de display
+  const generateDisplayId = useCallback((rowIndex: number, colIndex: number): string => {
+    // Formato display: "A1", "B1", etc.
+    const rowLetter = String.fromCharCode(65 + rowIndex);
+    const colNumber = colIndex + 1;
+    return `${rowLetter}${colNumber}`;
+  }, []);
+
+  const handleDimensionChange = useCallback((field: 'rows' | 'columns', value: number) => {
     onChange({
       ...data,
       [field]: value,
       sections: data.sections.map(section => ({
         ...section,
-        rowEnd: field === 'rows' ? Math.min(section.rowEnd, value - 1) : section.rowEnd,
-        columnEnd: field === 'columns' ? Math.min(section.columnEnd, value - 1) : section.columnEnd
+        rowEnd: field === 'rows' ? Math.min(section.rowEnd, value) : section.rowEnd,
+        columnEnd: field === 'columns' ? Math.min(section.columnEnd, value) : section.columnEnd
       }))
     });
-  };
+  }, [data, onChange]);
 
-  const getSectionInfo = (rowIndex: number, colIndex: number) => {
+  const getSectionInfo = useCallback((rowIndex: number, colIndex: number) => {
     const section = data.sections.find(s => 
-      rowIndex >= s.rowStart &&
-      rowIndex <= s.rowEnd &&
-      colIndex >= s.columnStart &&
-      colIndex <= s.columnEnd
+      rowIndex + 1 >= s.rowStart && // Ajustar índices para coincidir con la base de datos
+      rowIndex + 1 <= s.rowEnd &&
+      colIndex + 1 >= s.columnStart &&
+      colIndex + 1 <= s.columnEnd
     );
 
     if (section) {
@@ -55,11 +64,12 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
         sectionName: section.name,
         sectionType: section.type,
         sectionPrice: section.price,
-        seatId: generateSeatId(rowIndex, colIndex)
+        seatId: generateSeatId(rowIndex, colIndex),
+        displayId: generateDisplayId(rowIndex, colIndex)
       };
     }
     return null;
-  };
+  }, [data.sections, generateSeatId, generateDisplayId]);
 
   return (
     <div className="space-y-6">
@@ -71,7 +81,7 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
           <input
             type="number"
             min="1"
-            max="26" // Limitado a letras del alfabeto
+            max="26"
             className="w-full p-2 border rounded"
             value={data.rows}
             onChange={e => handleDimensionChange('rows', parseInt(e.target.value))}
@@ -94,7 +104,7 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
 
       <div className="border-t pt-4">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium">Vista Previa</h3>
+          <h3 className="text-lg font-medium">Vista Previa del Mapa</h3>
           <Button
             variant="outline"
             size="sm"
@@ -106,6 +116,7 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
 
         {showPreview && (
           <div className="bg-gray-50 p-4 rounded-lg overflow-auto">
+            {/* Header con números de columna */}
             <div className="flex mb-2">
               <div className="w-10"></div>
               {Array.from({ length: data.columns }).map((_, colIndex) => (
@@ -114,6 +125,8 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
                 </div>
               ))}
             </div>
+
+            {/* Grilla de asientos */}
             <div className="grid gap-1">
               {Array.from({ length: data.rows }).map((_, rowIndex) => (
                 <div key={rowIndex} className="flex items-center">
@@ -128,15 +141,28 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
                           key={`${rowIndex}-${colIndex}`}
                           className={cn(
                             "w-8 h-8 rounded-sm border flex items-center justify-center",
-                            "text-xs font-medium",
+                            "text-xs font-medium relative group",
                             getSeatColor(sectionInfo?.sectionType),
                             "transition-all duration-200 hover:scale-110"
                           )}
                           title={sectionInfo ? 
-                            `${sectionInfo.seatId} - ${sectionInfo.sectionName} - $${sectionInfo.sectionPrice}` 
+                            `${sectionInfo.displayId} - ${sectionInfo.sectionName} - $${sectionInfo.sectionPrice}` 
                             : 'No asignado'}
                         >
-                          {sectionInfo?.seatId}
+                          {sectionInfo?.displayId}
+                          {/* Tooltip con información del asiento */}
+                          <div className="absolute hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-black/80 text-white text-xs rounded whitespace-nowrap">
+                            {sectionInfo ? (
+                              <>
+                                ID: {sectionInfo.seatId}<br />
+                                Display: {sectionInfo.displayId}<br />
+                                Sección: {sectionInfo.sectionName}<br />
+                                Precio: ${sectionInfo.sectionPrice}
+                              </>
+                            ) : (
+                              'No asignado'
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -167,7 +193,13 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
       </div>
 
       <div className="text-sm text-gray-500">
-        Tip: Configura el tamaño del mapa de asientos antes de definir las secciones en el siguiente paso.
+        <p>Tips:</p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>Configura el tamaño del mapa antes de definir las secciones</li>
+          <li>Los IDs de asientos se generarán en formato "fila-columna" (ej: "1-1")</li>
+          <li>Los asientos se mostrarán con letras y números (ej: "A1")</li>
+          <li>Las secciones definen el tipo y precio de cada asiento</li>
+        </ul>
       </div>
     </div>
   );
@@ -176,12 +208,12 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
 function getSeatColor(type?: 'REGULAR' | 'VIP' | 'DISABLED'): string {
   switch (type) {
     case 'VIP':
-      return 'bg-purple-200 hover:bg-purple-300';
+      return 'bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100';
     case 'DISABLED':
-      return 'bg-blue-200 hover:bg-blue-300';
+      return 'bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100';
     case 'REGULAR':
-      return 'bg-green-200 hover:bg-green-300';
+      return 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100';
     default:
-      return 'bg-gray-200';
+      return 'bg-gray-50 border-gray-300 text-gray-500';
   }
 }

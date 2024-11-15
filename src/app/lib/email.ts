@@ -1,25 +1,27 @@
-import brevo from "@getbrevo/brevo";
+// lib/email.ts
+import { SES } from 'aws-sdk';
 import QRCode from 'qrcode';
 
-// Configura la API de Brevo con tu clave de API
-const apiInstance = new brevo.TransactionalEmailsApi();
-apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, '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');  // Reemplaza con tu clave real
+const ses = new SES({
+  region: process.env.AWS_REGION,
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+});
 
-interface Ticket {
-  eventName: string;
-  date: string;
-  location: string;
-  seats: string[];
-}
 interface SendTicketEmailParams {
-  ticket: Ticket;
+  ticket: {
+    eventName: string;
+    date: string;
+    location: string;
+    seats: string[];
+  };
   qrCode: string;
   email: string;
 }
 
 export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmailParams) {
   try {
-    // Generar imagen QR (ya lo tienes hecho con el paquete qrcode)
+    // Generar imagen QR
     const qrUrl = await QRCode.toDataURL(qrCode);
 
     // Construir el HTML del correo electrónico
@@ -50,20 +52,26 @@ export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmail
       </div>
     `;
 
-    // Crear el objeto para enviar el correo electrónico
-    const sendSmtpEmail = new brevo.SendSmtpEmail();
-    sendSmtpEmail.subject = `Tus entradas para ${ticket.eventName}`;
-    sendSmtpEmail.to = [{ email: email }];
-    sendSmtpEmail.htmlContent = emailHtml;
-    sendSmtpEmail.sender = {
-      name: "Tu Nombre o Empresa",
-      email: "ticket@shopilot.xyz",  // Asegúrate de usar un correo autorizado
+    const params = {
+      Source: 'Shopilot <tickets@shopilot.xyz>',
+      Destination: {
+        ToAddresses: [email],
+      },
+      Message: {
+        Subject: {
+          Data: `Tus entradas para ${ticket.eventName}`,
+        },
+        Body: {
+          Html: {
+            Data: emailHtml,
+          },
+        },
+      },
     };
 
-    // Enviar el correo
-    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log('Correo enviado:', result);
+    await ses.sendEmail(params).promise();
   } catch (error) {
-    console.error('Error enviando correo:', error);
+    console.error('Error sending email:', error);
+    throw error;
   }
 }

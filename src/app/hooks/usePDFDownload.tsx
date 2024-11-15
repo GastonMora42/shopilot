@@ -6,19 +6,16 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
 
 interface TicketData {
-  id: string;
   eventName: string;
   date: string;
   location: string;
   seat: string;  // Cambiado de seats a seat
   qrCode: string;
-  status: string;
   buyerInfo: {
     name: string;
     email: string;
   };
   price: number;
-  paymentId: string;
 }
 
 export function usePDFDownload() {
@@ -38,7 +35,7 @@ export function usePDFDownload() {
       const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
       // Generar QR
-      const qrDataUrl = await QRCode.toDataURL(ticket.qrCode, {
+      const qrDataUrl = await QRCode.toDataURL(ticket.qrCode || '', {
         width: 200,
         margin: 1,
         color: {
@@ -52,7 +49,7 @@ export function usePDFDownload() {
       const qrImage = await pdfDoc.embedPng(qrImageBytes);
       const qrDims = qrImage.scale(0.8);
 
-      // Dibujar contenido
+      // Dibujar título
       page.drawText('TICKET DE ENTRADA', {
         x: 50,
         y: height - 50,
@@ -61,13 +58,20 @@ export function usePDFDownload() {
         color: rgb(0, 0, 0),
       });
 
+      // Preparar contenido con valores seguros
       const textContent = [
-        { label: 'Evento:', value: ticket.eventName },
-        { label: 'Fecha:', value: new Date(ticket.date).toLocaleString() },
-        { label: 'Ubicación:', value: ticket.location },
-        { label: 'Asiento:', value: ticket.seat }, // Cambiado de seats.join(', ') a seat
-        { label: 'Comprador:', value: ticket.buyerInfo.name },
-        { label: 'Total:', value: `$${ticket.price}` },
+        { label: 'Evento:', value: ticket.eventName || 'N/A' },
+        { 
+          label: 'Fecha:', 
+          value: ticket.date ? new Date(ticket.date).toLocaleString('es-ES', {
+            dateStyle: 'full',
+            timeStyle: 'short'
+          }) : 'N/A'
+        },
+        { label: 'Ubicación:', value: ticket.location || 'N/A' },
+        { label: 'Asiento:', value: ticket.seat || 'N/A' },
+        { label: 'Comprador:', value: ticket.buyerInfo?.name || 'N/A' },
+        { label: 'Total:', value: `$${ticket.price || 0}` },
       ];
 
       let yPosition = height - 100;
@@ -82,7 +86,7 @@ export function usePDFDownload() {
         });
 
         // Value
-        page.drawText(value, {
+        page.drawText(String(value), {
           x: 150,
           y: yPosition,
           size: 12,
@@ -116,7 +120,7 @@ export function usePDFDownload() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `ticket-${ticket.eventName.toLowerCase().replace(/\s+/g, '-')}-${ticket.seat}.pdf`; // Agregado el número de asiento al nombre del archivo
+      link.download = `ticket-${ticket.eventName?.toLowerCase().replace(/\s+/g, '-') || 'entrada'}-${ticket.seat}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

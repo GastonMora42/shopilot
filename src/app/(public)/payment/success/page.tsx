@@ -12,7 +12,7 @@ interface TicketData {
   eventName: string;
   date: string;
   location: string;
-  seat: string; // Cambiado de seats a seat
+  seat: string; 
   qrCode: string;
   status: string;
   buyerInfo: {

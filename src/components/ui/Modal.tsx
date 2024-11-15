@@ -6,9 +6,10 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   children: ReactNode;
+  className?: string;
 }
 
-export function Modal({ isOpen, onClose, children }: ModalProps) {
+export function Modal({ isOpen, onClose, children, className }: ModalProps) {
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -33,13 +34,19 @@ export function Modal({ isOpen, onClose, children }: ModalProps) {
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50',
+        'fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm',
         !isOpen && 'hidden'
       )}
       onClick={onClose}
     >
       <div
-        className="bg-white p-6 rounded-lg shadow-lg w-full max-w-3xl"
+        className={cn(
+          "bg-white rounded-lg shadow-lg",
+          "w-[95vw] max-w-[95vw]", // Aumentado el ancho máximo
+          "h-[95vh] max-h-[95vh]", // Aumentado el alto máximo
+          "flex flex-col",
+          className
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
@@ -48,25 +55,35 @@ export function Modal({ isOpen, onClose, children }: ModalProps) {
   );
 }
 
-export function ModalHeader({ children }: { children: ReactNode }) {
+export function ModalHeader({ children, className }: { children: ReactNode, className?: string }) {
   return (
-    <div className="flex justify-between items-center mb-4">
+    <div className={cn(
+      "flex justify-between items-center p-6 border-b",
+      className
+    )}>
       {children}
     </div>
   );
 }
 
-export function ModalContent({ children }: { children: ReactNode }) {
+export function ModalContent({ children, className }: { children: ReactNode, className?: string }) {
   return (
-    <div className="overflow-auto max-h-[80vh]">
+    <div className={cn(
+      "flex-1 overflow-auto p-6",
+      "min-h-0", // Importante para que el scroll funcione correctamente
+      className
+    )}>
       {children}
     </div>
   );
 }
 
-export function ModalFooter({ children }: { children: ReactNode }) {
+export function ModalFooter({ children, className }: { children: ReactNode, className?: string }) {
   return (
-    <div className="flex justify-end mt-4">
+    <div className={cn(
+      "border-t p-6 mt-auto",
+      className
+    )}>
       {children}
     </div>
   );

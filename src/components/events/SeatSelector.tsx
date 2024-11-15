@@ -1,6 +1,7 @@
 // components/SeatSelector.tsx
 'use client';
 
+
 import { useState, useCallback, useEffect, memo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
@@ -9,6 +10,8 @@ import { Modal, ModalContent, ModalFooter, ModalHeader } from '@/components/ui/M
 import { cn } from '@/app/lib/utils';
 import { IEvent, ISection } from '@/types';
 import { CountdownTimer } from './CountdownTimer';
+import { TransformWrapper, TransformComponent, useControls } from 'react-zoom-pan-pinch';
+import { MinusIcon, PlusIcon, RefreshCwIcon } from 'lucide-react'; // Asegúrate de importar estos iconos
 
 type SeatStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
 
@@ -43,6 +46,39 @@ interface SeatSelectorProps {
   reservationTimeout?: number | null;
   maxSeats?: number;
 }
+
+const ZoomControls = () => {
+  const { zoomIn, zoomOut, resetTransform } = useControls();
+  return (
+    <div className="flex gap-2 mb-4">
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => zoomOut()}
+        className="p-2"
+      >
+        <MinusIcon className="h-4 w-4" />
+      </Button>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => resetTransform()}
+        className="p-2"
+      >
+        <RefreshCwIcon className="h-4 w-4" />
+      </Button>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => zoomIn()}
+        className="p-2"
+      >
+        <PlusIcon className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+};
+
 const Seat = memo(function Seat({
   seatId,
   displayId,
@@ -191,11 +227,11 @@ export function SeatSelector({
     const cols = section.columnEnd - section.columnStart + 1;
   
     return (
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 min-w-max">
         {/* Header con números de columna */}
-        <div className="flex pl-10">
+        <div className="flex pl-10 overflow-visible">
           {Array.from({ length: cols }).map((_, idx) => (
-            <div key={idx} className="w-14 text-center text-xs text-gray-500">
+            <div key={idx} className="w-12 md:w-14 text-center text-xs text-gray-500 flex-shrink-0">
               {idx + section.columnStart}
             </div>
           ))}
@@ -208,27 +244,15 @@ export function SeatSelector({
             return (
               <div key={rowIdx} className="flex items-center">
                 {/* Letra de fila */}
-                <div className="w-10 text-center text-sm font-medium text-gray-600">
+                <div className="w-10 text-center text-sm font-medium text-gray-600 flex-shrink-0">
                   {String.fromCharCode(65 + rowIdx)}
                 </div>
                 {/* Asientos de la fila */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 overflow-visible">
                   {Array.from({ length: cols }).map((_, colIdx) => {
                     const actualCol = colIdx + section.columnStart;
-                    // Usar el mismo formato que en la base de datos
                     const seatId = `${actualRow}-${actualCol}`;
-                    // Este es el ID que mostraremos al usuario
                     const displayId = `${String.fromCharCode(65 + rowIdx)}${colIdx + 1}`;
-  
-                    console.log('Debug seat:', {
-                      seatId,
-                      displayId,
-                      actualRow,
-                      actualCol,
-                      section: section.name,
-                      isOccupied: isSeatOccupied(seatId),
-                      isReserved: isSeatReserved(seatId)
-                    });
   
                     return (
                       <Seat
@@ -254,7 +278,7 @@ export function SeatSelector({
   }, [selectedSeats, isSeatOccupied, isSeatReserved, handleSeatClick]);
 
   return (
-    <div className="space-y-6 max-w-full overflow-x-auto pb-4">
+    <div className="space-y-6 w-full">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h2 className="text-lg font-semibold">Seleccionar Asientos</h2>
         <div className="flex items-center gap-4">
@@ -282,28 +306,54 @@ export function SeatSelector({
       <Modal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)}
+        className="max-w-[95vw]"
       >
         <ModalHeader>
           <h3 className="text-xl font-semibold">Mapa de Asientos</h3>
         </ModalHeader>
         <ModalContent>
-          <div className="space-y-8 max-h-[70vh] overflow-auto p-4">
-            {seatingChart.sections.map((section, idx) => (
-              <div key={idx} className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h4 className="text-lg font-medium">{section.name}</h4>
-                  <span className="text-sm text-gray-600">
-                    ${section.price.toLocaleString('es-ES')}
-                  </span>
+          <TransformWrapper
+            initialScale={1}
+            minScale={0.5}
+            maxScale={2}
+            centerOnInit
+            limitToBounds={false}
+            smooth={true}
+            wheel={{ step: 0.1 }}
+            doubleClick={{ disabled: false }}
+            pinch={{ disabled: false }}
+            panning={{ disabled: false }}
+          >
+            {() => (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <ZoomControls />
                 </div>
-                {renderSectionGrid(section)}
-              </div>
-            ))}
-          </div>
+                <TransformComponent 
+                  wrapperClass="w-full max-h-[60vh]"
+                  contentClass="w-full h-full"
+                >
+                  <div className="space-y-8 p-4">
+                    {seatingChart.sections.map((section, idx) => (
+                      <div key={idx} className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-lg font-medium">{section.name}</h4>
+                          <span className="text-sm text-gray-600">
+                            ${section.price.toLocaleString('es-ES')}
+                          </span>
+                        </div>
+                        {renderSectionGrid(section)}
+                      </div>
+                    ))}
+                  </div>
+                </TransformComponent>
+              </>
+            )}
+          </TransformWrapper>
         </ModalContent>
         <ModalFooter>
           <div className="flex flex-wrap gap-4 justify-between w-full">
-            <div className="flex gap-4">
+            <div className="flex gap-4 flex-wrap">
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 bg-gray-50 border-2 border-gray-200 rounded" />
                 <span className="text-sm">Disponible</span>

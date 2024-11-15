@@ -43,30 +43,30 @@ export default function EventForm() {
    date: '',
    location: '',
    seatingChart: {
-     rows: 10,
-     columns: 10,
-     sections: [
-       {
-         name: 'Regular',
-         type: 'REGULAR',
-         price: 1000,
-         rowStart: 0,
-         rowEnd: 7,
-         columnStart: 0,
-         columnEnd: 10
-       },
-       {
-         name: 'VIP',
-         type: 'VIP',
-         price: 2000,
-         rowStart: 8,
-         rowEnd: 10,
-         columnStart: 0,
-         columnEnd: 10
-       }
-     ]
-   }
- });
+    rows: 18,        // Cambiado de 10 a 18
+    columns: 12,     // Cambiado de 10 a 12
+    sections: [
+      {
+        name: 'Regular',
+        type: 'REGULAR',
+        price: 1000,
+        rowStart: 0,
+        rowEnd: 14,   // Ajustado para dimensiones más grandes
+        columnStart: 0,
+        columnEnd: 12
+      },
+      {
+        name: 'VIP',
+        type: 'VIP',
+        price: 2000,
+        rowStart: 15,
+        rowEnd: 17,   // Ajustado para dimensiones más grandes
+        columnStart: 0,
+        columnEnd: 12
+      }
+    ]
+  }
+});
 
  const generateSeats = async (eventId: string, seatingChart: { rows: number; columns: number; sections: Section[] }) => {
   const seats = [];

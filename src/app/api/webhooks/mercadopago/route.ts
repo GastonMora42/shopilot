@@ -7,7 +7,6 @@ import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { sendTicketEmail } from '@/app/lib/email';
 import mongoose from 'mongoose';
 
-
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
 });

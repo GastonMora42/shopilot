@@ -34,7 +34,7 @@ export function Modal({ isOpen, onClose, children, className }: ModalProps) {
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm',
+        'fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/50 backdrop-blur-sm',
         !isOpen && 'hidden'
       )}
       onClick={onClose}
@@ -42,9 +42,10 @@ export function Modal({ isOpen, onClose, children, className }: ModalProps) {
       <div
         className={cn(
           "bg-white rounded-lg shadow-lg",
-          "w-[95vw] max-w-[95vw]", // Aumentado el ancho máximo
-          "h-[95vh] max-h-[95vh]", // Aumentado el alto máximo
+          "w-[98vw] max-w-[1400px]", // Ancho máximo fijo más grande
+          "h-[95vh]", // Alto fijo
           "flex flex-col",
+          "mx-auto", // Centrado horizontal
           className
         )}
         onClick={(e) => e.stopPropagation()}
@@ -58,7 +59,8 @@ export function Modal({ isOpen, onClose, children, className }: ModalProps) {
 export function ModalHeader({ children, className }: { children: ReactNode, className?: string }) {
   return (
     <div className={cn(
-      "flex justify-between items-center p-6 border-b",
+      "flex justify-between items-center px-6 py-4 border-b",
+      "flex-shrink-0", // Evita que el header se encoja
       className
     )}>
       {children}
@@ -69,11 +71,14 @@ export function ModalHeader({ children, className }: { children: ReactNode, clas
 export function ModalContent({ children, className }: { children: ReactNode, className?: string }) {
   return (
     <div className={cn(
-      "flex-1 overflow-auto p-6",
-      "min-h-0", // Importante para que el scroll funcione correctamente
+      "flex-1 min-h-0", // Crucial para el scroll
+      "overflow-auto",
+      "p-4", // Padding reducido para dar más espacio
       className
     )}>
-      {children}
+      <div className="h-full w-full min-w-fit"> {/* Contenedor interno para evitar encogimiento */}
+        {children}
+      </div>
     </div>
   );
 }
@@ -81,7 +86,9 @@ export function ModalContent({ children, className }: { children: ReactNode, cla
 export function ModalFooter({ children, className }: { children: ReactNode, className?: string }) {
   return (
     <div className={cn(
-      "border-t p-6 mt-auto",
+      "border-t px-6 py-4",
+      "flex-shrink-0", // Evita que el footer se encoja
+      "bg-white", // Asegura que el footer sea visible sobre el contenido
       className
     )}>
       {children}

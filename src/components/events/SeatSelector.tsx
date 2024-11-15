@@ -93,22 +93,23 @@ const Seat = memo(function Seat({
     <motion.button
       onClick={() => onClick(seatId, type)}
       disabled={type === 'DISABLED' || isOccupied || isReserved}
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.95 }}
+      whileHover={{ scale: 1.1 }}
+      whileTap={{ scale: 0.9 }}
       className={cn(
-        "relative w-12 h-12 md:w-14 md:h-14 rounded-md border-2 transition-all text-sm md:text-base",
+        "w-10 h-10 rounded-md border-2 transition-all text-xs",
+        "flex-shrink-0 flex items-center justify-center",
         isSelected && "bg-primary text-white border-primary ring-2 ring-primary ring-offset-2",
         isOccupied && "bg-red-100 border-red-300 text-red-500 cursor-not-allowed",
         isReserved && "bg-yellow-100 border-yellow-300 text-yellow-600 cursor-not-allowed",
         type === 'VIP' && !isSelected && !isOccupied && !isReserved && "bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-700",
         type === 'REGULAR' && !isSelected && !isOccupied && !isReserved && "bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700",
         type === 'DISABLED' && "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed",
-        "flex items-center justify-center group"
+        "group relative"
       )}
     >
       {displayId}
       <span className={cn(
-        "absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 rounded bg-gray-900 text-white text-xs",
+        "absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 rounded bg-gray-900 text-white text-xs",
         "opacity-0 group-hover:opacity-100 transition-opacity duration-200",
         "whitespace-nowrap z-10"
       )}>
@@ -229,26 +230,29 @@ export function SeatSelector({
     return (
       <div className="flex flex-col gap-2 min-w-max">
         {/* Header con números de columna */}
-        <div className="flex pl-10 overflow-visible">
+        <div className="flex pl-10 sticky top-0 bg-white z-10">
           {Array.from({ length: cols }).map((_, idx) => (
-            <div key={idx} className="w-12 md:w-14 text-center text-xs text-gray-500 flex-shrink-0">
-              {idx + section.columnStart}
+            <div 
+              key={idx} 
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-xs text-gray-500"
+            >
+              {idx + section.columnStart + 1}
             </div>
           ))}
         </div>
   
         {/* Grid de asientos */}
-        <div className="grid gap-2">
+        <div className="grid gap-1">
           {Array.from({ length: rows }).map((_, rowIdx) => {
             const actualRow = rowIdx + section.rowStart;
             return (
-              <div key={rowIdx} className="flex items-center">
+              <div key={rowIdx} className="flex items-center gap-1">
                 {/* Letra de fila */}
-                <div className="w-10 text-center text-sm font-medium text-gray-600 flex-shrink-0">
+                <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm font-medium text-gray-600">
                   {String.fromCharCode(65 + rowIdx)}
                 </div>
                 {/* Asientos de la fila */}
-                <div className="flex gap-2 overflow-visible">
+                <div className="flex gap-1">
                   {Array.from({ length: cols }).map((_, colIdx) => {
                     const actualCol = colIdx + section.columnStart;
                     const seatId = `${actualRow}-${actualCol}`;
@@ -303,36 +307,28 @@ export function SeatSelector({
         </div>
       )}
 
-      <Modal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)}
-        className="max-w-[95vw]"
-      >
-        <ModalHeader>
-          <h3 className="text-xl font-semibold">Mapa de Asientos</h3>
-        </ModalHeader>
-        <ModalContent>
-          <TransformWrapper
-            initialScale={1}
-            minScale={0.5}
-            maxScale={2}
-            centerOnInit
-            limitToBounds={false}
-            smooth={true}
-            wheel={{ step: 0.1 }}
-            doubleClick={{ disabled: false }}
-            pinch={{ disabled: false }}
-            panning={{ disabled: false }}
+<Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
+  <ModalHeader>
+    <h3 className="text-xl font-semibold">Mapa de Asientos</h3>
+  </ModalHeader>
+  
+  <ModalContent>
+    <TransformWrapper
+      initialScale={1}
+      minScale={0.5}
+      maxScale={2}
+      centerOnInit
+      limitToBounds={false}
+    >
+      {() => (
+        <>
+          <div className="sticky top-0 bg-white z-20 mb-4">
+            <ZoomControls />
+          </div>
+          <TransformComponent 
+            wrapperClass="w-full"
+            contentClass="w-full h-full"
           >
-            {() => (
-              <>
-                <div className="flex justify-between items-center mb-4">
-                  <ZoomControls />
-                </div>
-                <TransformComponent 
-                  wrapperClass="w-full max-h-[60vh]"
-                  contentClass="w-full h-full"
-                >
                   <div className="space-y-8 p-4">
                     {seatingChart.sections.map((section, idx) => (
                       <div key={idx} className="space-y-4">

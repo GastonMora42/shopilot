@@ -4,7 +4,7 @@ import QRCode from 'qrcode';
 const apiInstance = new brevo.TransactionalEmailsApi();
 apiInstance.setApiKey(
   brevo.TransactionalEmailsApiApiKeys.apiKey,
-  "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"
+  "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"
 );
 
 interface Ticket {

@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { ISeat, IEvent } from '@/types';
+import { IEvent } from '@/types';
 
 interface SeatMapProps {
   eventId: string;
@@ -24,7 +24,6 @@ interface GridSeat {
 }
 
 export default function SeatMap({ 
-  eventId, 
   seatingChart,
   occupiedSeats,
   onSeatSelect 

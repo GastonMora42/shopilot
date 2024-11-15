@@ -137,7 +137,7 @@ export function SeatSelector({
            seat.temporaryReservation?.sessionId !== sessionId;
   }, [occupiedSeats, sessionId]);
 
-  const handleSeatClick = async (seatId: string, type: 'REGULAR' | 'VIP' | 'DISABLED') => {
+  const handleSeatClick = useCallback(async (seatId: string, type: 'REGULAR' | 'VIP' | 'DISABLED') => {
     try {
       if (type === 'DISABLED') return;
       
@@ -185,17 +185,11 @@ export function SeatSelector({
       console.error('Error al seleccionar asiento:', error);
       setError('Error al seleccionar el asiento');
     }
-  };
+  }, [selectedSeats, maxSeats, onSeatSelect, sessionId]);
 
   const formatSeatId = useCallback((dbSeatId: string): string => {
     const [row, col] = dbSeatId.split('-').map(Number);
     return `${String.fromCharCode(64 + row)}${col}`;
-  }, []);
-  
-  const convertDisplayToDbId = useCallback((displayId: string): string => {
-    const row = displayId.charAt(0).charCodeAt(0) - 64; // A = 1, B = 2, etc.
-    const col = parseInt(displayId.slice(1));
-    return `${row}-${col}`;
   }, []);
   
   const renderSectionGrid = useCallback((section: ISection) => {

@@ -154,10 +154,10 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
                           <div className="absolute hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-black/80 text-white text-xs rounded whitespace-nowrap">
                             {sectionInfo ? (
                               <>
-                                ID: {sectionInfo.seatId}<br />
-                                Display: {sectionInfo.displayId}<br />
-                                Sección: {sectionInfo.sectionName}<br />
-                                Precio: ${sectionInfo.sectionPrice}
+                              {`ID: ${sectionInfo.seatId}`}<br />
+{`Display: ${sectionInfo.displayId}`}<br />
+{`Sección: ${sectionInfo.sectionName}`}<br />
+{`Precio: $${sectionInfo.sectionPrice}`}
                               </>
                             ) : (
                               'No asignado'

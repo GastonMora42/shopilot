@@ -1,11 +1,9 @@
 import brevo from "@getbrevo/brevo";
 import QRCode from 'qrcode';
 
+// Configura la API de Brevo con tu clave de API
 const apiInstance = new brevo.TransactionalEmailsApi();
-apiInstance.setApiKey(
-  brevo.TransactionalEmailsApiApiKeys.apiKey,
-  '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'
-);
+apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, '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');  // Reemplaza con tu clave real
 
 interface Ticket {
   eventName: string;
@@ -21,7 +19,7 @@ interface SendTicketEmailParams {
 
 export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmailParams) {
   try {
-    // Generar imagen QR
+    // Generar imagen QR (ya lo tienes hecho con el paquete qrcode)
     const qrUrl = await QRCode.toDataURL(qrCode);
 
     // Construir el HTML del correo electrónico
@@ -52,33 +50,20 @@ export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmail
       </div>
     `;
 
+    // Crear el objeto para enviar el correo electrónico
     const sendSmtpEmail = new brevo.SendSmtpEmail();
     sendSmtpEmail.subject = `Tus entradas para ${ticket.eventName}`;
-    sendSmtpEmail.to = [
-      { email: email, name: '' },
-    ];
+    sendSmtpEmail.to = [{ email: email }];
     sendSmtpEmail.htmlContent = emailHtml;
     sendSmtpEmail.sender = {
-      name: "Shopilot",
-      email: "tickets@shopilot.xyz",
+      name: "Tu Nombre o Empresa",
+      email: "ticket@shopilot.xyz",  // Asegúrate de usar un correo autorizado
     };
 
+    // Enviar el correo
     const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log(result);
+    console.log('Correo enviado:', result);
   } catch (error) {
-    console.error(error);
+    console.error('Error enviando correo:', error);
   }
 }
-
-// Ejemplo de uso
-const ticket: Ticket = {
-  eventName: "Concierto de Rock",
-  date: "2023-05-15",
-  location: "Auditorio Nacional",
-  seats: ["A1", "A2", "A3"],
-};
-
-const qrCode = "https://example.com/qr-code";
-const email = "cliente@example.com";
-
-sendTicketEmail({ ticket, qrCode, email });

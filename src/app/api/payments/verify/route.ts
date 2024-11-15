@@ -4,6 +4,7 @@ import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import mongoose from 'mongoose';
+import { sendTicketEmail } from '@/app/lib/email'; // Importar la función
 
 export async function POST(req: Request) {
  let session: mongoose.ClientSession | null = null;
@@ -12,6 +13,8 @@ export async function POST(req: Request) {
    const { ticketId, paymentId } = await req.json();
    
    console.log('Iniciando verificación de pago:', { ticketId, paymentId });
+
+   // ... [código existente hasta el commit de la transacción] ...
 
    if (!ticketId || !paymentId) {
      return NextResponse.json(
@@ -88,38 +91,56 @@ export async function POST(req: Request) {
        error: 'Error al actualizar el estado de los asientos'
      }, { status: 500 });
    }
-
-   await session.commitTransaction();
-   console.log('Transacción completada exitosamente');
-
-   return NextResponse.json({
-     success: true,
-     ticket: {
-       id: ticket._id,
-       status: ticket.status,
-       eventName: ticket.eventId.name,
-       date: ticket.eventId.date,
-       location: ticket.eventId.location,
-       seats: ticket.seats,
-       qrCode: ticket.qrCode,
-       buyerInfo: ticket.buyerInfo,
-       price: ticket.price,
-       paymentId: ticket.paymentId
-     }
-   });
-
- } catch (error) {
-   if (session) {
-     await session.abortTransaction();
+   
+      await session.commitTransaction();
+      console.log('Transacción completada exitosamente');
+   
+      // Enviar email después de commit (fuera de la transacción)
+      try {
+        await sendTicketEmail({
+          ticket: {
+            eventName: ticket.eventId.name,
+            date: ticket.eventId.date,
+            location: ticket.eventId.location,
+            seats: ticket.seats
+          },
+          qrCode: ticket.qrCode,
+          email: ticket.buyerInfo.email
+        });
+        console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
+      } catch (emailError) {
+        // No fallamos la respuesta si el email falla, solo loggeamos el error
+        console.error('Error al enviar email:', emailError);
+      }
+   
+      return NextResponse.json({
+        success: true,
+        ticket: {
+          id: ticket._id,
+          status: ticket.status,
+          eventName: ticket.eventId.name,
+          date: ticket.eventId.date,
+          location: ticket.eventId.location,
+          seats: ticket.seats,
+          qrCode: ticket.qrCode,
+          buyerInfo: ticket.buyerInfo,
+          price: ticket.price,
+          paymentId: ticket.paymentId
+        }
+      });
+   
+    } catch (error) {
+      if (session) {
+        await session.abortTransaction();
+      }
+      console.error('Error en verificación:', error);
+      return NextResponse.json({
+        success: false,
+        error: 'Error al verificar el pago'
+      }, { status: 500 });
+    } finally {
+      if (session) {
+        await session.endSession();
+      }
+    }
    }
-   console.error('Error en verificación:', error);
-   return NextResponse.json({
-     success: false,
-     error: 'Error al verificar el pago'
-   }, { status: 500 });
- } finally {
-   if (session) {
-     await session.endSession();
-   }
- }
-}

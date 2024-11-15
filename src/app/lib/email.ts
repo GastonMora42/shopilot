@@ -55,7 +55,7 @@ export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmail
     const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
     sendSmtpEmail.subject = `Tus entradas para ${ticket.eventName}`;
     sendSmtpEmail.htmlContent = emailHtml;
-    sendSmtpEmail.sender = { name: 'Shopilot', email: 'tickets@shopilot.xyz' };
+    sendSmtpEmail.sender = { name: 'Shopilot Compra Exitosa', email: 'tickets@shopilot.xyz' };
     sendSmtpEmail.to = [{ email: email }];
 
     await apiInstance.sendTransacEmail(sendSmtpEmail);

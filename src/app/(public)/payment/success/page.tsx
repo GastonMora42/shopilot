@@ -25,7 +25,7 @@ interface TicketData {
 
 export default function PaymentSuccessPage() {
   const searchParams = useSearchParams();
-  const [ticket, setTicket] = useState<TicketData | null>(null);
+  const [tickets, setTickets] = useState<TicketData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [verificationAttempts, setVerificationAttempts] = useState(0);
@@ -63,10 +63,12 @@ export default function PaymentSuccessPage() {
       }
 
       const data = await response.json();
-      setTicket(data.ticket);
+      // Ahora manejamos un array de tickets
+      const ticketsArray = Array.isArray(data.tickets) ? data.tickets : [data.ticket];
+      setTickets(ticketsArray);
       
-      // Si el ticket está pagado, detener las verificaciones
-      if (data.ticket.status === 'PAID') {
+      // Si todos los tickets están pagados, detener las verificaciones
+      if (ticketsArray.every((ticket: { status: string; }) => ticket.status === 'PAID')) {
         return true;
       }
       
@@ -92,7 +94,7 @@ export default function PaymentSuccessPage() {
         timeoutId = setTimeout(startVerification, 5000);
       } else {
         setLoading(false);
-        if (!ticket && verificationAttempts >= 12) {
+        if (!tickets && verificationAttempts >= 12) {
           setError('No se pudo confirmar el pago después de varios intentos');
         }
       }
@@ -114,9 +116,8 @@ export default function PaymentSuccessPage() {
         </div>
       </div>
     );
-  }
 
-  if (error || !ticket) {
+  if (error || tickets.length === 0) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
         <h1 className="text-2xl font-bold text-red-600 mb-4">Error en el proceso</h1>
@@ -130,47 +131,70 @@ export default function PaymentSuccessPage() {
     );
   }
 
+  // Calcular el total de la compra
+  const totalPurchase = tickets.reduce((sum, ticket) => sum + ticket.price, 0);
+
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-lg mx-auto bg-white rounded-lg shadow p-6">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-2xl text-green-600">✓</span>
-          </div>
-          <h1 className="text-2xl font-bold mb-2">¡Compra exitosa!</h1>
-          <p className="text-gray-600">Tu entrada está lista</p>
-        </div>
-
-        <div className="space-y-6">
-          <div className="border rounded-lg p-4">
-            <h2 className="font-semibold mb-4">{ticket.eventName}</h2>
-            <div className="space-y-2 text-sm">
-  <p><span className="font-medium">Fecha:</span> {new Date(ticket.date).toLocaleString()}</p>
-  <p><span className="font-medium">Ubicación:</span> {ticket.location}</p>
-  <p><span className="font-medium">Asientos:</span> {ticket.seats.join(', ')}</p>
-  <p><span className="font-medium">Total:</span> ${ticket.price}</p>
-  <p><span className="font-medium">Pago ID:</span> {ticket.paymentId}</p>
-</div>
-          </div>
-
-          <div className="flex justify-center">
-            <div className="p-4 bg-white border rounded-lg">
-              <QRCodeSVG value={ticket.qrCode} size={200} />
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl text-green-600">✓</span>
             </div>
+            <h1 className="text-2xl font-bold mb-2">¡Compra exitosa!</h1>
+            <p className="text-gray-600">Tus entradas están listas</p>
           </div>
 
-          <div className="text-center text-sm text-gray-500">
-            <p>Presenta este código QR en la entrada del evento</p>
+          {/* Resumen de la compra */}
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold mb-2">Resumen de compra</h2>
+            <p className="text-sm text-gray-600">
+              Total de entradas: {tickets.length} | Monto total: ${totalPurchase}
+            </p>
           </div>
 
-          <div className="flex flex-col gap-3">
-            <Button
-              onClick={() => downloadPDF(ticket)}
-              disabled={pdfLoading}
-              className="w-full"
-            >
-              {pdfLoading ? 'Generando PDF...' : 'Descargar PDF'}
-            </Button>
+          {/* Lista de tickets */}
+          <div className="space-y-6">
+            {tickets.map((ticket, index) => (
+              <div key={ticket.id} className="border rounded-lg p-4">
+                <h3 className="font-semibold mb-4">
+                  Entrada {index + 1} - {ticket.eventName}
+                </h3>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2 text-sm">
+                    <p><span className="font-medium">Fecha:</span> {new Date(ticket.date).toLocaleString()}</p>
+                    <p><span className="font-medium">Ubicación:</span> {ticket.location}</p>
+                    <p><span className="font-medium">Asientos:</span> {ticket.seats.join(', ')}</p>
+                    <p><span className="font-medium">Precio:</span> ${ticket.price}</p>
+                    <p><span className="font-medium">ID de pago:</span> {ticket.paymentId}</p>
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <div className="p-4 bg-white border rounded-lg">
+                      <QRCodeSVG value={ticket.qrCode} size={150} />
+                    </div>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Código QR de entrada
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 flex flex-col gap-3">
+            {tickets.map((ticket, index) => (
+              <Button
+                key={ticket.id}
+                onClick={() => downloadPDF(ticket)}
+                disabled={pdfLoading}
+                className="w-full"
+              >
+                {pdfLoading 
+                  ? 'Generando PDF...' 
+                  : `Descargar PDF - Entrada ${index + 1}`}
+              </Button>
+            ))}
             <Button variant="outline" asChild>
               <Link href="/events">Ver más eventos</Link>
             </Button>
@@ -178,5 +202,4 @@ export default function PaymentSuccessPage() {
         </div>
       </div>
     </div>
-  );
-}
+  )}}

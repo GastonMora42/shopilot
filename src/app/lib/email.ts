@@ -1,13 +1,13 @@
-// @ts-ignore
-import Brevo from 'sib-api-v3-sdk';
+import brevo from '@getbrevo/brevo';
 import QRCode from 'qrcode';
 
 // Configurar la API client de Brevo
-const client = Brevo.ApiClient.instance;
-const apiKey = client.authentications['api-key'];
-apiKey.apiKey = process.env.BREVO_API_KEY;
+const client = new brevo.TransactionalEmailsApi();
 
-const brevoInstance = new Brevo.TransactionalEmailsApi();
+client.setApiKey(
+  brevo.TransactionalEmailsApiApiKeys.apiKey,
+  process.env.BREVO_API_KEY as string
+);
 
 interface SendTicketEmailParams {
   ticket: {
@@ -20,7 +20,7 @@ interface SendTicketEmailParams {
   email: string;
 }
 
-export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmailParams) {
+export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmailParams): Promise<void> {
   try {
     // Generar imagen QR
     const qrUrl = await QRCode.toDataURL(qrCode);
@@ -54,7 +54,7 @@ export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmail
     `;
 
     // Configurar los detalles del correo electrónico
-    const sendSmtpEmail = {
+    const sendSmtpEmailData = {
       to: [{ email: email }],
       sender: { name: 'Shopilot', email: 'tickets@shopilot.xyz' },
       subject: `Tus entradas para ${ticket.eventName}`,
@@ -62,9 +62,9 @@ export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmail
     };
 
     // Enviar el correo electrónico
-    await brevoInstance.sendTransacEmail(sendSmtpEmail);
+    await client.sendTransacEmail(sendSmtpEmailData);
   } catch (error) {
     console.error('Error sending email:', error);
-    throw error;
+    throw error; // Vuelve a lanzar el error para que el llamador lo capture
   }
 }

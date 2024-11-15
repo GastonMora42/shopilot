@@ -1,12 +1,11 @@
 // lib/email.ts
-import { SES } from 'aws-sdk';
+import * as SibApiV3Sdk from '@sendinblue/client'
 import QRCode from 'qrcode';
 
-const ses = new SES({
-  region: process.env.AWS_REGION,
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-});
+// Configurar el cliente de Brevo
+const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+// Corrección en la siguiente línea
+apiInstance.setApiKey(SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY!);
 
 interface SendTicketEmailParams {
   ticket: {
@@ -18,6 +17,7 @@ interface SendTicketEmailParams {
   qrCode: string;
   email: string;
 }
+
 
 export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmailParams) {
   try {
@@ -52,24 +52,14 @@ export async function sendTicketEmail({ ticket, qrCode, email }: SendTicketEmail
       </div>
     `;
 
-    const params = {
-      Source: 'Shopilot <tickets@shopilot.xyz>',
-      Destination: {
-        ToAddresses: [email],
-      },
-      Message: {
-        Subject: {
-          Data: `Tus entradas para ${ticket.eventName}`,
-        },
-        Body: {
-          Html: {
-            Data: emailHtml,
-          },
-        },
-      },
-    };
+    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+    sendSmtpEmail.subject = `Tus entradas para ${ticket.eventName}`;
+    sendSmtpEmail.htmlContent = emailHtml;
+    sendSmtpEmail.sender = { name: 'Shopilot', email: 'tickets@shopilot.xyz' };
+    sendSmtpEmail.to = [{ email: email }];
 
-    await ses.sendEmail(params).promise();
+    await apiInstance.sendTransacEmail(sendSmtpEmail);
+
   } catch (error) {
     console.error('Error sending email:', error);
     throw error;

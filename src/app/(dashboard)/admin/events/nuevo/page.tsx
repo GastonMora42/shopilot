@@ -30,32 +30,42 @@ export default function NewEventPage() {
     date: '',
     location: '',
     seatingChart: {
-      rows: 10,
-      columns: 10,
+      rows: 18, // Actualizado para soportar más filas
+      columns: 12, // Actualizado para soportar más columnas
       sections: [
         {
           name: 'Regular',
           type: 'REGULAR' as const,
           price: 1000,
           rowStart: 1,
-          rowEnd: 7,
+          rowEnd: 14, // Ajustado para el nuevo tamaño
           columnStart: 1,
-          columnEnd: 10
+          columnEnd: 12
         },
         {
           name: 'VIP',
           type: 'VIP' as const,
           price: 2000,
-          rowStart: 8,
-          rowEnd: 10,
+          rowStart: 15,
+          rowEnd: 18, // Ajustado para el nuevo tamaño
           columnStart: 1,
-          columnEnd: 10
+          columnEnd: 12
         }
       ]
     },
     orderTotal: 3000,
     imageUrl: ''
   });
+
+  // Validación mejorada para dimensiones grandes
+  const validateSeatingDimensions = (rows: number, columns: number) => {
+    if (rows < 1 || rows > 50) {
+      throw new Error('El número de filas debe estar entre 1 y 50');
+    }
+    if (columns < 1 || columns > 50) {
+      throw new Error('El número de columnas debe estar entre 1 y 50');
+    }
+  };
 
   const handleBasicInfoChange = (info: unknown) => {
     if (typeof info === "object" && info !== null) {
@@ -68,52 +78,75 @@ export default function NewEventPage() {
   const handleSeatingChange = (seating: unknown) => {
     if (typeof seating === "object" && seating !== null && "rows" in seating && "columns" in seating) {
       const validSeating = seating as Seating;
-      setEventData(prev => {
-        // Ajustar las secciones existentes si es necesario
-        const adjustedSections = prev.seatingChart.sections.map(section => ({
-          ...section,
-          rowEnd: Math.min(section.rowEnd, validSeating.rows),
-          columnEnd: Math.min(section.columnEnd, validSeating.columns)
-        }));
-  
-        return {
-          ...prev,
-          seatingChart: {
-            ...prev.seatingChart,
-            rows: validSeating.rows,
-            columns: validSeating.columns,
-            sections: adjustedSections
-          }
-        };
-      });
+      
+      try {
+        validateSeatingDimensions(validSeating.rows, validSeating.columns);
+        
+        setEventData(prev => {
+          // Ajustar las secciones existentes para las nuevas dimensiones
+          const adjustedSections = prev.seatingChart.sections.map(section => ({
+            ...section,
+            rowEnd: Math.min(section.rowEnd, validSeating.rows),
+            columnEnd: Math.min(section.columnEnd, validSeating.columns)
+          }));
+
+          return {
+            ...prev,
+            seatingChart: {
+              ...prev.seatingChart,
+              rows: validSeating.rows,
+              columns: validSeating.columns,
+              sections: adjustedSections
+            }
+          };
+        });
+      } catch (error) {
+        console.error(error);
+        alert(error instanceof Error ? error.message : 'Error en la configuración de asientos');
+      }
     } else {
       console.error("Invalid seating format");
     }
   };
-  
+
   const handleSectionsChange = (sections: unknown) => {
     if (Array.isArray(sections)) {
-      // Validar que todas las secciones tengan el formato correcto
-      const validSections = sections.map(section => ({
-        ...section,
-        rowStart: Math.max(1, section.rowStart),
-        columnStart: Math.max(1, section.columnStart),
-        rowEnd: Math.min(section.rowEnd, eventData.seatingChart.rows),
-        columnEnd: Math.min(section.columnEnd, eventData.seatingChart.columns)
-      }));
-  
-      setEventData(prev => ({
-        ...prev,
-        seatingChart: {
-          ...prev.seatingChart,
-          sections: validSections,
-        },
-      }));
+      try {
+        // Validar que las secciones no excedan los límites
+        const validSections = sections.map(section => {
+          if (section.rowEnd > eventData.seatingChart.rows) {
+            throw new Error(`La fila final no puede exceder ${eventData.seatingChart.rows}`);
+          }
+          if (section.columnEnd > eventData.seatingChart.columns) {
+            throw new Error(`La columna final no puede exceder ${eventData.seatingChart.columns}`);
+          }
+
+          return {
+            ...section,
+            rowStart: Math.max(1, section.rowStart),
+            columnStart: Math.max(1, section.columnStart),
+            rowEnd: Math.min(section.rowEnd, eventData.seatingChart.rows),
+            columnEnd: Math.min(section.columnEnd, eventData.seatingChart.columns)
+          };
+        });
+
+        setEventData(prev => ({
+          ...prev,
+          seatingChart: {
+            ...prev.seatingChart,
+            sections: validSections,
+          },
+        }));
+      } catch (error) {
+        console.error(error);
+        alert(error instanceof Error ? error.message : 'Error en la configuración de secciones');
+      }
     } else {
       console.error("Invalid sections format");
     }
   };
-// Modifica el handleSubmit para que use la función handleImageUpload
+
+
 const handleSubmit = async () => {
   try {
     setIsSubmitting(true);
@@ -190,16 +223,27 @@ const handleSubmit = async () => {
       component: <ReviewStep data={eventData} onSubmit={handleSubmit} />
     }
   };
+  // ... resto del código handleSubmit igual ...
 
   const validateStep = (currentStep: StepType): boolean => {
     switch (currentStep) {
       case 'info':
         return !!(eventData.name && eventData.description && eventData.date && eventData.location);
       case 'seating':
-        return eventData.seatingChart.rows > 0 && eventData.seatingChart.columns > 0;
+        return (
+          eventData.seatingChart.rows > 0 && 
+          eventData.seatingChart.rows <= 50 &&
+          eventData.seatingChart.columns > 0 &&
+          eventData.seatingChart.columns <= 50
+        );
       case 'pricing':
         return eventData.seatingChart.sections.every(
-          section => section.name && section.price > 0
+          section => (
+            section.name && 
+            section.price > 0 &&
+            section.rowEnd <= eventData.seatingChart.rows &&
+            section.columnEnd <= eventData.seatingChart.columns
+          )
         );
       case 'review':
         return true;

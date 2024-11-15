@@ -2,6 +2,8 @@
 import { useState, useCallback } from "react";
 import { Button } from "../ui/Button";
 import { cn } from "@/app/lib/utils";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { MinusIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
 
 interface SeatingStepData {
   rows: number;
@@ -22,18 +24,47 @@ interface SeatingStepProps {
   onChange: (data: SeatingStepData) => void;
 }
 
+const ZoomControls = () => {
+  const [scale, setScale] = useState(1);
+  
+  return (
+    <div className="flex gap-2 mb-4">
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => setScale(prev => Math.max(0.5, prev - 0.1))}
+      >
+        <MinusIcon className="h-4 w-4" />
+      </Button>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => setScale(1)}
+      >
+        <RotateCcwIcon className="h-4 w-4" />
+      </Button>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => setScale(prev => Math.min(2, prev + 0.1))}
+      >
+        <PlusIcon className="h-4 w-4" />
+      </Button>
+      <span className="text-sm text-gray-500">
+        {Math.round(scale * 100)}%
+      </span>
+    </div>
+  );
+};
+
 export function SeatingStep({ data, onChange }: SeatingStepProps) {
   const [showPreview, setShowPreview] = useState(true);
 
-  // Convertir índices a formato de base de datos
   const generateSeatId = useCallback((rowIndex: number, colIndex: number): string => {
-    // Formato base de datos: "1-1", "2-1", etc.
     return `${rowIndex + 1}-${colIndex + 1}`;
   }, []);
 
-  // Convertir índices a formato de display
   const generateDisplayId = useCallback((rowIndex: number, colIndex: number): string => {
-    // Formato display: "A1", "B1", etc.
     const rowLetter = String.fromCharCode(65 + rowIndex);
     const colNumber = colIndex + 1;
     return `${rowLetter}${colNumber}`;
@@ -53,7 +84,7 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
 
   const getSectionInfo = useCallback((rowIndex: number, colIndex: number) => {
     const section = data.sections.find(s => 
-      rowIndex + 1 >= s.rowStart && // Ajustar índices para coincidir con la base de datos
+      rowIndex + 1 >= s.rowStart &&
       rowIndex + 1 <= s.rowEnd &&
       colIndex + 1 >= s.columnStart &&
       colIndex + 1 <= s.columnEnd
@@ -76,7 +107,7 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium mb-1">
-            Número de Filas
+            Número de Filas (A-Z)
           </label>
           <input
             type="number"
@@ -84,8 +115,9 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
             max="26"
             className="w-full p-2 border rounded"
             value={data.rows}
-            onChange={e => handleDimensionChange('rows', parseInt(e.target.value))}
+            onChange={e => handleDimensionChange('rows', parseInt(e.target.value) || 1)}
           />
+          <p className="text-xs text-gray-500 mt-1">Máximo 26 filas (A-Z)</p>
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">
@@ -97,8 +129,9 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
             max="50"
             className="w-full p-2 border rounded"
             value={data.columns}
-            onChange={e => handleDimensionChange('columns', parseInt(e.target.value))}
+            onChange={e => handleDimensionChange('columns', parseInt(e.target.value) || 1)}
           />
+          <p className="text-xs text-gray-500 mt-1">Máximo 50 columnas</p>
         </div>
       </div>
 
@@ -115,67 +148,96 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
         </div>
 
         {showPreview && (
-          <div className="bg-gray-50 p-4 rounded-lg overflow-auto">
-            {/* Header con números de columna */}
-            <div className="flex mb-2">
-              <div className="w-10"></div>
-              {Array.from({ length: data.columns }).map((_, colIndex) => (
-                <div key={colIndex} className="w-8 text-center text-xs text-gray-500">
-                  {colIndex + 1}
-                </div>
-              ))}
-            </div>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <TransformWrapper
+              initialScale={1}
+              minScale={0.5}
+              maxScale={2}
+              limitToBounds={false}
+              wheel={{ step: 0.1 }}
+            >
+              {({ zoomIn, zoomOut, resetTransform }) => (
+                <>
+                  <div className="flex gap-2 mb-4 sticky top-0 z-20 bg-gray-50">
+                    <Button variant="outline" size="sm" onClick={() => zoomOut()}>
+                      <MinusIcon className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => resetTransform()}>
+                      <RotateCcwIcon className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => zoomIn()}>
+                      <PlusIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <TransformComponent
+                    wrapperClass="!w-full !overflow-visible"
+                    contentClass="!w-full"
+                  >
+                    <div className="min-w-max">
+                      {/* Header con números de columna */}
+                      <div className="flex mb-2 sticky top-0 bg-gray-50 z-10">
+                        <div className="w-12 flex-shrink-0"></div>
+                        {Array.from({ length: data.columns }).map((_, colIndex) => (
+                          <div 
+                            key={colIndex} 
+                            className="w-10 flex-shrink-0 text-center text-xs text-gray-500"
+                          >
+                            {colIndex + 1}
+                          </div>
+                        ))}
+                      </div>
 
-            {/* Grilla de asientos */}
-            <div className="grid gap-1">
-              {Array.from({ length: data.rows }).map((_, rowIndex) => (
-                <div key={rowIndex} className="flex items-center">
-                  <div className="w-10 text-center text-xs font-medium text-gray-600">
-                    {String.fromCharCode(65 + rowIndex)}
-                  </div>
-                  <div className="flex gap-1">
-                    {Array.from({ length: data.columns }).map((_, colIndex) => {
-                      const sectionInfo = getSectionInfo(rowIndex, colIndex);
-                      return (
-                        <div
-                          key={`${rowIndex}-${colIndex}`}
-                          className={cn(
-                            "w-8 h-8 rounded-sm border flex items-center justify-center",
-                            "text-xs font-medium relative group",
-                            getSeatColor(sectionInfo?.sectionType),
-                            "transition-all duration-200 hover:scale-110"
-                          )}
-                          title={sectionInfo ? 
-                            `${sectionInfo.displayId} - ${sectionInfo.sectionName} - $${sectionInfo.sectionPrice}` 
-                            : 'No asignado'}
-                        >
-                          {sectionInfo?.displayId}
-                          {/* Tooltip con información del asiento */}
-                          <div className="absolute hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-black/80 text-white text-xs rounded whitespace-nowrap">
-  {sectionInfo ? (
-    <>
-      {[
-        ['ID', sectionInfo.seatId],
-        ['Display', sectionInfo.displayId],
-        ['Sección', sectionInfo.sectionName],
-        ['Precio', `$${sectionInfo.sectionPrice}`]
-      ].map(([label, value], index) => (
-        <div key={index}>
-          {label}: {value}
-        </div>
-      ))}
-    </>
-  ) : (
-    'No asignado'
-  )}
-</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
+                      {/* Grilla de asientos */}
+                      <div className="grid gap-1">
+                        {Array.from({ length: data.rows }).map((_, rowIndex) => (
+                          <div key={rowIndex} className="flex items-center">
+                            <div className="w-12 flex-shrink-0 text-center text-xs font-medium text-gray-600">
+                              {String.fromCharCode(65 + rowIndex)}
+                            </div>
+                            <div className="flex gap-1">
+                              {Array.from({ length: data.columns }).map((_, colIndex) => {
+                                const sectionInfo = getSectionInfo(rowIndex, colIndex);
+                                return (
+                                  <div
+                                    key={`${rowIndex}-${colIndex}`}
+                                    className={cn(
+                                      "w-10 h-10 rounded-sm border flex items-center justify-center",
+                                      "text-xs font-medium relative group flex-shrink-0",
+                                      getSeatColor(sectionInfo?.sectionType),
+                                      "transition-all duration-200 hover:scale-110"
+                                    )}
+                                  >
+                                    {sectionInfo?.displayId}
+                                    <div className="absolute hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-black/80 text-white text-xs rounded whitespace-nowrap z-20">
+                                      {sectionInfo ? (
+                                        <>
+                                          {[
+                                            ['ID', sectionInfo.seatId],
+                                            ['Display', sectionInfo.displayId],
+                                            ['Sección', sectionInfo.sectionName],
+                                            ['Precio', `$${sectionInfo.sectionPrice}`]
+                                          ].map(([label, value], index) => (
+                                            <div key={index}>
+                                              {label}: {value}
+                                            </div>
+                                          ))}
+                                        </>
+                                      ) : (
+                                        'No asignado'
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </TransformComponent>
+                </>
+              )}
+            </TransformWrapper>
           </div>
         )}
       </div>
@@ -199,18 +261,19 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
       </div>
 
       <div className="text-sm text-gray-500">
-  <p>Tips:</p>
-  <ul className="list-disc pl-5 space-y-1">
-    {[
-      'Configura el tamaño del mapa antes de definir las secciones',
-      'Los IDs de asientos se generarán en formato fila-columna (ej: 1-1)',
-      'Los asientos se mostrarán con letras y números (ej: A1)',
-      'Las secciones definen el tipo y precio de cada asiento'
-    ].map((tip, index) => (
-      <li key={index}>{tip}</li>
-    ))}
-  </ul>
-</div>
+        <p>Tips:</p>
+        <ul className="list-disc pl-5 space-y-1">
+          {[
+            'Configura el tamaño del mapa antes de definir las secciones',
+            'Los IDs de asientos se generarán en formato fila-columna (ej: 1-1)',
+            'Los asientos se mostrarán con letras y números (ej: A1)',
+            'Las secciones definen el tipo y precio de cada asiento',
+            'Usa el zoom para ver mejor los detalles del mapa'
+          ].map((tip, index) => (
+            <li key={index}>{tip}</li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

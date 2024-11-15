@@ -3,6 +3,10 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { IEvent } from '@/types';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+import { MinusIcon, PlusIcon, RotateCcwIcon } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import { cn } from '@/app/lib/utils';
 
 interface SeatMapProps {
   eventId: string;
@@ -23,6 +27,22 @@ interface GridSeat {
   section: string;
 }
 
+const ZoomControls = () => {
+  return (
+    <div className="flex gap-2 mb-4">
+      <Button variant="outline" size="sm" className="p-2">
+        <MinusIcon className="h-4 w-4" />
+      </Button>
+      <Button variant="outline" size="sm" className="p-2">
+        <RotateCcwIcon className="h-4 w-4" />
+      </Button>
+      <Button variant="outline" size="sm" className="p-2">
+        <PlusIcon className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+};
+
 export default function SeatMap({ 
   seatingChart,
   occupiedSeats,
@@ -31,7 +51,6 @@ export default function SeatMap({
   const [gridSeats, setGridSeats] = useState<GridSeat[][]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Crear la grilla de asientos
   const createSeatGrid = useCallback(() => {
     const maxRows = Math.max(...seatingChart.sections.map(s => s.rowEnd));
     const maxCols = Math.max(...seatingChart.sections.map(s => s.columnEnd));
@@ -44,14 +63,12 @@ export default function SeatMap({
       for (let col = 1; col <= maxCols; col++) {
         const seatId = `${row}-${col}`;
         
-        // Encontrar la sección a la que pertenece este asiento
         const section = seatingChart.sections.find(s => 
           row >= s.rowStart && row <= s.rowEnd &&
           col >= s.columnStart && col <= s.columnEnd
         );
 
         if (section) {
-          // Verificar si está ocupado
           const occupiedSeat = occupiedSeats.find(s => s.seatId === seatId);
           
           gridRow.push({
@@ -63,7 +80,6 @@ export default function SeatMap({
             section: section.name
           });
         } else {
-          // Espacio vacío o pasillo
           gridRow.push({
             id: seatId,
             displayId: '',
@@ -101,46 +117,101 @@ export default function SeatMap({
   }
 
   return (
-    <div className="max-w-7xl mx-auto overflow-x-auto p-4">
-      {/* Escenario */}
-      <div className="w-full mb-8">
-        <div className="bg-gray-800 h-16 rounded-t-[100px] mx-auto max-w-3xl mb-2">
-          <div className="text-white text-center pt-4 font-semibold">
-            ESCENARIO
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-1">
-        {gridSeats.map((row, rowIndex) => (
-          <div key={rowIndex} className="flex gap-1 items-center">
-            {/* Letra de fila */}
-            <span className="w-8 text-center text-gray-500 font-medium">
-              {String.fromCharCode(65 + rowIndex)}
-            </span>
-
-            {/* Asientos */}
-            <div className="flex flex-1 gap-1 justify-center">
-              {row.map((seat) => (
-                <button
-                  key={seat.id}
-                  onClick={() => handleSeatClick(seat)}
-                  disabled={seat.status !== 'AVAILABLE'}
-                  className={`
-                    w-8 h-8 text-xs border-2 rounded
-                    flex items-center justify-center
-                    transition-all duration-200
-                    ${getSeatStyle(seat.type, seat.status)}
-                  `}
-                  title={`${seat.displayId} - ${seat.section} - $${seat.price}`}
-                >
-                  {seat.displayId.replace(/[A-Z]/, '')}
-                </button>
-              ))}
+    <div className="max-w-[95vw] mx-auto bg-white rounded-lg shadow-lg overflow-hidden">
+      <TransformWrapper
+        initialScale={1}
+        minScale={0.5}
+        maxScale={2}
+        limitToBounds={false}
+        wheel={{ step: 0.1 }}
+      >
+        {({ zoomIn, zoomOut, resetTransform }) => (
+          <>
+            <div className="sticky top-0 bg-white z-20 p-4 border-b">
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => zoomOut()}>
+                  <MinusIcon className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => resetTransform()}>
+                  <RotateCcwIcon className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => zoomIn()}>
+                  <PlusIcon className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+
+            <TransformComponent
+              wrapperClass="!w-full !overflow-visible"
+              contentClass="!w-full"
+            >
+              <div className="min-w-max p-4">
+                {/* Escenario */}
+                <div className="w-full mb-8">
+                  <div className="bg-gray-800 h-16 rounded-t-[100px] mx-auto max-w-3xl mb-2">
+                    <div className="text-white text-center pt-4 font-semibold">
+                      ESCENARIO
+                    </div>
+                  </div>
+                </div>
+
+                {/* Grid de asientos */}
+                <div className="relative">
+                  {/* Header con números de columna */}
+                  <div className="flex pl-12 mb-2 sticky top-0 bg-white z-10">
+                    {Array.from({ length: gridSeats[0]?.length || 0 }).map((_, idx) => (
+                      <div key={idx} className="w-10 flex-shrink-0 text-center text-xs text-gray-500">
+                        {idx + 1}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Filas de asientos */}
+                  <div className="grid gap-1">
+                    {gridSeats.map((row, rowIndex) => (
+                      <div key={rowIndex} className="flex items-center gap-1">
+                        {/* Letra de fila */}
+                        <div className="w-12 flex-shrink-0 text-center text-sm font-medium text-gray-600">
+                          {String.fromCharCode(65 + rowIndex)}
+                        </div>
+
+                        {/* Asientos */}
+                        <div className="flex gap-1">
+                          {row.map((seat) => (
+                            <button
+                              key={seat.id}
+                              onClick={() => handleSeatClick(seat)}
+                              disabled={seat.status !== 'AVAILABLE'}
+                              className={cn(
+                                "w-10 h-10 rounded-md border-2",
+                                "flex items-center justify-center",
+                                "text-xs font-medium",
+                                "transition-all duration-200",
+                                "relative group flex-shrink-0",
+                                getSeatStyle(seat.type, seat.status)
+                              )}
+                            >
+                              {seat.displayId.replace(/[A-Z]/, '')}
+                              
+                              {/* Tooltip */}
+                              <div className="absolute hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-black/80 text-white text-xs rounded whitespace-nowrap z-20">
+                                <div>Asiento: {seat.displayId}</div>
+                                <div>Sección: {seat.section}</div>
+                                <div>Precio: ${seat.price}</div>
+                                <div>Estado: {getStatusText(seat.status)}</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </TransformComponent>
+          </>
+        )}
+      </TransformWrapper>
     </div>
   );
 }
@@ -154,7 +225,7 @@ function getSeatStyle(type: string, status: string): string {
     return 'bg-yellow-100 border-yellow-300 text-yellow-600 cursor-not-allowed';
   }
 
-  const baseStyle = 'hover:bg-primary hover:border-primary hover:text-white';
+  const baseStyle = 'hover:bg-primary hover:border-primary hover:text-white hover:scale-110';
   
   switch (type) {
     case 'VIP':
@@ -163,5 +234,18 @@ function getSeatStyle(type: string, status: string): string {
       return 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed';
     default:
       return `bg-gray-50 border-gray-200 text-gray-700 ${baseStyle}`;
+  }
+}
+
+function getStatusText(status: string): string {
+  switch (status) {
+    case 'AVAILABLE':
+      return 'Disponible';
+    case 'OCCUPIED':
+      return 'Ocupado';
+    case 'RESERVED':
+      return 'Reservado';
+    default:
+      return status;
   }
 }

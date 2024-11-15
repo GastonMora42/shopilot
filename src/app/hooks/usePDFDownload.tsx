@@ -1,4 +1,4 @@
-// hooks/usePDFDownload.tsss
+// hooks/usePDFDownload.tsx
 'use client';
 
 import { useState } from 'react';
@@ -9,7 +9,7 @@ interface TicketData {
   eventName: string;
   date: string;
   location: string;
-  seats: string[];
+  seat: string; // Cambiado de seats: string[] a seat: string
   qrCode: string;
   buyerInfo: {
     name: string;
@@ -62,7 +62,7 @@ export function usePDFDownload() {
         { label: 'Evento:', value: ticket.eventName },
         { label: 'Fecha:', value: new Date(ticket.date).toLocaleString() },
         { label: 'Ubicación:', value: ticket.location },
-        { label: 'Asientos:', value: ticket.seats.join(', ') },
+        { label: 'Asiento:', value: ticket.seat }, // Cambiado de seats.join(', ') a seat
         { label: 'Comprador:', value: ticket.buyerInfo.name },
         { label: 'Total:', value: `$${ticket.price}` },
       ];
@@ -113,7 +113,7 @@ export function usePDFDownload() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `ticket-${ticket.eventName.toLowerCase().replace(/\s+/g, '-')}.pdf`;
+      link.download = `ticket-${ticket.eventName.toLowerCase().replace(/\s+/g, '-')}-${ticket.seat}.pdf`; // Agregado el número de asiento al nombre del archivo
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

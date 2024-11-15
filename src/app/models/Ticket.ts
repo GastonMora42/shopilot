@@ -3,7 +3,7 @@ import mongoose, { Document } from "mongoose";
 
 export interface ITicket extends Document {
   eventId: mongoose.Types.ObjectId;
-  seats: string[];
+  seats: string
   buyerInfo: {
     name: string;
     email: string;

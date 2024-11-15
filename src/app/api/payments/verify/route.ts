@@ -1,10 +1,37 @@
-// app/api/payments/verify/route.ts
+// api/payments/verify/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import mongoose from 'mongoose';
 import { sendTicketEmail } from '@/app/lib/email';
+import crypto from 'crypto';
+
+// Definir interfaces necesarias
+interface EventDocument {
+  _id: mongoose.Types.ObjectId;
+  name: string;
+  date: string;
+  location: string;
+}
+
+interface TicketDocument {
+  _id: mongoose.Types.ObjectId;
+  eventId: EventDocument;
+  seats: string[];
+  buyerInfo: {
+    name: string;
+    email: string;
+  };
+  status: string;
+  price: number;
+  paymentId?: string;
+}
+
+interface IndividualTicketQR {
+  seat: string;
+  qrCode: string;
+}
 
 export async function POST(req: Request) {
   let session: mongoose.ClientSession | null = null;
@@ -25,51 +52,46 @@ export async function POST(req: Request) {
     session = await mongoose.startSession();
     session.startTransaction();
 
-    // Buscar tickets - ahora soporta array de IDs
-    const ticketIds = Array.isArray(ticketId) ? ticketId : [ticketId];
-    const tickets = await Ticket.find({
-      _id: { $in: ticketIds }
-    }).populate('eventId').session(session);
+    // Buscar y actualizar el ticket
+    const ticket = await Ticket.findByIdAndUpdate(
+      ticketId,
+      {
+        status: 'PAID',
+        paymentId
+      },
+      {
+        new: true,
+        populate: 'eventId',
+        session
+      }
+    ).lean() as unknown as TicketDocument;
 
-    if (tickets.length === 0) {
+    if (!ticket) {
       await session.abortTransaction();
-      console.log('Tickets no encontrados:', ticketIds);
+      console.log('Ticket no encontrado:', ticketId);
       return NextResponse.json(
-        { error: 'Tickets no encontrados' },
+        { error: 'Ticket no encontrado' },
         { status: 404 }
       );
     }
 
-    console.log('Tickets encontrados:', tickets.length);
+    console.log('Ticket actualizado:', {
+      id: ticket._id,
+      status: ticket.status,
+      seats: ticket.seats
+    });
 
-    // Actualizar cada ticket
-    const updatedTickets = await Promise.all(
-      tickets.map(async (ticket) => {
-        ticket.status = 'PAID';
-        ticket.paymentId = paymentId;
-        return await ticket.save({ session });
-      })
-    );
-
-    console.log('Tickets actualizados:', updatedTickets.length);
-
-    // Recopilar todos los asientos para actualizar
-    const seatsToUpdate = tickets.reduce((acc, ticket) => {
-      acc.push(...ticket.seats);
-      return acc;
-    }, [] as string[]);
-
-    // Actualizar todos los asientos en una sola operación
+    // Actualizar los asientos a OCCUPIED
     const seatResult = await Seat.updateMany(
       {
-        eventId: tickets[0].eventId, // Asumimos que todos los tickets son del mismo evento
-        seatId: { $in: seatsToUpdate },
+        eventId: ticket.eventId._id,
+        seatId: { $in: ticket.seats },
         status: 'RESERVED'
       },
       {
         $set: { 
           status: 'OCCUPIED',
-          ticketId: tickets[0]._id // Podríamos guardar referencia al ticket específico si es necesario
+          ticketId: ticket._id
         },
         $unset: {
           temporaryReservation: 1,
@@ -79,15 +101,10 @@ export async function POST(req: Request) {
       { session }
     );
 
-    console.log('Resultado actualización de asientos:', {
-      modifiedCount: seatResult.modifiedCount,
-      expectedCount: seatsToUpdate.length
-    });
-
-    if (seatResult.modifiedCount !== seatsToUpdate.length) {
+    if (seatResult.modifiedCount !== ticket.seats.length) {
       await session.abortTransaction();
       console.error('Error en actualización de asientos:', {
-        expected: seatsToUpdate.length,
+        expected: ticket.seats.length,
         updated: seatResult.modifiedCount
       });
       return NextResponse.json({
@@ -98,38 +115,49 @@ export async function POST(req: Request) {
     await session.commitTransaction();
     console.log('Transacción completada exitosamente');
 
-    // Enviar email para cada ticket
-    for (const ticket of updatedTickets) {
-      try {
-        await sendTicketEmail({
-          ticket: {
-            eventName: ticket.eventId.name,
-            date: ticket.eventId.date,
-            location: ticket.eventId.location,
-            seats: ticket.seats
-          },
-          qrCode: ticket.qrCode,
-          email: ticket.buyerInfo.email
-        });
-        console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
-      } catch (emailError) {
-        console.error('Error al enviar email:', emailError);
-      }
+    // Generar QRs individuales para cada asiento
+    const ticketsWithQRs: IndividualTicketQR[] = ticket.seats.map((seat, index) => {
+      const individualQR = crypto
+        .createHash('sha256')
+        .update(`${ticket._id}-${seat}-${Date.now()}-${index}`)
+        .digest('hex');
+
+      return {
+        seat,
+        qrCode: individualQR
+      };
+    });
+
+    // Enviar email con todos los QRs
+    try {
+      await sendTicketEmail({
+        tickets: ticketsWithQRs.map(({ seat, qrCode }) => ({
+          eventName: ticket.eventId.name,
+          date: ticket.eventId.date,
+          location: ticket.eventId.location,
+          seats: [seat],
+          qrCode
+        })),
+        email: ticket.buyerInfo.email
+      });
+      console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
+    } catch (emailError) {
+      console.error('Error al enviar email:', emailError);
     }
 
-    // Devolver todos los tickets actualizados
+    // Devolver los tickets individuales
     return NextResponse.json({
       success: true,
-      tickets: updatedTickets.map(ticket => ({
+      tickets: ticketsWithQRs.map(({ seat, qrCode }) => ({
         id: ticket._id,
         status: ticket.status,
         eventName: ticket.eventId.name,
         date: ticket.eventId.date,
         location: ticket.eventId.location,
-        seats: ticket.seats,
-        qrCode: ticket.qrCode,
+        seats: [seat],
+        qrCode,
         buyerInfo: ticket.buyerInfo,
-        price: ticket.price,
+        price: ticket.price / ticket.seats.length,
         paymentId: ticket.paymentId
       }))
     });

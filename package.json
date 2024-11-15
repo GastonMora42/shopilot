@@ -50,6 +50,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/mercadopago": "^1.5.11",
     "@types/node": "^20",
+    "@types/nodemailer": "^6.4.16",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18",
     "@types/react-dom": "^18",

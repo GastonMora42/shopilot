@@ -137,32 +137,26 @@ export function SeatSelector({
            seat.temporaryReservation?.sessionId !== sessionId;
   }, [occupiedSeats, sessionId]);
 
-  const handleSeatClick = useCallback(async (seatId: string, type: 'REGULAR' | 'VIP' | 'DISABLED') => {
+  const handleSeatClick = async (seatId: string, type: 'REGULAR' | 'VIP' | 'DISABLED') => {
     try {
       if (type === 'DISABLED') return;
       
-      console.log('Debug - Clicking seat:', { 
-        seatId, 
-        currentStatus: occupiedSeats.find(s => s.seatId === seatId)?.status,
-        isSelected: selectedSeats.includes(seatId)
-      });
-
       const isCurrentlySelected = selectedSeats.includes(seatId);
-
-      // Si estamos deseleccionando, no necesitamos verificar
+  
+      // Si está deseleccionando, simplemente actualizamos el estado local
       if (isCurrentlySelected) {
         const newSelectedSeats = selectedSeats.filter(id => id !== seatId);
         await onSeatSelect(newSelectedSeats);
         return;
       }
-
+  
       // Verificar límite de selección
       if (selectedSeats.length >= maxSeats) {
         setError(`No puedes seleccionar más de ${maxSeats} asientos`);
         return;
       }
-
-      // Verificar disponibilidad
+  
+      // Solo verificamos disponibilidad, sin hacer reserva
       const verifyResponse = await fetch(`/api/events/${eventId}/seats/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -171,21 +165,21 @@ export function SeatSelector({
           sessionId
         })
       });
-
+  
       const verifyData = await verifyResponse.json();
       
       if (!verifyResponse.ok || !verifyData.available) {
-        console.error('Seat verification failed:', verifyData);
         setError('Este asiento no está disponible');
         return;
       }
-
+  
+      // Actualizamos solo la selección local
       await onSeatSelect([...selectedSeats, seatId]);
     } catch (error) {
       console.error('Error al seleccionar asiento:', error);
       setError('Error al seleccionar el asiento');
     }
-  }, [selectedSeats, maxSeats, onSeatSelect, sessionId]);
+  };
 
   const formatSeatId = useCallback((dbSeatId: string): string => {
     const [row, col] = dbSeatId.split('-').map(Number);

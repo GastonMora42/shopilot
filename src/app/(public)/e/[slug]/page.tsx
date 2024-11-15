@@ -296,91 +296,61 @@ export default function PublicEventPage() {
   // Manejo de selección de asientos
   const handleSeatSelection = useCallback(async (newSelectedSeats: string[]) => {
     try {
+      // Solo actualizamos el estado local de selección
+      setSelectedSeats(newSelectedSeats);
+    } catch (error) {
+      console.error('Error selecting seats:', error);
+      showToast('Error al seleccionar asientos. Por favor, intenta de nuevo.');
+    }
+  }, []);
+  
+  // Nuevo método para manejar el inicio de la compra
+  const handleStartPurchase = useCallback(async () => {
+    try {
       if (!controlState.sessionId || !event?._id) {
         showToast('Error de sesión. Por favor, recarga la página.');
         return;
       }
-
-      // Verificar disponibilidad
-      const verifyResponse = await fetch(`/api/events/${event._id}/seats/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          seatIds: newSelectedSeats,
-          sessionId: controlState.sessionId 
-        })
-      });
-
-      const verifyData = await verifyResponse.json();
-      
-      if (!verifyResponse.ok) {
-        throw new Error(verifyData.error || 'Error al verificar asientos');
-      }
-
-      // Reservar asientos
+  
+      // Ahora sí hacemos la reserva cuando el usuario quiere comprar
       const reserveResponse = await fetch(`/api/events/${event._id}/seats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          seatIds: newSelectedSeats,
+          seatIds: selectedSeats,
           sessionId: controlState.sessionId 
         })
       });
-
+  
       const reserveData = await reserveResponse.json();
       
       if (!reserveResponse.ok) {
         if (reserveData.unavailableSeats) {
-          setOccupiedSeats(prev => [
-            ...prev,
-            ...reserveData.unavailableSeats.map((seat: any) => ({
-              seatId: seat.seatId,
-              status: 'RESERVED'
-            }))
-          ]);
           showToast('Algunos asientos ya no están disponibles');
           await fetchOccupiedSeats();
           return;
         }
         throw new Error(reserveData.error || 'Error al reservar asientos');
       }
-
-      // Actualizar estado local
-      setSelectedSeats(newSelectedSeats);
+  
+      // Configurar timeout de reserva
       if (reserveData.expiresAt) {
         const expiresAt = new Date(reserveData.expiresAt).getTime();
         setControlState(prev => ({
           ...prev,
           reservationTimeout: expiresAt
         }));
-
-        // Gestión de notificaciones de tiempo
-        const timeoutMs = expiresAt - Date.now();
-        if (timeoutMs > 0) {
-          // Notificación 1 minuto antes
-          setTimeout(() => {
-            if (newSelectedSeats.length > 0) {
-              showToast('¡Tu reserva expirará en 1 minuto!');
-            }
-          }, timeoutMs - 60000);
-
-          // Notificación 5 minutos antes
-          if (timeoutMs > 300000) {
-            setTimeout(() => {
-              if (newSelectedSeats.length > 0) {
-                showToast('Te quedan 5 minutos para completar tu compra');
-              }
-            }, timeoutMs - 300000);
-          }
-        }
       }
-
+  
+      // Mostrar formulario de compra
+      setUiState(prev => ({ ...prev, showBuyerForm: true }));
+  
     } catch (error) {
-      console.error('Error selecting seats:', error);
-      showToast('Error al seleccionar asientos. Por favor, intenta de nuevo.');
+      console.error('Error starting purchase:', error);
+      showToast('Error al iniciar la compra. Por favor, intenta de nuevo.');
       await fetchOccupiedSeats();
     }
-  }, [event?._id, controlState.sessionId, fetchOccupiedSeats, showToast]);
+  }, [event?._id, selectedSeats, controlState.sessionId, fetchOccupiedSeats, showToast]);
 
   // Manejo de compra
   const handlePurchase = useCallback(async (buyerInfo: {
@@ -635,14 +605,14 @@ export default function PublicEventPage() {
               >
                 {/* Resumen de compra */}
                 <PurchaseSummary
-                  selectedSeats={selectedSeats}
-                  sections={event.seatingChart.sections}
-                  isProcessing={uiState.isProcessing}
-                  showBuyerForm={uiState.showBuyerForm}
-                  setShowBuyerForm={(show) => setUiState(prev => ({ ...prev, showBuyerForm: show }))}
-                  onSubmit={handlePurchase} onPurchase={function (): void {
-                    throw new Error('Function not implemented.');
-                  } }                />
+  selectedSeats={selectedSeats}
+  sections={event.seatingChart.sections}
+  isProcessing={uiState.isProcessing}
+  showBuyerForm={uiState.showBuyerForm}
+  setShowBuyerForm={(show) => setUiState(prev => ({ ...prev, showBuyerForm: show }))}
+  onSubmit={handlePurchase}
+  onStartPurchase={handleStartPurchase}
+/>
 
                 {/* Compartir */}
                 <Card className="backdrop-blur-sm bg-white/90 mt-4">

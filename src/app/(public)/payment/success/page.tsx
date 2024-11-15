@@ -122,73 +122,65 @@ export default function PaymentSuccessPage() {
   // Calcular el total de la compra
   const totalPurchase = tickets.reduce((sum, ticket) => sum + ticket.price, 0);
 
-  return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-2xl text-green-600">✓</span>
-          </div>
-          <h1 className="text-2xl font-bold mb-2">¡Compra exitosa!</h1>
-          <p className="text-gray-600">Tus entradas están listas</p>
-        </div>
 
-        {/* Resumen de la compra */}
-        <div className="mb-6 border-b pb-4">
-          <h2 className="text-lg font-semibold mb-2">Resumen de compra</h2>
-          <p className="text-sm text-gray-600">
-            Evento: {tickets[0].eventName}
-          </p>
-          <p className="text-sm text-gray-600">
-            Total de entradas: {tickets.length} | Monto total: ${totalPurchase}
-          </p>
+return (
+  <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
+      <div className="text-center mb-8">
+        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <span className="text-2xl text-green-600">✓</span>
         </div>
+        <h1 className="text-2xl font-bold mb-2">¡Compra exitosa!</h1>
+        <p className="text-gray-600">Tus entradas están listas</p>
+      </div>
 
-        {/* Lista de tickets */}
-        <div className="space-y-6">
-          {tickets.map((ticket, index) => (
-            <div key={`${ticket.id}-${index}`} className="border rounded-lg p-4">
-              <h3 className="font-semibold mb-4">
-                Entrada {index + 1}
-              </h3>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-2 text-sm">
-                  <p><span className="font-medium">Fecha:</span> {new Date(ticket.date).toLocaleString()}</p>
-                  <p><span className="font-medium">Ubicación:</span> {ticket.location}</p>
-                  <p><span className="font-medium">Asiento:</span> {ticket.seat}</p>
-                  <p><span className="font-medium">Precio:</span> ${ticket.price}</p>
+      {/* Resumen de compra */}
+      <div className="mb-6 border-b pb-4">
+        <h2 className="text-lg font-semibold mb-2">Resumen de compra</h2>
+        <p className="text-sm text-gray-600">
+          Evento: {tickets[0].eventName}
+        </p>
+        <p className="text-sm text-gray-600">
+          Total de entradas: {tickets.length} | Monto total: ${tickets.reduce((sum, t) => sum + t.price, 0)}
+        </p>
+      </div>
+
+      {/* Lista de tickets */}
+      <div className="space-y-6">
+        {tickets.map((ticket, index) => (
+          <div key={ticket.id} className="border rounded-lg p-4">
+            <h3 className="font-semibold mb-4">
+              Entrada {index + 1}
+            </h3>
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-2 text-sm">
+                <p><span className="font-medium">Fecha:</span> {new Date(ticket.date).toLocaleString()}</p>
+                <p><span className="font-medium">Ubicación:</span> {ticket.location}</p>
+                <p><span className="font-medium">Asiento:</span> {ticket.seat}</p>
+                <p><span className="font-medium">Precio:</span> ${ticket.price}</p>
+              </div>
+              <div className="flex flex-col items-center">
+                <div className="p-4 bg-white border rounded-lg">
+                  <QRCodeSVG value={ticket.qrCode} size={150} />
                 </div>
-                <div className="flex flex-col items-center">
-                  <div className="p-4 bg-white border rounded-lg">
-                    <QRCodeSVG value={ticket.qrCode} size={150} />
-                  </div>
-                  <p className="text-sm text-gray-500 mt-2">
-                    Código QR de entrada
-                  </p>
-                </div>
+                <p className="text-sm text-gray-500 mt-2">
+                  Código QR de entrada
+                </p>
               </div>
             </div>
-          ))}
-        </div>
-
-        <div className="mt-6 flex flex-col gap-3">
-          {tickets.map((ticket, index) => (
-            <Button
-              key={`pdf-${ticket.id}-${index}`}
-              onClick={() => downloadPDF(ticket)}
-              disabled={pdfLoading}
-              className="w-full"
-            >
-              {pdfLoading 
-                ? 'Generando PDF...' 
-                : `Descargar PDF - Entrada ${index + 1}`}
-            </Button>
-          ))}
-          <Button variant="outline" asChild>
-            <Link href="/events">Ver más eventos</Link>
-          </Button>
-        </div>
+            <div className="mt-4">
+              <Button
+                onClick={() => downloadPDF(ticket)}
+                disabled={pdfLoading}
+                className="w-full"
+              >
+                {pdfLoading ? 'Generando PDF...' : `Descargar PDF - Entrada ${index + 1}`}
+              </Button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
-  );
+  </div>
+);
 }

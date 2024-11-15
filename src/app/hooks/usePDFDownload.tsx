@@ -6,16 +6,19 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
 
 interface TicketData {
+  id: string;
   eventName: string;
   date: string;
   location: string;
-  seat: string; // Cambiado de seats: string[] a seat: string
+  seat: string;  // Cambiado de seats a seat
   qrCode: string;
+  status: string;
   buyerInfo: {
     name: string;
     email: string;
   };
   price: number;
+  paymentId: string;
 }
 
 export function usePDFDownload() {

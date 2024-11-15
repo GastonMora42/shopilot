@@ -115,35 +115,32 @@ export async function POST(req: Request) {
     await session.commitTransaction();
     console.log('Transacción completada exitosamente');
 
-    // Generar QRs individuales para cada asiento
-    const ticketsWithQRs: IndividualTicketQR[] = ticket.seats.map((seat, index) => {
-      const individualQR = crypto
-        .createHash('sha256')
-        .update(`${ticket._id}-${seat}-${Date.now()}-${index}`)
-        .digest('hex');
+// Generar QRs individuales para cada asiento
+const ticketsWithQRs = ticket.seats.map((seat: string) => {
+  const individualQR = crypto
+    .createHash('sha256')
+    .update(`${ticket._id}-${seat}-${Date.now()}`)
+    .digest('hex');
 
-      return {
-        seat,
-        qrCode: individualQR
-      };
-    });
+  return {
+    eventName: ticket.eventId.name,
+    date: ticket.eventId.date,
+    location: ticket.eventId.location,
+    seat, // Un solo asiento por ticket
+    qrCode: individualQR
+  };
+});
 
-    // Enviar email con todos los QRs
-    try {
-      await sendTicketEmail({
-        tickets: ticketsWithQRs.map(({ seat, qrCode }) => ({
-          eventName: ticket.eventId.name,
-          date: ticket.eventId.date,
-          location: ticket.eventId.location,
-          seats: [seat],
-          qrCode
-        })),
-        email: ticket.buyerInfo.email
-      });
-      console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
-    } catch (emailError) {
-      console.error('Error al enviar email:', emailError);
-    }
+// Enviar email con todos los QRs
+try {
+  await sendTicketEmail({
+    tickets: ticketsWithQRs,
+    email: ticket.buyerInfo.email
+  });
+  console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
+} catch (emailError) {
+  console.error('Error al enviar email:', emailError);
+}
 
     // Devolver los tickets individuales
     return NextResponse.json({

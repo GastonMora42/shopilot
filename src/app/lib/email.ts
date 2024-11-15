@@ -6,14 +6,16 @@ import QRCode from 'qrcode';
 const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 apiInstance.setApiKey(SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY!);
 
-interface SendTicketEmailParams {
-  tickets: {
-    eventName: string;
-    date: string;
-    location: string;
-    seats: string[];
-    qrCode: string;
-  }[];
+export interface TicketInfo {
+  eventName: string;
+  date: string;
+  location: string;
+  seat: string;  // Un solo asiento por ticket
+  qrCode: string;
+}
+
+export interface SendTicketEmailParams {
+  tickets: TicketInfo[];
   email: string;
 }
 
@@ -42,7 +44,7 @@ export async function sendTicketEmail({ tickets, email }: SendTicketEmailParams)
               <span style="color: #059669; font-size: 32px;">✓</span>
             </div>
             <h1 style="color: #111827; font-size: 24px; font-weight: bold; margin: 8px 0;">¡Compra exitosa!</h1>
-            <p style="color: #6b7280; font-size: 16px; margin: 0;">Tus entradas están listas</p>
+            <p class="text-gray-600">Total de entradas: ${tickets.length}</p>
           </div>
 
           ${ticketsWithQr.map((ticket, index) => `
@@ -53,26 +55,13 @@ export async function sendTicketEmail({ tickets, email }: SendTicketEmailParams)
               <div style="color: #374151; font-size: 14px;">
                 <p style="margin: 8px 0;"><span style="font-weight: 500;">Fecha:</span> ${new Date(ticket.date).toLocaleString()}</p>
                 <p style="margin: 8px 0;"><span style="font-weight: 500;">Ubicación:</span> ${ticket.location}</p>
-                <p style="margin: 8px 0;"><span style="font-weight: 500;">Asiento:</span> ${ticket.seats}</p>
+                <p style="margin: 8px 0;"><span style="font-weight: 500;">Asiento:</span> ${ticket.seat}</p>
               </div>
               <div style="text-align: center; margin-top: 16px;">
                 <img src="${ticket.qrUrl}" alt="Código QR" style="width: 200px; height: 200px;" />
               </div>
             </div>
           `).join('')}
-
-          <div style="text-align: center; margin-top: 20px;">
-            <p style="color: #6b7280; font-size: 14px;">
-              Presenta los códigos QR en la entrada del evento
-            </p>
-          </div>
-        </div>
-
-        <!-- Powered by -->
-        <div style="text-align: center; margin-top: 20px;">
-          <p style="color: #9ca3af; font-size: 12px;">
-            Powered by Shopilot
-          </p>
         </div>
       </div>
     `;

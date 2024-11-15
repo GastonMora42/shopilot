@@ -6,6 +6,7 @@ import { Seat } from '@/app/models/Seat';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { sendTicketEmail } from '@/app/lib/email';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
@@ -64,71 +65,83 @@ export async function POST(req: Request) {
       seats: ticket.seats
     });
 
-    // Manejar pago aprobado
-    if (paymentInfo.status === "approved") {
-      if (ticket.status !== 'PENDING') {
-        await session.abortTransaction();
-        return NextResponse.json({ 
-          message: 'Ticket ya procesado', 
-          currentStatus: ticket.status 
-        }, { status: 200 });
-      }
 
-      // Actualizar ticket
-      ticket.status = 'PAID';
-      ticket.paymentId = String(paymentInfo.id);
-      await ticket.save({ session });
+// Cuando el pago es aprobado:
+if (paymentInfo.status === "approved") {
+  if (ticket.status !== 'PENDING') {
+    await session.abortTransaction();
+    return NextResponse.json({ 
+      message: 'Ticket ya procesado', 
+      currentStatus: ticket.status 
+    }, { status: 200 });
+  }
 
-// Marcar asientos como ocupados
-const seatResult = await Seat.updateMany(
-  {
-    eventId: ticket.eventId,
-    seatId: { $in: ticket.seats },  // ✅ CORRECCIÓN
-    status: 'RESERVED'
-  },
-  {
-    $set: { 
-      status: 'OCCUPIED',
-      ticketId: ticket._id
+  // Actualizar ticket
+  ticket.status = 'PAID';
+  ticket.paymentId = String(paymentInfo.id);
+  await ticket.save({ session });
+
+  // Marcar asientos como ocupados
+  const seatResult = await Seat.updateMany(
+    {
+      eventId: ticket.eventId,
+      seatId: { $in: ticket.seats },
+      status: 'RESERVED'
     },
-    $unset: {
-      temporaryReservation: 1,
-      lastReservationAttempt: 1  // También limpiamos esto
-    }
-  },
-  { session }
-);
-
-if (seatResult.modifiedCount !== ticket.seats.length) {
-  await session.abortTransaction();
-  console.error('Error actualizando asientos:', {
-    expected: ticket.seats.length,
-    updated: seatResult.modifiedCount
-  });
-  return NextResponse.json({ 
-    error: 'Error en la actualización de asientos' 
-  }, { status: 200 });
-}
-
-      await session.commitTransaction();
-
-      // Enviar email fuera de la transacción
-      try {
-        await sendTicketEmail({
-          ticket: {
-            eventName: ticket.eventId.name,
-            date: ticket.eventId.date,
-            location: ticket.eventId.location,
-            seats: ticket.seats
-          },
-          qrCode: ticket.qrCode,
-          email: ticket.buyerInfo.email
-        });
-        console.log('Email enviado a:', ticket.buyerInfo.email);
-      } catch (emailError) {
-        console.error('Error enviando email:', emailError);
+    {
+      $set: { 
+        status: 'OCCUPIED',
+        ticketId: ticket._id
+      },
+      $unset: {
+        temporaryReservation: 1,
+        lastReservationAttempt: 1
       }
-    }
+    },
+    { session }
+  );
+
+  if (seatResult.modifiedCount !== ticket.seats.length) {
+    await session.abortTransaction();
+    console.error('Error actualizando asientos:', {
+      expected: ticket.seats.length,
+      updated: seatResult.modifiedCount
+    });
+    return NextResponse.json({ 
+      error: 'Error en la actualización de asientos' 
+    }, { status: 200 });
+  }
+
+  await session.commitTransaction();
+
+
+  // Generar QRs individuales para cada asiento
+  const ticketsWithQRs = ticket.seats.map((seat: string) => {
+    const individualQR = crypto
+      .createHash('sha256')
+      .update(`${ticket._id}-${seat}-${Date.now()}`)
+      .digest('hex');
+
+    return {
+      eventName: ticket.eventId.name,
+      date: ticket.eventId.date,
+      location: ticket.eventId.location,
+      seat, // Un solo asiento por ticket
+      qrCode: individualQR
+    };
+  });
+
+  // Enviar email con todos los QRs
+  try {
+    await sendTicketEmail({
+      tickets: ticketsWithQRs,
+      email: ticket.buyerInfo.email
+    });
+    console.log('Email enviado a:', ticket.buyerInfo.email);
+  } catch (emailError) {
+    console.error('Error enviando email:', emailError);
+  }
+}
     // Manejar pago rechazado o cancelado
     else if (['rejected', 'cancelled', 'refunded'].includes(paymentInfo.status)) {
       if (ticket.status !== 'PENDING') {

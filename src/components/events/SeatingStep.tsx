@@ -199,14 +199,18 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
       </div>
 
       <div className="text-sm text-gray-500">
-        <p>Tips:</p>
-        <ul className="list-disc pl-5 space-y-1">
-          <li>Configura el tamaño del mapa antes de definir las secciones</li>
-          <li>Los IDs de asientos se generarán en formato "fila-columna" (ej: "1-1")</li>
-          <li>Los asientos se mostrarán con letras y números (ej: "A1")</li>
-          <li>Las secciones definen el tipo y precio de cada asiento</li>
-        </ul>
-      </div>
+  <p>Tips:</p>
+  <ul className="list-disc pl-5 space-y-1">
+    {[
+      'Configura el tamaño del mapa antes de definir las secciones',
+      'Los IDs de asientos se generarán en formato fila-columna (ej: 1-1)',
+      'Los asientos se mostrarán con letras y números (ej: A1)',
+      'Las secciones definen el tipo y precio de cada asiento'
+    ].map((tip, index) => (
+      <li key={index}>{tip}</li>
+    ))}
+  </ul>
+</div>
     </div>
   );
 }

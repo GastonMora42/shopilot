@@ -113,38 +113,6 @@ export default function NewEventPage() {
       console.error("Invalid sections format");
     }
   };
-
-// En NewEventPage, fuera de handleSubmit
-const handleImageUpload = async (file: File) => {
-  try {
-    console.log('Starting client-side upload...');
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData
-    });
-
-    const data = await response.json();
-    console.log('Upload response:', data);
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Error al subir la imagen');
-    }
-
-    setEventData(prev => ({
-      ...prev,
-      imageUrl: data.url
-    }));
-    
-    return data.url;
-  } catch (error) {
-    console.error('Client-side upload error:', error);
-    throw error;
-  }
-};
-
 // Modifica el handleSubmit para que use la función handleImageUpload
 const handleSubmit = async () => {
   try {

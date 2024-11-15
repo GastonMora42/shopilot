@@ -130,8 +130,6 @@ export default function PaymentSuccessPage() {
     );
   }
 
-  // ... resto del código del return con el ticket ...
-
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-lg mx-auto bg-white rounded-lg shadow p-6">

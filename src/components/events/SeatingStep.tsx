@@ -152,17 +152,23 @@ export function SeatingStep({ data, onChange }: SeatingStepProps) {
                           {sectionInfo?.displayId}
                           {/* Tooltip con información del asiento */}
                           <div className="absolute hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-black/80 text-white text-xs rounded whitespace-nowrap">
-                            {sectionInfo ? (
-                              <>
-                              {`ID: ${sectionInfo.seatId}`}<br />
-{`Display: ${sectionInfo.displayId}`}<br />
-{`Sección: ${sectionInfo.sectionName}`}<br />
-{`Precio: $${sectionInfo.sectionPrice}`}
-                              </>
-                            ) : (
-                              'No asignado'
-                            )}
-                          </div>
+  {sectionInfo ? (
+    <>
+      {[
+        ['ID', sectionInfo.seatId],
+        ['Display', sectionInfo.displayId],
+        ['Sección', sectionInfo.sectionName],
+        ['Precio', `$${sectionInfo.sectionPrice}`]
+      ].map(([label, value], index) => (
+        <div key={index}>
+          {label}: {value}
+        </div>
+      ))}
+    </>
+  ) : (
+    'No asignado'
+  )}
+</div>
                         </div>
                       );
                     })}

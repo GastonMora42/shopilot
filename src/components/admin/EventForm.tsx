@@ -48,29 +48,51 @@ export default function EventForm() {
         {
           name: 'Regular',
           type: 'REGULAR',
-          price: 1000,
+          price: 15330,
           rowStart: 1,
           rowEnd: 13,
           columnStart: 1,
           columnEnd: 7
+        },
+        {
+          name: 'VIP',
+          type: 'VIP',
+          price: 0,
+          rowStart: 0,
+          rowEnd: 0,
+          columnStart: 0,
+          columnEnd: 0
         }
       ]
     }
   });
 
   const adjustSectionsToNewDimensions = (newRows: number, newColumns: number) => {
-    return eventData.seatingChart.sections.map(section => ({
-      ...section,
-      rowEnd: Math.min(section.rowEnd, newRows),
-      columnEnd: Math.min(section.columnEnd, newColumns)
-    }));
+    return eventData.seatingChart.sections.map(section => {
+      // Si la sección está inactiva (valores en 0), la mantenemos así
+      if (section.rowStart === 0) {
+        return section;
+      }
+      return {
+        ...section,
+        rowEnd: Math.min(section.rowEnd, newRows),
+        columnEnd: Math.min(section.columnEnd, newColumns)
+      };
+    });
   };
 
   const generateSeats = async (eventId: string, seatingChart: { rows: number; columns: number; sections: Section[] }) => {
     const seats = [];
+    const activeSections = seatingChart.sections.filter(section => 
+      section.rowStart > 0 && 
+      section.rowEnd > 0 && 
+      section.columnStart > 0 && 
+      section.columnEnd > 0
+    );
+
     for (let row = 1; row <= seatingChart.rows; row++) {
       for (let col = 1; col <= seatingChart.columns; col++) {
-        const section = seatingChart.sections.find(
+        const section = activeSections.find(
           (s: Section) => 
             row >= s.rowStart && 
             row <= s.rowEnd && 
@@ -153,7 +175,14 @@ export default function EventForm() {
 
     const coverage = Array(rows + 1).fill(null).map(() => Array(columns + 1).fill(false));
 
-    sections.forEach(section => {
+    const activeSections = sections.filter(section => 
+      section.rowStart > 0 && 
+      section.rowEnd > 0 && 
+      section.columnStart > 0 && 
+      section.columnEnd > 0
+    );
+
+    activeSections.forEach(section => {
       for (let r = section.rowStart; r <= section.rowEnd; r++) {
         for (let c = section.columnStart; c <= section.columnEnd; c++) {
           coverage[r][c] = true;
@@ -321,111 +350,138 @@ export default function EventForm() {
           <h4 className="text-md font-medium text-gray-900">Secciones</h4>
           {eventData.seatingChart.sections.map((section, index) => (
             <div key={index} className="border p-4 rounded-md">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nombre de la Sección
+              {index === 1 && (
+                <div className="mb-4">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={section.rowStart > 0}
+                      onChange={(e) => {
+                        const isActive = e.target.checked;
+                        const sectionsUpdate = {
+                          rowStart: isActive ? Math.floor(eventData.seatingChart.rows * 0.8) : 0,
+                          rowEnd: isActive ? eventData.seatingChart.rows : 0,
+                          columnStart: isActive ? 1 : 0,
+                          columnEnd: isActive ? eventData.seatingChart.columns : 0
+                        };
+                        Object.entries(sectionsUpdate).forEach(([key, value]) => {
+                          handleSectionChange(index, key, value);
+                        });
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                    <span>Activar sección VIP</span>
                   </label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full p-2 border rounded-md"
-                    value={section.name}
-                    onChange={(e) => handleSectionChange(index, 'name', e.target.value)}
-                  />
                 </div>
+              )}
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tipo
-                  </label>
-                  <select
-                    className="w-full p-2 border rounded-md"
-                    value={section.type}
-                    onChange={(e) => handleSectionChange(index, 'type', e.target.value)}
-                  >
-                    <option value="REGULAR">Regular</option>
-                    <option value="VIP">VIP</option>
-                    <option value="DISABLED">Discapacitados</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Precio
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    className="w-full p-2 border rounded-md"
-                    value={section.price}
-                    onChange={(e) => handleSectionChange(index, 'price', parseInt(e.target.value))}
-                  />
-                </div>
-
-                <div className="col-span-2 grid grid-cols-2 gap-4">
+              {(index === 0 || section.rowStart > 0) && (
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Fila Inicio
+                      Nombre de la Sección
                     </label>
                     <input
-                      type="number"
+                      type="text"
                       required
-                      min="1"
-                      max={eventData.seatingChart.rows}
                       className="w-full p-2 border rounded-md"
-                      value={section.rowStart}
-                      onChange={(e) => handleSectionChange(index, 'rowStart', parseInt(e.target.value))}
+                      value={section.name}
+                      onChange={(e) => handleSectionChange(index, 'name', e.target.value)}
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Fila Fin
+                      Tipo
                     </label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      max={eventData.seatingChart.rows}
+                    <select
                       className="w-full p-2 border rounded-md"
-                      value={section.rowEnd}
-                      onChange={(e) => handleSectionChange(index, 'rowEnd', parseInt(e.target.value))}
-                    />
+                      value={section.type}
+                      onChange={(e) => handleSectionChange(index, 'type', e.target.value)}
+                    >
+                      <option value="REGULAR">Regular</option>
+                      <option value="VIP">VIP</option>
+                      <option value="DISABLED">Discapacitados</option>
+                    </select>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Columna Inicio
+                      Precio
                     </label>
                     <input
                       type="number"
                       required
-                      min="1"
-                      max={eventData.seatingChart.columns}
+                      min="0"
                       className="w-full p-2 border rounded-md"
-                      value={section.columnStart}
-                      onChange={(e) => handleSectionChange(index, 'columnStart', parseInt(e.target.value))}
+                      value={section.price}
+                      onChange={(e) => handleSectionChange(index, 'price', parseInt(e.target.value))}
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Columna Fin
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      max={eventData.seatingChart.columns}
-                      className="w-full p-2 border rounded-md"
-                      value={section.columnEnd}
-                      onChange={(e) => handleSectionChange(index, 'columnEnd', parseInt(e.target.value))}
-                    />
+                  <div className="col-span-2 grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Fila Inicio
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        max={eventData.seatingChart.rows}
+                        className="w-full p-2 border rounded-md"
+                        value={section.rowStart}
+                        onChange={(e) => handleSectionChange(index, 'rowStart', parseInt(e.target.value))}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Fila Fin
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        max={eventData.seatingChart.rows}
+                        className="w-full p-2 border rounded-md"
+                        value={section.rowEnd}
+                        onChange={(e) => handleSectionChange(index, 'rowEnd', parseInt(e.target.value))}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Columna Inicio
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        max={eventData.seatingChart.columns}
+                        className="w-full p-2 border rounded-md"
+                        value={section.columnStart}
+                        onChange={(e) => handleSectionChange(index, 'columnStart', parseInt(e.target.value))}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Columna Fin
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        max={eventData.seatingChart.columns}
+                        className="w-full p-2 border rounded-md"
+                        value={section.columnEnd}
+                        onChange={(e) => handleSectionChange(index, 'columnEnd', parseInt(e.target.value))}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           ))}
         </div>

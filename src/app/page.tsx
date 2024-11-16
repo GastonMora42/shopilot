@@ -197,13 +197,13 @@ export default function LandingPage() {
             <div>
               <h4 className="font-semibold mb-4 text-gray-900">Contacto</h4>
               <ul className="space-y-2 text-sm text-gray-600">
-                <li>support@shopilot.xyz</li>
+                <li>support@showspot.xyz</li>
                 <li>+1 234 567 890</li>
               </ul>
             </div>
           </div>
           <div className="mt-8 pt-8 border-t border-gray-100 text-center text-sm text-gray-600">
-            <p>&copy; 2024 Shopilot. Todos los derechos reservados.</p>
+            <p>&copy; 2024 ShowSpot. Todos los derechos reservados.</p>
           </div>
         </div>
       </footer>

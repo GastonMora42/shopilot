@@ -33,7 +33,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="text-xl font-semibold">EventosPro</span>
+          <span className="text-xl font-semibold">ShowSpot</span>
         </div>
 
         <div className="flex items-center gap-4">

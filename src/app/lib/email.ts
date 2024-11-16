@@ -135,8 +135,8 @@ export async function sendTicketEmail({ tickets, email }: SendTicketEmailParams)
     sendSmtpEmail.subject = `🎫 Tus entradas para ${tickets[0].eventName}`;
     sendSmtpEmail.htmlContent = emailHtml;
     sendSmtpEmail.sender = { 
-      name: 'Shopilot Tickets', 
-      email: 'tickets@shopilot.xyz' 
+      name: 'ShowSpot Tickets', 
+      email: 'tickets@showspot.xyz' 
     };
     sendSmtpEmail.to = [{ email }];
     

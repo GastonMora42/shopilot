@@ -50,7 +50,7 @@ export async function createPreference({
         auto_return: "approved",
         external_reference: _id,
         notification_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/mercadopago`,
-        statement_descriptor: "SHOPILOT TICKETS"
+        statement_descriptor: "SHOWSPOT TICKETS"
       }
     };
 

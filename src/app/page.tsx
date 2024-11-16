@@ -49,30 +49,34 @@ export default function LandingPage() {
       {/* Header */}
       <header className="fixed w-full bg-white border-b border-gray-100 shadow-sm z-50">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-20"> {/* Aumentado a h-24 */}
             <div className="flex items-center space-x-2">
-              <img src="/logo.png" alt="Logo" className="h-8 w-auto" />
+              <img 
+                src="/logo.png" 
+                alt="Logo" 
+                className="h-18 w-auto object-contain max-w-[180px]" /* Ajustes principales aquí */
+              />
             </div>
-            <nav className="hidden md:flex items-center space-x-6">
-              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors">Inicio</Button>
-              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors">Eventos</Button>
-              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors">Precios</Button>
-              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors">Contacto</Button>
+            <nav className="hidden md:flex items-center space-x-8"> {/* Aumentado space-x-8 */}
+              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Inicio</Button>
+              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Eventos</Button>
+              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Precios</Button>
+              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Contacto</Button>
             </nav>
             <Button 
               onClick={() => setIsLoginOpen(true)}
-              className="bg-[#FF5F1F] text-white hover:bg-[#FF5F1F]/90 shadow-lg shadow-orange-500/20"
+              className="bg-[#FF5F1F] text-white hover:bg-[#FF5F1F]/90 shadow-lg shadow-orange-500/20 px-6 py-2.5 text-base"
             >
               Iniciar Sesión
             </Button>
           </div>
         </div>
       </header>
-
       {/* Hero Section */}
       <section className="pt-24 pb-16 bg-gradient-to-b from-white to-gray-50">
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto text-center">
+            <br />
             <h1 className="text-5xl md:text-6xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-[#FF5F1F]">
               Coleccionando momentos
             </h1>
@@ -172,7 +176,7 @@ export default function LandingPage() {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-4 gap-8">
             <div>
-              <img src="/logo.png" alt="Logo" className="h-8 w-auto mb-4" />
+              <img src="/logo.png" alt="Logo" className="h-20 w-auto mb-4" />
               <p className="text-sm text-gray-600">
                 Tu plataforma de confianza para eventos.
               </p>
@@ -212,6 +216,7 @@ export default function LandingPage() {
       <Sheet open={isLoginOpen} onOpenChange={setIsLoginOpen}>
         <SheetContent className="bg-white">
           <SheetHeader>
+          <br />
           <br />
           <br />
             <SheetTitle className="text-gray-900">Iniciar Sesión</SheetTitle>

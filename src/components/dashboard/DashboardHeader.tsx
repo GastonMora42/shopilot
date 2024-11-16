@@ -33,7 +33,11 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="text-xl font-semibold">ShowSpot</span>
+                <img 
+                src="/logo.png" 
+                alt="Logo" 
+                className="h-18 w-auto object-contain max-w-[180px]" /* Ajustes principales aquí */
+              />
         </div>
 
         <div className="flex items-center gap-4">
@@ -45,6 +49,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56">
               <DropdownMenuLabel className="font-normal">
+                <br />
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium">{session?.user?.name}</p>
                   <p className="text-xs text-gray-500">{session?.user?.email}</p>

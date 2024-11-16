@@ -123,7 +123,7 @@ export async function sendTicketEmail({ tickets, email }: SendTicketEmailParams)
         </p>
         <div style="margin-top: 24px; text-align: center;">
           <p style="color: #6b7280; font-size: 14px;">
-            ¿Tienes preguntas? Contáctanos en support@shopilot.xyz
+            ¿Tienes preguntas? Contáctanos en support@showspot.xyz
           </p>
         </div>
       </div>

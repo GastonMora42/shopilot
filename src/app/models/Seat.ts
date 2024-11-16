@@ -10,6 +10,7 @@ export interface ISeat {
   type: 'REGULAR' | 'VIP' | 'DISABLED';
   price: number;
   section: string;
+  updatedAt: Date;
   ticketId?: mongoose.Types.ObjectId;
   temporaryReservation?: {
     sessionId: string;

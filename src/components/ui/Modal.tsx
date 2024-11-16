@@ -34,7 +34,7 @@ export function Modal({ isOpen, onClose, children, className }: ModalProps) {
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/50 backdrop-blur-sm',
+        'fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm overflow-hidden',
         !isOpen && 'hidden'
       )}
       onClick={onClose}
@@ -42,10 +42,8 @@ export function Modal({ isOpen, onClose, children, className }: ModalProps) {
       <div
         className={cn(
           "bg-white rounded-lg shadow-lg",
-          "w-[98vw] max-w-[1400px]", // Ancho máximo fijo más grande
-          "h-[95vh]", // Alto fijo
+          "w-[95vw] max-h-[90vh]", 
           "flex flex-col",
-          "mx-auto", // Centrado horizontal
           className
         )}
         onClick={(e) => e.stopPropagation()}
@@ -71,12 +69,11 @@ export function ModalHeader({ children, className }: { children: ReactNode, clas
 export function ModalContent({ children, className }: { children: ReactNode, className?: string }) {
   return (
     <div className={cn(
-      "flex-1 min-h-0", // Crucial para el scroll
-      "overflow-auto",
-      "p-4", // Padding reducido para dar más espacio
+      "flex-1 overflow-auto p-4",
+      "min-h-0", // Importante para el scroll
       className
     )}>
-      <div className="h-full w-full min-w-fit"> {/* Contenedor interno para evitar encogimiento */}
+      <div className="min-w-fit"> {/* Asegura que el contenido no se encoja */}
         {children}
       </div>
     </div>

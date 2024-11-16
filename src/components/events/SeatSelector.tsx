@@ -223,63 +223,65 @@ export function SeatSelector({
     return `${String.fromCharCode(64 + row)}${col}`;
   }, []);
   
-  const renderSectionGrid = useCallback((section: ISection) => {
-    const rows = section.rowEnd - section.rowStart + 1;
-    const cols = section.columnEnd - section.columnStart + 1;
-  
-    return (
-      <div className="flex flex-col gap-2 min-w-max">
-        {/* Header con números de columna */}
-        <div className="flex pl-10 sticky top-0 bg-white z-10">
-          {Array.from({ length: cols }).map((_, idx) => (
-            <div 
-              key={idx} 
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-xs text-gray-500"
-            >
-              {idx + section.columnStart + 1}
-            </div>
-          ))}
-        </div>
-  
-        {/* Grid de asientos */}
-        <div className="grid gap-1">
-          {Array.from({ length: rows }).map((_, rowIdx) => {
-            const actualRow = rowIdx + section.rowStart;
-            return (
-              <div key={rowIdx} className="flex items-center gap-1">
-                {/* Letra de fila */}
-                <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm font-medium text-gray-600">
-                  {String.fromCharCode(65 + rowIdx)}
-                </div>
-                {/* Asientos de la fila */}
-                <div className="flex gap-1">
-                  {Array.from({ length: cols }).map((_, colIdx) => {
-                    const actualCol = colIdx + section.columnStart;
-                    const seatId = `${actualRow}-${actualCol}`;
-                    const displayId = `${String.fromCharCode(65 + rowIdx)}${colIdx + 1}`;
-  
-                    return (
-                      <Seat
-                        key={seatId}
-                        seatId={seatId}
-                        displayId={displayId}
-                        type={section.type}
-                        isSelected={selectedSeats.includes(seatId)}
-                        isOccupied={isSeatOccupied(seatId)}
-                        isReserved={isSeatReserved(seatId)}
-                        price={section.price}
-                        onClick={handleSeatClick}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+// components/SeatSelector.tsx
+
+const renderSectionGrid = useCallback((section: ISection) => {
+  const rows = section.rowEnd - section.rowStart + 1;
+  const cols = section.columnEnd - section.columnStart + 1;
+
+  return (
+    <div className="flex flex-col gap-2 min-w-max">
+      {/* Header con números de columna */}
+      <div className="flex pl-10 sticky top-0 bg-white z-10">
+        {Array.from({ length: cols }).map((_, idx) => (
+          <div 
+            key={idx} 
+            className="w-10 flex-shrink-0 text-center text-xs text-gray-500"
+          >
+            {idx + section.columnStart}
+          </div>
+        ))}
       </div>
-    );
-  }, [selectedSeats, isSeatOccupied, isSeatReserved, handleSeatClick]);
+
+      {/* Grid de asientos */}
+      <div className="grid gap-1">
+        {Array.from({ length: rows }).map((_, rowIdx) => {
+          const actualRow = rowIdx + section.rowStart;
+          return (
+            <div key={rowIdx} className="flex items-center">
+              {/* Letra de fila */}
+              <div className="w-10 flex-shrink-0 text-center text-sm font-medium text-gray-600">
+                {String.fromCharCode(65 + rowIdx)}
+              </div>
+              {/* Asientos de la fila */}
+              <div className="flex gap-1">
+                {Array.from({ length: cols }).map((_, colIdx) => {
+                  const actualCol = colIdx + section.columnStart;
+                  const seatId = `${actualRow}-${actualCol}`;
+                  const displayId = `${String.fromCharCode(65 + rowIdx)}${colIdx + 1}`;
+
+                  return (
+                    <Seat
+                      key={seatId}
+                      seatId={seatId}
+                      displayId={displayId}
+                      type={section.type}
+                      isSelected={selectedSeats.includes(seatId)}
+                      isOccupied={isSeatOccupied(seatId)}
+                      isReserved={isSeatReserved(seatId)}
+                      price={section.price}
+                      onClick={handleSeatClick}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}, [selectedSeats, isSeatOccupied, isSeatReserved, handleSeatClick]);
 
   return (
     <div className="space-y-6 w-full">

@@ -7,26 +7,70 @@ export async function POST(
   req: Request,
   { params }: { params: { id: string } }
 ) {
+  if (process.env.NODE_ENV !== 'development') {
+    return NextResponse.json(
+      { error: 'This endpoint is only available in development mode' },
+      { status: 403 }
+    );
+  }
+
   try {
     await dbConnect();
     const { seatId, status } = await req.json();
 
+    // Validaciones
+    if (!seatId || !status) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    if (!['AVAILABLE', 'OCCUPIED', 'RESERVED'].includes(status)) {
+      return NextResponse.json(
+        { error: 'Invalid status' },
+        { status: 400 }
+      );
+    }
+
+    // Buscar y actualizar el asiento
     const result = await Seat.findOneAndUpdate(
       { 
         eventId: params.id,
-        number: seatId // Asumiendo que number es como "A4"
+        row: parseInt(seatId.split('-')[0]),
+        column: parseInt(seatId.split('-')[1])
       },
+      { $set: { status } },
       { 
-        $set: { status: status }
-      },
-      { new: true }
+        new: true,
+        runValidators: true
+      }
     );
 
-    console.log('Updated seat:', result);
+    if (!result) {
+      return NextResponse.json(
+        { error: 'Seat not found' },
+        { status: 404 }
+      );
+    }
 
-    return NextResponse.json({ success: true, seat: result });
+    return NextResponse.json({
+      success: true,
+      seat: {
+        id: result._id,
+        eventId: result.eventId,
+        row: result.row,
+        column: result.column,
+        status: result.status,
+        updatedAt: result.updatedAt
+      }
+    });
+
   } catch (error) {
     console.error('Error updating seat:', error);
-    return NextResponse.json({ error: 'Error updating seat' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

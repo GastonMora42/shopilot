@@ -52,20 +52,22 @@ export default function SeatMap({
   const [loading, setLoading] = useState(true);
 
   const createSeatGrid = useCallback(() => {
+    // Ajustamos para manejar índices basados en 0
     const maxRows = Math.max(...seatingChart.sections.map(s => s.rowEnd));
     const maxCols = Math.max(...seatingChart.sections.map(s => s.columnEnd));
     
     const grid: GridSeat[][] = [];
 
-    for (let row = 1; row <= maxRows; row++) {
+    // Ajustamos el loop para empezar desde 0
+    for (let row = 0; row < maxRows; row++) {
       const gridRow: GridSeat[] = [];
       
-      for (let col = 1; col <= maxCols; col++) {
-        const seatId = `${row}-${col}`;
+      for (let col = 0; col < maxCols; col++) {
+        const seatId = `${row + 1}-${col + 1}`; // Ajustamos el ID para base-1
         
         const section = seatingChart.sections.find(s => 
-          row >= s.rowStart && row <= s.rowEnd &&
-          col >= s.columnStart && col <= s.columnEnd
+          row + 1 >= s.rowStart && row + 1 <= s.rowEnd &&
+          col + 1 >= s.columnStart && col + 1 <= s.columnEnd
         );
 
         if (section) {
@@ -73,7 +75,7 @@ export default function SeatMap({
           
           gridRow.push({
             id: seatId,
-            displayId: `${String.fromCharCode(64 + row)}${col}`,
+            displayId: `${String.fromCharCode(65 + row)}${col + 1}`,
             type: section.type,
             status: occupiedSeat?.status || 'AVAILABLE',
             price: section.price,
@@ -98,51 +100,29 @@ export default function SeatMap({
     setLoading(false);
   }, [seatingChart, occupiedSeats]);
 
-  useEffect(() => {
-    createSeatGrid();
-  }, [createSeatGrid]);
-
-  const handleSeatClick = useCallback((seat: GridSeat) => {
-    if (seat.status === 'AVAILABLE' && onSeatSelect) {
-      onSeatSelect(seat.id);
-    }
-  }, [onSeatSelect]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+  function handleSeatClick(seat: GridSeat): void {
+    throw new Error('Function not implemented.');
   }
 
   return (
-    <div className="max-w-[95vw] mx-auto bg-white rounded-lg shadow-lg overflow-hidden">
+    <div className="w-full overflow-x-auto">
       <TransformWrapper
         initialScale={1}
         minScale={0.5}
         maxScale={2}
         limitToBounds={false}
-        wheel={{ step: 0.1 }}
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
-            <div className="sticky top-0 bg-white z-20 p-4 border-b">
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => zoomOut()}>
-                  <MinusIcon className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => resetTransform()}>
-                  <RotateCcwIcon className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => zoomIn()}>
-                  <PlusIcon className="h-4 w-4" />
-                </Button>
+            <div className="sticky top-0 bg-white z-20 p-4">
+              <div className="flex gap-2 justify-center">
+                <Button onClick={() => zoomOut()}>-</Button>
+                <Button onClick={() => resetTransform()}>Reset</Button>
+                <Button onClick={() => zoomIn()}>+</Button>
               </div>
             </div>
-
             <TransformComponent
-              wrapperClass="!w-full !overflow-visible"
+              wrapperClass="!w-full"
               contentClass="!w-full"
             >
               <div className="min-w-max p-4">

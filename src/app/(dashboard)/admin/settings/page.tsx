@@ -28,9 +28,17 @@ export default function SettingsPage() {
   }, [searchParams]);
 
   const connectMP = () => {
+    // Limpiar cualquier estado de error previo
+    setStatus({});
+    
     const authUrl = `https://auth.mercadopago.com.ar/authorization?client_id=${process.env.NEXT_PUBLIC_MP_CLIENT_ID}&response_type=code&platform_id=mp&redirect_uri=${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/mercadopago/callback`;
     window.location.href = authUrl;
   };
+
+  const forceRefresh = () => {
+    window.location.reload();
+  };
+  
 
   const disconnectMP = async () => {
     if (!confirm('¿Estás seguro de que quieres desconectar tu cuenta de MercadoPago?')) {
@@ -73,6 +81,23 @@ export default function SettingsPage() {
     }
   };
 
+  const getErrorMessage = (error: string) => {
+    switch (error) {
+      case 'no_code':
+        return 'No se recibió el código de autorización';
+      case 'mp_error':
+        return 'Error al conectar con MercadoPago';
+      case 'mp_account_already_connected':
+        return 'Esta cuenta de MercadoPago ya está conectada a otro usuario';
+      case 'user_not_found':
+        return 'Usuario no encontrado';
+      case 'unknown':
+        return 'Ocurrió un error inesperado';
+      default:
+        return 'Ocurrió un error al conectar la cuenta';
+    }
+  };
+
   // Función para verificar si MP está realmente conectado
   const isMPConnected = () => {
     return !!(session?.user?.mercadopago?.accessToken && session?.user?.mercadopago?.userId);
@@ -91,11 +116,16 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {status.error && (
-          <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg">
-            {status.error}
-          </div>
-        )}
+{status.error === 'mp_account_already_connected' && (
+  <Button 
+    variant="outline" 
+    size="sm" 
+    onClick={forceRefresh}
+    className="mt-2"
+  >
+    Recargar página
+  </Button>
+)}
         
         <div className="space-y-4">
           {isMPConnected() ? (

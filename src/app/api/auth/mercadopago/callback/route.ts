@@ -17,28 +17,11 @@ export async function GET(req: Request) {
       );
     }
 
-    // Verificar sesión y rol
+    // Verificar sesión
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
       return NextResponse.redirect(
         new URL('/auth/signin', req.url)
-      );
-    }
-
-    // Verificar que el usuario sea un organizador
-    if (session.user.role !== 'ORGANIZER') {
-      return NextResponse.redirect(
-        new URL('/admin/settings?error=unauthorized_role', req.url)
-      );
-    }
-
-    await dbConnect();
-
-    // Verificar si el usuario existe en la base de datos
-    const existingUser = await User.findOne({ email: session.user.email });
-    if (!existingUser) {
-      return NextResponse.redirect(
-        new URL('/admin/settings?error=user_not_found', req.url)
       );
     }
 
@@ -67,15 +50,10 @@ export async function GET(req: Request) {
 
     const mpData = await tokenResponse.json();
 
-    // Verificar que los datos necesarios estén presentes
-    if (!mpData.access_token || !mpData.user_id) {
-      console.error('Datos incompletos de MP:', mpData);
-      return NextResponse.redirect(
-        new URL('/admin/settings?error=incomplete_mp_data', req.url)
-      );
-    }
+    // Conectar a la base de datos
+    await dbConnect();
 
-    // Verificar que la cuenta MP no esté ya conectada a otro usuario
+    // Verificar si la cuenta MP ya está conectada a otro usuario
     const existingMPUser = await User.findOne({
       'mercadopago.userId': mpData.user_id,
       email: { $ne: session.user.email }
@@ -87,7 +65,7 @@ export async function GET(req: Request) {
       );
     }
 
-    // Guardar datos en la base de datos
+    // Actualizar o reconectar la cuenta del usuario actual
     const updatedUser = await User.findOneAndUpdate(
       { email: session.user.email },
       {
@@ -103,24 +81,8 @@ export async function GET(req: Request) {
 
     if (!updatedUser) {
       return NextResponse.redirect(
-        new URL('/admin/settings?error=update_failed', req.url)
+        new URL('/admin/settings?error=user_not_found', req.url)
       );
-    }
-
-    // Verificar la conexión con MP haciendo una llamada de prueba
-    try {
-      const testResponse = await fetch('https://api.mercadopago.com/users/me', {
-        headers: {
-          'Authorization': `Bearer ${mpData.access_token}`
-        }
-      });
-
-      if (!testResponse.ok) {
-        throw new Error('Failed to verify MP connection');
-      }
-    } catch (error) {
-      console.error('Error verificando conexión MP:', error);
-      // Continuamos aunque falle la verificación
     }
 
     // Redirigir a la página de configuración con éxito

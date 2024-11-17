@@ -48,6 +48,7 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/lodash": "^4.17.13",
     "@types/mercadopago": "^1.5.11",
     "@types/node": "^20",
     "@types/nodemailer": "^6.4.16",

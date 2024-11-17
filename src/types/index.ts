@@ -6,30 +6,6 @@ export type TicketStatus = 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
 export type SeatStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
 export type SeatType = 'REGULAR' | 'VIP' | 'DISABLED';
 
-export interface IEvent extends Document {
-  _id: string;
-  name: string;
-  slug: string;
-  description: string;
-  date: Date;
-  location: string;
-  published: boolean;
-  organizerId: string;
-  imageUrl: string;
-  image?: string;
-  mercadopago: {
-    accessToken: string;
-    userId: string;
-  };
-  seatingChart: {
-    rows: number;
-    columns: number;
-    sections: Array<ISection>;
-  };
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface ISection {
   name: string;
   type: SeatType;
@@ -148,4 +124,89 @@ export interface ReservationResponse {
   expiresAt: string;
   error?: string;
   unavailableSeats?: string[];
+}
+
+// Nuevas interfaces para tipos de eventos
+interface IBaseEvent {
+  _id: string;
+  name: string;
+  slug: string;
+  description: string;
+  date: Date;
+  location: string;
+  published: boolean;
+  organizerId: string;
+  imageUrl: string;
+  mercadopago: {
+    accessToken: string;
+    userId: string;
+  };
+}
+
+interface IGeneralEvent extends IBaseEvent {
+  eventType: 'GENERAL';
+  ticketTypes: Array<{
+    name: string;
+    price: number;
+    quantity: number;
+    description?: string;
+  }>;
+}
+
+interface ISeatedEvent extends IBaseEvent {
+  eventType: 'SEATED';
+  seatingChart: {
+    rows: number;
+    columns: number;
+    sections: Array<ISection>;
+    customLayout?: {
+      seatMap: Array<{
+        id: string;
+        x: number;
+        y: number;
+        sectionId: string;
+      }>;
+    };
+  };
+}
+
+export type IEvent = IGeneralEvent | ISeatedEvent;
+
+// app/types/event.ts
+export interface Section {
+  id: string;
+  name: string;
+  type: 'REGULAR' | 'VIP' | 'DISABLED';
+  price: number;
+  rowStart: number;
+  rowEnd: number;
+  columnStart: number;
+  columnEnd: number;
+  color: string;
+}
+
+export interface SeatingChart {
+  rows: number;
+  columns: number;
+  sections: Section[];
+  customLayout?: boolean;
+}
+
+export interface Seat {
+  id: any;
+  _id: string;
+  eventId: string;
+  seatId: string;
+  row: number;
+  column: number;
+  status: 'AVAILABLE' | 'RESERVED' | 'OCCUPIED';
+  type: 'REGULAR' | 'VIP' | 'DISABLED';
+  price: number;
+  section: string;
+  label: string;
+  temporaryReservation?: {
+    sessionId: string;
+    expiresAt: Date;
+  };
+  lastReservationAttempt?: Date;
 }

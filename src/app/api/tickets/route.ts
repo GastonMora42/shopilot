@@ -3,6 +3,7 @@ import dbConnect from '@/app/lib/mongodb';
 import { Event } from '@/app/models/Event';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
+import { User } from '@/app/models/User'; // Añadido: importar modelo User
 import { generateQRCode } from '@/app/lib/utils';
 import { createPreference } from '@/app/lib/mercadopago';
 import { isValidObjectId } from 'mongoose';
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Verificar evento
+    // Verificar evento y obtener organizador
     const event = await Event.findById(eventId);
     if (!event || !event.published) {
       return NextResponse.json(
@@ -33,7 +34,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // Calcular precio total (modificado para trabajar con formato numérico)
+    // Obtener el organizador y verificar su cuenta MP
+    const organizer = await User.findById(event.organizerId);
+    if (!organizer || !organizer.mercadopago?.accessToken) {
+      return NextResponse.json(
+        { error: 'El organizador no tiene una cuenta de MercadoPago conectada' },
+        { status: 400 }
+      );
+    }
+
+    // Calcular precio total
     const total = seats.reduce((sum: number, seat: string) => {
       const [row, col] = seat.split('-');
       const rowNumber = parseInt(row);
@@ -52,12 +62,12 @@ export async function POST(req: Request) {
     session = await mongoose.startSession();
     session.startTransaction();
 
-    // Verificar disponibilidad usando seatId en lugar de number
+    // Verificar disponibilidad de asientos
     const seatsStatus = await Seat.find({
       eventId,
-      seatId: { $in: seats }, // Cambiado de number a seatId
+      seatId: { $in: seats },
       $or: [
-        { status: { $ne: 'RESERVED'} }, //Cambiamos
+        { status: { $ne: 'RESERVED'} },
         {
           status: 'RESERVED',
           'temporaryReservation.sessionId': { $ne: sessionId }
@@ -72,21 +82,22 @@ export async function POST(req: Request) {
     // Crear ticket
     const [newTicket] = await Ticket.create([{
       eventId,
-      seats, // Estos son los seatIds en formato numérico
+      seats,
       qrCode: await generateQRCode(),
       status: 'PENDING',
       buyerInfo: {
         ...buyerInfo,
         email: buyerInfo.email.toLowerCase().trim()
       },
-      price: total
+      price: total,
+      organizerId: event.organizerId // Opcional: guardar referencia al organizador
     }], { session });
 
     // Actualizar estado de asientos
     const seatUpdateResult = await Seat.updateMany(
       {
         eventId,
-        seatId: { $in: seats }, // Cambiado de number a seatId
+        seatId: { $in: seats },
         'temporaryReservation.sessionId': sessionId
       },
       {
@@ -98,56 +109,59 @@ export async function POST(req: Request) {
       { session }
     );
     
-        if (seatUpdateResult.modifiedCount !== seats.length) {
-          throw new Error('No se pudieron actualizar todos los asientos');
-        }
-    
-        // Crear preferencia de MercadoPago
-        const preference = await createPreference({
-          _id: newTicket._id.toString(),
-          eventName: event.name,
-          price: newTicket.price,
-          description: `${seats.length} entrada(s) para ${event.name}`
-        });
-    
-        await session.commitTransaction();
-    
-        console.log('Ticket created successfully:', {
-          id: newTicket._id,
-          seats: newTicket.seats,
-          status: newTicket.status
-        });
-    
-        console.log('Preference created:', {
-          ticketId: newTicket._id,
-          preferenceId: preference.id
-        });
-    
-        return NextResponse.json({
-          success: true,
-          ticket: {
-            id: newTicket._id,
-            seats: newTicket.seats,
-            total: newTicket.price
-          },
-          checkoutUrl: preference.init_point,
-          preferenceId: preference.id
-        });
-    
-      } catch (error) {
-        if (session) {
-          await session.abortTransaction();
-        }
-        console.error('Error creating ticket:', error);
-        return NextResponse.json(
-          { 
-            error: error instanceof Error ? error.message : 'Error al procesar la compra'
-          },
-          { status: 500 }
-        );
-      } finally {
-        if (session) {
-          await session.endSession();
-        }
-      }
+    if (seatUpdateResult.modifiedCount !== seats.length) {
+      throw new Error('No se pudieron actualizar todos los asientos');
     }
+
+    // Crear preferencia de MercadoPago usando el token del organizador
+    const preference = await createPreference({
+      _id: newTicket._id.toString(),
+      eventName: event.name,
+      price: newTicket.price,
+      description: `${seats.length} entrada(s) para ${event.name}`,
+      organizerAccessToken: organizer.mercadopago.accessToken // Añadido: token del organizador
+    });
+
+    await session.commitTransaction();
+
+    console.log('Ticket created successfully:', {
+      id: newTicket._id,
+      seats: newTicket.seats,
+      status: newTicket.status,
+      organizerId: event.organizerId
+    });
+
+    console.log('Preference created:', {
+      ticketId: newTicket._id,
+      preferenceId: preference.id,
+      organizerId: event.organizerId
+    });
+
+    return NextResponse.json({
+      success: true,
+      ticket: {
+        id: newTicket._id,
+        seats: newTicket.seats,
+        total: newTicket.price
+      },
+      checkoutUrl: preference.init_point,
+      preferenceId: preference.id
+    });
+
+  } catch (error) {
+    if (session) {
+      await session.abortTransaction();
+    }
+    console.error('Error creating ticket:', error);
+    return NextResponse.json(
+      { 
+        error: error instanceof Error ? error.message : 'Error al procesar la compra'
+      },
+      { status: 500 }
+    );
+  } finally {
+    if (session) {
+      await session.endSession();
+    }
+  }
+}

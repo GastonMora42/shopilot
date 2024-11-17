@@ -1,33 +1,30 @@
 // lib/mercadopago.ts
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 
-if (!process.env.MP_ACCESS_TOKEN) {
-  throw new Error('MP_ACCESS_TOKEN is not defined');
-}
-
-if (!process.env.NEXT_PUBLIC_BASE_URL) {
-  throw new Error('NEXT_PUBLIC_BASE_URL is not defined');
-}
-
-export const mpClient = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN,
-});
-
 interface PreferenceData {
   _id: string;
   eventName: string;
   price: number;
   description?: string;
+  organizerAccessToken: string; // Añadido: token del organizador
 }
 
-// lib/mercadopago.ts
+export function createMPClient(accessToken: string) {
+  return new MercadoPagoConfig({
+    accessToken: accessToken,
+  });
+}
+
 export async function createPreference({
   _id,
   eventName,
   price,
-  description
+  description,
+  organizerAccessToken // Token del organizador del evento
 }: PreferenceData) {
   try {
+    // Crear cliente MP con el token del organizador
+    const mpClient = createMPClient(organizerAccessToken);
     const preference = new Preference(mpClient);
     
     const preferenceData = {
@@ -54,10 +51,7 @@ export async function createPreference({
       }
     };
 
-    console.log('Creating preference:', preferenceData);
     const response = await preference.create(preferenceData);
-    console.log('Preference created:', response);
-
     return response;
   } catch (error) {
     console.error('Error creating preference:', error);

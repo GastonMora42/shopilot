@@ -4,18 +4,20 @@
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/Button';
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react'; // Asegúrate de tener lucide-react instalado
 
 export default function SettingsPage() {
-  const { data: session } = useSession();
+  const { data: session, update: updateSession } = useSession();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [status, setStatus] = useState<{
     success?: boolean;
     error?: string;
   }>({});
 
   useEffect(() => {
-    // Manejar respuestas de la conexión MP
     const success = searchParams.get('success');
     const error = searchParams.get('error');
 
@@ -31,16 +33,67 @@ export default function SettingsPage() {
     window.location.href = authUrl;
   };
 
-  const getErrorMessage = (error: string) => {
-    switch (error) {
-      case 'no_code':
-        return 'No se recibió el código de autorización';
-      case 'mp_error':
-        return 'Error al conectar con MercadoPago';
-      default:
-        return 'Ocurrió un error al conectar la cuenta';
+// En tu SettingsPage, actualiza la función disconnectMP:
+const disconnectMP = async () => {
+  if (!confirm('¿Estás seguro de que quieres desconectar tu cuenta de MercadoPago?')) {
+    return;
+  }
+
+  setIsDisconnecting(true);
+
+  try {
+    const response = await fetch('/api/auth/mercadopago/disconnect', {
+      method: 'POST',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Error al desconectar la cuenta');
     }
-  };
+
+    // Actualizar la sesión
+    await updateSession();
+    
+    setStatus({
+      success: true,
+      error: undefined
+    });
+
+    // Recargar la página para actualizar el estado
+    window.location.reload();
+
+  } catch (error) {
+    console.error('Error:', error);
+    setStatus({
+      success: false,
+      error: error instanceof Error ? error.message : 'Error al desconectar la cuenta'
+    });
+  } finally {
+    setIsDisconnecting(false);
+  }
+};
+
+const getErrorMessage = (error: string) => {
+  switch (error) {
+    case 'no_code':
+      return 'No se recibió el código de autorización';
+    case 'mp_error':
+      return 'Error al conectar con MercadoPago';
+    case 'unauthorized_role':
+      return 'No tienes permisos para conectar una cuenta de MercadoPago';
+    case 'user_not_found':
+      return 'Usuario no encontrado';
+    case 'incomplete_mp_data':
+      return 'Datos incompletos de MercadoPago';
+    case 'mp_account_already_connected':
+      return 'Esta cuenta de MercadoPago ya está conectada a otro usuario';
+    case 'update_failed':
+      return 'Error al actualizar la información del usuario';
+    default:
+      return 'Ocurrió un error al conectar la cuenta';
+  }
+};
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -51,7 +104,9 @@ export default function SettingsPage() {
         
         {status.success && (
           <div className="mb-4 p-4 bg-green-100 text-green-700 rounded-lg">
-            Cuenta conectada exitosamente
+            {session?.user?.mercadopago?.accessToken 
+              ? 'Cuenta conectada exitosamente'
+              : 'Cuenta desconectada exitosamente'}
           </div>
         )}
 
@@ -71,15 +126,20 @@ export default function SettingsPage() {
               <p className="text-sm text-gray-600 mt-2">
                 ID de usuario: {session.user.mercadopago.userId}
               </p>
-              {/* Opcional: Botón para desconectar */}
               <Button 
                 variant="outline" 
                 className="mt-4"
-                onClick={() => {
-                  // Implementar lógica de desconexión
-                }}
+                onClick={disconnectMP}
+                disabled={isDisconnecting}
               >
-                Desconectar cuenta
+                {isDisconnecting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Desconectando...
+                  </>
+                ) : (
+                  'Desconectar cuenta'
+                )}
               </Button>
             </div>
           ) : (

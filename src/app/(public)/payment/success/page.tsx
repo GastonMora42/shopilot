@@ -25,8 +25,8 @@ interface TicketData {
 
 export default function PaymentSuccessPage() {
   const searchParams = useSearchParams();
-  const [tickets, setTickets] = useState<TicketData[]>([]); // Cambiado de ticket a tickets
-  const [loading, setLoading] = useState(true);
+  const [tickets, setTickets] = useState<TicketData[]>([]);
+  const [isValidating, setIsValidating] = useState(true); // Nuevo estado para validación
   const [error, setError] = useState<string | null>(null);
   const [verificationAttempts, setVerificationAttempts] = useState(0);
   const { downloadPDF, loading: pdfLoading } = usePDFDownload();
@@ -85,14 +85,13 @@ export default function PaymentSuccessPage() {
     let timeoutId: NodeJS.Timeout;
     
     const startVerification = async () => {
-      setLoading(true);
       const isComplete = await verifyPayment();
       
-      if (!isComplete && verificationAttempts < 12) { // 1 minuto (12 intentos * 5 segundos)
+      if (!isComplete && verificationAttempts < 12) {
         timeoutId = setTimeout(startVerification, 5000);
       } else {
-        setLoading(false);
-        if (!tickets && verificationAttempts >= 12) {
+        setIsValidating(false); // Finalizar validación
+        if (!tickets.length && verificationAttempts >= 12) {
           setError('No se pudo confirmar el pago después de varios intentos');
         }
       }
@@ -103,13 +102,45 @@ export default function PaymentSuccessPage() {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [searchParams]); // Solo depende de searchParams
+  }, [searchParams]);
 
-  if (error || tickets.length === 0) {
+  // Estado de validación
+  if (isValidating) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Validando tu compra</h2>
+        <p className="text-gray-600 text-center max-w-md">
+          Estamos procesando tu pago. Por favor, espera un momento...
+        </p>
+        <p className="text-sm text-gray-500 mt-4">
+          Intento {verificationAttempts} de 12
+        </p>
+      </div>
+    );
+  }
+
+  // Error solo después de validación
+  if (error || (!isValidating && tickets.length === 0)) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <div className="text-red-600 mb-4">
+          <svg 
+            className="w-16 h-16 mx-auto" 
+            fill="none" 
+            viewBox="0 0 24 24" 
+            stroke="currentColor"
+          >
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+            />
+          </svg>
+        </div>
         <h1 className="text-2xl font-bold text-red-600 mb-4">Error en el proceso</h1>
-        <p className="text-gray-600 mb-8">{error}</p>
+        <p className="text-gray-600 mb-8 text-center">{error}</p>
         <div className="space-y-4">
           <Button variant="outline" asChild className="w-full">
             <Link href="/">Volver al inicio</Link>
@@ -120,7 +151,7 @@ export default function PaymentSuccessPage() {
   }
 
   // Calcular el total de la compra
-  const totalPurchase = tickets.reduce((sum, ticket) => sum + ticket.price, 0);
+const totalPurchase = tickets.reduce((sum, ticket) => sum + ticket.price, 0);
 
 
 return (

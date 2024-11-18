@@ -35,6 +35,12 @@ export interface Point {
   export type StepKey = 'BASIC_INFO' | 'EVENT_TYPE' | 'TICKETS' | 'REVIEW';
 
   export interface EventFormData {
+    location: any;
+    date: any;
+    name: any;
+    description: any;
+    imageUrl: any;
+    seatingChart: any;
     basicInfo: {
       name: string;
       description: string;
@@ -59,3 +65,5 @@ export interface Point {
       description?: string;
     }>;
   }
+
+export type { LayoutConfig };

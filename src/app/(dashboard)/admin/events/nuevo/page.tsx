@@ -5,246 +5,138 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { BasicInfoStep } from '@/components/events/BasicInfoStept';
-import { SeatingStep } from '@/components/events/SeatingStep';
-import { PricingStep } from '@/components/events/PricingSteps';
-import { ReviewStep } from '@/components/events/ReviewStep';
-import { StepIndicator } from '@/components/events/StepIndicator';
 import { ImageUpload } from '@/components/ui/ImageUpload';
+import { BasicInfoStep } from '@/components/admin/EventForm/Stepts/BasicInfoStep';
+import { EventTypeStep } from '@/components/admin/EventForm/Stepts/EventTypeStep';
+import { SeatingMapEditor } from '@/components/admin/EventForm/Stepts/SeatingMap/SeatingMapEditor';
+import { GeneralTicketsStep } from '@/components/admin/EventForm/Stepts/GeneralTicketsStep';
+import { ReviewStep } from '@/components/admin/EventForm/Stepts/ReviewStep';
+import { StepIndicator } from '@/components/events/StepIndicator';
+import {
+  type StepKey,
+  type EventFormData,
+  type SeatingChart,
+  type GeneralTicket
+} from '@/types/event';
 
-type StepType = 'info' | 'seating' | 'pricing' | 'review';
-
-interface Seating {
-  rows: number;
-  columns: number;
-}
-
-export default function NewEventPage() {
-  const router = useRouter();
-  const [step, setStep] = useState<StepType>('info');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [eventData, setEventData] = useState({
-    name: '',
-    description: '',
-    date: '',
-    location: '',
-    seatingChart: {
-      rows: 18, // Actualizado para soportar más filas
-      columns: 12, // Actualizado para soportar más columnas
-      sections: [
-        {
-          name: 'Regular',
-          type: 'REGULAR' as const,
-          price: 1000,
-          rowStart: 1,
-          rowEnd: 14, // Ajustado para el nuevo tamaño
-          columnStart: 1,
-          columnEnd: 12
-        },
-        {
-          name: 'VIP',
-          type: 'VIP' as const,
-          price: 2000,
-          rowStart: 15,
-          rowEnd: 18, // Ajustado para el nuevo tamaño
-          columnStart: 1,
-          columnEnd: 12
-        }
-      ]
+const INITIAL_SEATING_CHART: SeatingChart = {
+  rows: 18,
+  columns: 12,
+  sections: [
+    {
+      id: 'regular',
+      name: 'Regular',
+      type: 'REGULAR',
+      price: 1000,
+      rowStart: 1,
+      rowEnd: 14,
+      columnStart: 1,
+      columnEnd: 12,
+      color: '#3B82F6'
     },
-    orderTotal: 3000,
-    imageUrl: ''
-  });
-
-  // Validación mejorada para dimensiones grandes
-  const validateSeatingDimensions = (rows: number, columns: number) => {
-    if (rows < 1 || rows > 50) {
-      throw new Error('El número de filas debe estar entre 1 y 50');
+    {
+      id: 'vip',
+      name: 'VIP',
+      type: 'VIP',
+      price: 2000,
+      rowStart: 15,
+      rowEnd: 18,
+      columnStart: 1,
+      columnEnd: 12,
+      color: '#EF4444'
     }
-    if (columns < 1 || columns > 50) {
-      throw new Error('El número de columnas debe estar entre 1 y 50');
-    }
-  };
+  ],
+  customLayout: false
+};
 
-  const handleBasicInfoChange = (info: unknown) => {
-    if (typeof info === "object" && info !== null) {
-      setEventData(prev => ({ ...prev, ...info }));
-    } else {
-      console.error("Invalid info format");
-    }
-  };
+const INITIAL_FORM_DATA: EventFormData = {
+  name: '',
+  description: '',
+  date: '',
+  location: '',
+  imageUrl: '',
+  eventType: 'SEATED',
+  seatingChart: INITIAL_SEATING_CHART,
+  generalTickets: []
+};
 
-  const handleSeatingChange = (seating: unknown) => {
-    if (typeof seating === "object" && seating !== null && "rows" in seating && "columns" in seating) {
-      const validSeating = seating as Seating;
-      
-      try {
-        validateSeatingDimensions(validSeating.rows, validSeating.columns);
-        
-        setEventData(prev => {
-          // Ajustar las secciones existentes para las nuevas dimensiones
-          const adjustedSections = prev.seatingChart.sections.map(section => ({
-            ...section,
-            rowEnd: Math.min(section.rowEnd, validSeating.rows),
-            columnEnd: Math.min(section.columnEnd, validSeating.columns)
-          }));
-
-          return {
-            ...prev,
-            seatingChart: {
-              ...prev.seatingChart,
-              rows: validSeating.rows,
-              columns: validSeating.columns,
-              sections: adjustedSections
-            }
-          };
-        });
-      } catch (error) {
-        console.error(error);
-        alert(error instanceof Error ? error.message : 'Error en la configuración de asientos');
-      }
-    } else {
-      console.error("Invalid seating format");
-    }
-  };
-
-  const handleSectionsChange = (sections: unknown) => {
-    if (Array.isArray(sections)) {
-      try {
-        // Validar que las secciones no excedan los límites
-        const validSections = sections.map(section => {
-          if (section.rowEnd > eventData.seatingChart.rows) {
-            throw new Error(`La fila final no puede exceder ${eventData.seatingChart.rows}`);
-          }
-          if (section.columnEnd > eventData.seatingChart.columns) {
-            throw new Error(`La columna final no puede exceder ${eventData.seatingChart.columns}`);
-          }
-
-          return {
-            ...section,
-            rowStart: Math.max(1, section.rowStart),
-            columnStart: Math.max(1, section.columnStart),
-            rowEnd: Math.min(section.rowEnd, eventData.seatingChart.rows),
-            columnEnd: Math.min(section.columnEnd, eventData.seatingChart.columns)
-          };
-        });
-
-        setEventData(prev => ({
-          ...prev,
-          seatingChart: {
-            ...prev.seatingChart,
-            sections: validSections,
-          },
-        }));
-      } catch (error) {
-        console.error(error);
-        alert(error instanceof Error ? error.message : 'Error en la configuración de secciones');
-      }
-    } else {
-      console.error("Invalid sections format");
-    }
-  };
-
-
-const handleSubmit = async () => {
-  try {
-    setIsSubmitting(true);
-
-    let imageUrl = eventData.imageUrl; // Mantener la URL existente si hay una
-
-    if (imageFile) {
-      const formData = new FormData();
-      formData.append('file', imageFile);
-
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
-
-      const uploadData = await uploadResponse.json();
-      if (!uploadResponse.ok) {
-        throw new Error(uploadData.error || 'Error al subir la imagen');
-      }
-
-      imageUrl = uploadData.url;
-      console.log('Image URL after upload:', imageUrl); // Para debugging
-    }
-
-    const formattedData = {
-      ...eventData,
-      imageUrl, // Asegurarte de incluir esto
-      date: new Date(eventData.date).toISOString()
-    };
-
-    console.log('Sending event data:', formattedData); // Para debugging
-
-    const response = await fetch('/api/events/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formattedData)
-    });
-
-    const eventCreationData = await response.json();
-    console.log('Response from event creation:', eventCreationData); // Para debugging
-
-    if (!response.ok) {
-      throw new Error(eventCreationData.error || 'Error al crear el evento');
-    }
-
-    alert('¡Evento creado exitosamente!');
-    router.push(`/admin/events`);
-  } catch (error) {
-    console.error('Error:', error);
-    alert(error instanceof Error ? error.message : 'Ocurrió un error al crear el evento');
-  } finally {
-    setIsSubmitting(false);
+const STEPS: Record<StepKey, { title: string; description: string }> = {
+  info: {
+    title: 'Información Básica',
+    description: 'Detalles generales del evento'
+  },
+  type: {
+    title: 'Tipo de Evento',
+    description: 'Selecciona el formato del evento'
+  },
+  tickets: {
+    title: 'Configuración de Entradas',
+    description: 'Define los tipos de entradas y precios'
+  },
+  review: {
+    title: 'Revisar y Crear',
+    description: 'Verifica la información antes de crear'
   }
 };
 
-  const steps: Record<StepType, {
-    title: string;
-    component: React.ReactNode;
-  }> = {
-    info: {
-      title: 'Información Básica',
-      component: <BasicInfoStep data={eventData} onChange={handleBasicInfoChange} />
-    },
-    seating: {
-      title: 'Configuración de Asientos',
-      component: <SeatingStep data={eventData.seatingChart} onChange={handleSeatingChange} />
-    },
-    pricing: {
-      title: 'Precios y Secciones',
-      component: <PricingStep sections={eventData.seatingChart.sections} onChange={handleSectionsChange} />
-    },
-    review: {
-      title: 'Revisar y Crear',
-      component: <ReviewStep data={eventData} onSubmit={handleSubmit} />
-    }
-  };
-  // ... resto del código handleSubmit igual ...
+export default function NewEventPage() {
+  const router = useRouter();
+  const [currentStep, setCurrentStep] = useState<StepKey>('info');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [formData, setFormData] = useState<EventFormData>(INITIAL_FORM_DATA);
 
-  const validateStep = (currentStep: StepType): boolean => {
-    switch (currentStep) {
+  const handleBasicInfoChange = (updates: Partial<EventFormData>) => {
+    setFormData(prev => ({ ...prev, ...updates }));
+  };
+
+  const handleEventTypeChange = (eventType: 'SEATED' | 'GENERAL') => {
+    setFormData(prev => ({
+      ...prev,
+      eventType,
+      seatingChart: eventType === 'SEATED' ? INITIAL_SEATING_CHART : undefined,
+      generalTickets: eventType === 'GENERAL' ? [] : undefined
+    }));
+  };
+
+  const handleSeatingChartChange = (seatingChart: SeatingChart) => {
+    setFormData(prev => ({ ...prev, seatingChart }));
+  };
+
+  const handleGeneralTicketsChange = (tickets: GeneralTicket[]) => {
+    setFormData(prev => ({ ...prev, generalTickets: tickets }));
+  };
+
+  const validateSeatingConfiguration = (): boolean => {
+    if (!formData.seatingChart) return true;
+    const { sections, rows, columns } = formData.seatingChart;
+
+    if (rows < 1 || rows > 50 || columns < 1 || columns > 50) return false;
+
+    return sections.every(section => (
+      section.rowStart >= 1 &&
+      section.rowEnd <= rows &&
+      section.columnStart >= 1 &&
+      section.columnEnd <= columns &&
+      section.price > 0
+    ));
+  };
+
+  const validateStep = (step: StepKey): boolean => {
+    switch (step) {
       case 'info':
-        return !!(eventData.name && eventData.description && eventData.date && eventData.location);
-      case 'seating':
-        return (
-          eventData.seatingChart.rows > 0 && 
-          eventData.seatingChart.rows <= 50 &&
-          eventData.seatingChart.columns > 0 &&
-          eventData.seatingChart.columns <= 50
+        return Boolean(
+          formData.name &&
+          formData.description &&
+          formData.date &&
+          formData.location
         );
-      case 'pricing':
-        return eventData.seatingChart.sections.every(
-          section => (
-            section.name && 
-            section.price > 0 &&
-            section.rowEnd <= eventData.seatingChart.rows &&
-            section.columnEnd <= eventData.seatingChart.columns
-          )
-        );
+      case 'type':
+        return Boolean(formData.eventType);
+      case 'tickets':
+        return formData.eventType === 'SEATED'
+          ? validateSeatingConfiguration()
+          : Boolean(formData.generalTickets?.length);
       case 'review':
         return true;
       default:
@@ -252,82 +144,158 @@ const handleSubmit = async () => {
     }
   };
 
-  const invalidSections = eventData.seatingChart.sections.filter(section => 
-    section.rowStart < 1 || 
-    section.columnStart < 1 ||
-    section.rowEnd > eventData.seatingChart.rows ||
-    section.columnEnd > eventData.seatingChart.columns
-  );
+  const handleSubmit = async () => {
+    try {
+      setIsSubmitting(true);
 
-  if (invalidSections.length > 0) {
-    return { 
-      isValid: false, 
-      message: 'Hay secciones con límites inválidos' 
-    };
-  }
+      if (!validateSeatingConfiguration()) {
+        throw new Error('La configuración de asientos no es válida');
+      }
 
-  const currentStep = steps[step];
+      let imageUrl = formData.imageUrl;
+
+      if (imageFile) {
+        const formDataUpload = new FormData();
+        formDataUpload.append('file', imageFile);
+
+        const uploadResponse = await fetch('/api/upload', {
+          method: 'POST',
+          body: formDataUpload
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error('Error al subir la imagen');
+        }
+
+        const uploadData = await uploadResponse.json();
+        imageUrl = uploadData.url;
+      }
+
+      const eventData = {
+        ...formData,
+        imageUrl,
+        date: new Date(formData.date).toISOString()
+      };
+
+      const response = await fetch('/api/events/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData)
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Error al crear el evento');
+      }
+
+      router.push('/admin/events');
+    } catch (error) {
+      console.error('Error:', error);
+      alert(error instanceof Error ? error.message : 'Error al crear el evento');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 'info':
+        return (
+          <>
+            <BasicInfoStep
+              data={formData}
+              onChange={handleBasicInfoChange}
+            />
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold mb-2">Imagen del Evento</h3>
+              <ImageUpload
+                onImageUpload={setImageFile}
+                currentImageUrl={formData.imageUrl}
+                className="w-full max-w-xl mx-auto"
+              />
+            </div>
+          </>
+        );
+      case 'type':
+        return (
+          <EventTypeStep
+            selectedType={formData.eventType}
+            onSelect={handleEventTypeChange}
+          />
+        );
+      case 'tickets':
+        return formData.eventType === 'SEATED' ? (
+          <div className="h-[600px]">
+            <SeatingMapEditor
+              initialSections={formData.seatingChart?.sections ?? []}
+              onChange={handleSeatingChartChange}
+            />
+          </div>
+        ) : (
+          <GeneralTicketsStep
+            tickets={formData.generalTickets ?? []}
+            onChange={handleGeneralTicketsChange}
+          />
+        );
+      case 'review':
+        return (
+          <ReviewStep
+            data={formData}
+            onEdit={setCurrentStep}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  const moveToStep = (direction: 'next' | 'prev') => {
+    const stepArray: StepKey[] = Object.keys(STEPS) as StepKey[];
+    const currentIndex = stepArray.indexOf(currentStep);
+    const newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+
+    if (newIndex >= 0 && newIndex < stepArray.length) {
+      setCurrentStep(stepArray[newIndex]);
+    }
+  };
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6">Crear Nuevo Evento</h1>
 
-      <div className="mb-8">
-        <StepIndicator 
-          currentStep={step} 
-          steps={Object.keys(steps) as StepType[]} 
-        />
-      </div>
-
       <Card className="p-6">
-        <h2 className="text-xl font-semibold mb-4">{currentStep.title}</h2>
-        {currentStep.component}
+        <h2 className="text-xl font-semibold mb-4">
+          {STEPS[currentStep].title}
+        </h2>
+        {renderStepContent()}
       </Card>
 
       <div className="mt-6 flex justify-between">
         <Button
           variant="outline"
-          onClick={() => {
-            const stepArray = Object.keys(steps) as StepType[];
-            const prevIndex = stepArray.indexOf(step) - 1;
-            if (prevIndex >= 0) {
-              setStep(stepArray[prevIndex]);
-            }
-          }}
-          disabled={step === 'info'}
+          onClick={() => moveToStep('prev')}
+          disabled={currentStep === 'info'}
         >
           Atrás
         </Button>
 
-        <div>
-        <div className="mb-6">
-  <h3 className="text-lg font-semibold mb-2">Imagen del Evento</h3>
-  <ImageUpload
-    onImageUpload={(file) => setImageFile(file)}
-    currentImageUrl={eventData.imageUrl}
-    className="w-full max-w-xl mx-auto"
-  />
-</div>
-          <Button
-            onClick={() => {
-              if (!validateStep(step)) {
-                alert('Por favor completa todos los campos requeridos');
-                return;
-              }
+        <Button
+          onClick={() => {
+            if (!validateStep(currentStep)) {
+              alert('Por favor completa todos los campos requeridos');
+              return;
+            }
 
-              if (step === 'review') {
-                handleSubmit();
-              } else {
-                const stepArray = Object.keys(steps) as StepType[];
-                const nextIndex = stepArray.indexOf(step) + 1;
-                setStep(stepArray[nextIndex]);
-              }
-            }}
-            disabled={isSubmitting}
-          >
-            {step === 'review' ? 'Crear Evento' : 'Siguiente'}
-          </Button>
-        </div>
+            if (currentStep === 'review') {
+              handleSubmit();
+            } else {
+              moveToStep('next');
+            }
+          }}
+          disabled={isSubmitting}
+        >
+          {currentStep === 'review' ? 'Crear Evento' : 'Siguiente'}
+        </Button>
       </div>
     </div>
   );

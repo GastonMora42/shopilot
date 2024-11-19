@@ -1,5 +1,6 @@
 // components/admin/EventForm/steps/SeatedTickets/types.ts
 export interface Section {
+    rowStart: number;
     id: string;
     name: string;
     type: 'REGULAR' | 'VIP' | 'DISABLED';

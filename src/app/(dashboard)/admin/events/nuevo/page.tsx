@@ -1,4 +1,3 @@
-// app/(dashboard)/eventos/nuevo/page.tsx
 'use client';
 
 import { useState } from 'react';
@@ -11,13 +10,15 @@ import { EventTypeStep } from '@/components/admin/EventForm/Stepts/EventTypeStep
 import { SeatingMapEditor } from '@/components/admin/EventForm/Stepts/SeatingMap/SeatingMapEditor';
 import { GeneralTicketsStep } from '@/components/admin/EventForm/Stepts/GeneralTicketsStep';
 import { ReviewStep } from '@/components/admin/EventForm/Stepts/ReviewStep';
-import { StepIndicator } from '@/components/events/StepIndicator';
 import {
   type StepKey,
   type EventFormData,
   type SeatingChart,
-  type GeneralTicket
+  type GeneralTicket,
+  Section,
+  Seat
 } from '@/types/event';
+import { SeatStatus } from '@/types';
 
 const INITIAL_SEATING_CHART: SeatingChart = {
   rows: 18,
@@ -46,7 +47,8 @@ const INITIAL_SEATING_CHART: SeatingChart = {
       color: '#EF4444'
     }
   ],
-  customLayout: false
+  customLayout: false,
+  seats: []
 };
 
 const INITIAL_FORM_DATA: EventFormData = {
@@ -57,7 +59,8 @@ const INITIAL_FORM_DATA: EventFormData = {
   imageUrl: '',
   eventType: 'SEATED',
   seatingChart: INITIAL_SEATING_CHART,
-  generalTickets: []
+  generalTickets: [],
+  seating: undefined
 };
 
 const STEPS: Record<StepKey, { title: string; description: string }> = {
@@ -76,6 +79,22 @@ const STEPS: Record<StepKey, { title: string; description: string }> = {
   review: {
     title: 'Revisar y Crear',
     description: 'Verifica la información antes de crear'
+  },
+  BASIC_INFO: {
+    title: '',
+    description: ''
+  },
+  EVENT_TYPE: {
+    title: '',
+    description: ''
+  },
+  TICKETS: {
+    title: '',
+    description: ''
+  },
+  REVIEW: {
+    title: '',
+    description: ''
   }
 };
 
@@ -99,12 +118,39 @@ export default function NewEventPage() {
     }));
   };
 
-  const handleSeatingChartChange = (seatingChart: SeatingChart) => {
-    setFormData(prev => ({ ...prev, seatingChart }));
-  };
-
   const handleGeneralTicketsChange = (tickets: GeneralTicket[]) => {
     setFormData(prev => ({ ...prev, generalTickets: tickets }));
+  };
+
+  const handleSeatingChartChange = (layout: { 
+    seats: Seat[]; 
+    sections: Section[]; 
+    rows: number; 
+    columns: number; 
+  }) => {
+    const convertedSeats = layout.seats.map(seat => ({
+      ...seat,
+      label: seat.label || `R${seat.row}C${seat.column}`,
+      status: seat.status as SeatStatus
+    }));
+  
+    const convertedSections = layout.sections.map(section => ({
+      ...section,
+      rowStart: section.rowStart || 1,
+      rowEnd: section.rowEnd || layout.rows,
+      columnStart: section.columnStart || 1,
+      columnEnd: section.columnEnd || layout.columns,
+    }));
+  
+    setFormData(prev => ({
+      ...prev,
+      seatingChart: {
+        ...layout,
+        seats: convertedSeats,
+        sections: convertedSections,
+        customLayout: prev.seatingChart?.customLayout ?? false
+      }
+    }));
   };
 
   const validateSeatingConfiguration = (): boolean => {
@@ -122,6 +168,15 @@ export default function NewEventPage() {
     ));
   };
 
+  const validateGeneralTickets = (): boolean => {
+    if (!formData.generalTickets?.length) return false;
+    return formData.generalTickets.every(ticket => 
+      ticket.name && 
+      ticket.price > 0 && 
+      ticket.quantity > 0
+    );
+  };
+
   const validateStep = (step: StepKey): boolean => {
     switch (step) {
       case 'info':
@@ -136,7 +191,7 @@ export default function NewEventPage() {
       case 'tickets':
         return formData.eventType === 'SEATED'
           ? validateSeatingConfiguration()
-          : Boolean(formData.generalTickets?.length);
+          : validateGeneralTickets();
       case 'review':
         return true;
       default:
@@ -148,8 +203,12 @@ export default function NewEventPage() {
     try {
       setIsSubmitting(true);
 
-      if (!validateSeatingConfiguration()) {
+      if (formData.eventType === 'SEATED' && !validateSeatingConfiguration()) {
         throw new Error('La configuración de asientos no es válida');
+      }
+
+      if (formData.eventType === 'GENERAL' && !validateGeneralTickets()) {
+        throw new Error('La configuración de entradas generales no es válida');
       }
 
       let imageUrl = formData.imageUrl;
@@ -199,11 +258,73 @@ export default function NewEventPage() {
 
   const renderStepContent = () => {
     switch (currentStep) {
-      case 'info':
+      case 'type':
+        return (
+          <EventTypeStep
+            selectedType={formData.eventType}
+            onSelect={handleEventTypeChange}
+          />
+        );
+      
+      case 'tickets':
+        return formData.eventType === 'SEATED' ? (
+          <div className="h-[600px]">
+            <SeatingMapEditor
+              initialSections={formData.seatingChart?.sections ?? []}
+              initialSeats={formData.seatingChart?.seats.map(seat => ({
+                ...seat,
+                status: seat.status === 'AVAILABLE' ? 'ACTIVE' : 'DISABLED',
+                label: `R${seat.row}C${seat.column}`,
+                position: { x: seat.column * 30, y: seat.row * 30 }
+              })) ?? []}
+              onChange={handleSeatingChartChange}
+            />
+          </div>
+        ) : (
+          <GeneralTicketsStep
+            tickets={formData.generalTickets ?? []}
+            onChange={handleGeneralTicketsChange}
+          />
+        );
+
+      case 'review':
+        return (
+          <ReviewStep
+            data={{
+              name: formData.name,
+              description: formData.description,
+              date: formData.date,
+              location: formData.location,
+              imageUrl: formData.imageUrl,
+              basicInfo: {
+                name: formData.name,
+                description: formData.description,
+                date: formData.date,
+                location: formData.location,
+                imageUrl: formData.imageUrl
+              },
+              eventType: formData.eventType,
+              seatingChart: formData.seatingChart,
+              seating: formData.seating,
+              generalTickets: formData.generalTickets ?? []
+            }}
+            onEdit={(step: StepKey) => {
+              setCurrentStep(step);
+            }}
+          />
+        );
+
+      default:
         return (
           <>
             <BasicInfoStep
-              data={formData}
+              data={{
+                name: formData.name,
+                description: formData.description,
+                date: formData.date,
+                location: formData.location,
+                imageUrl: formData.imageUrl
+              }}
               onChange={handleBasicInfoChange}
             />
             <div className="mt-6">
@@ -216,41 +337,11 @@ export default function NewEventPage() {
             </div>
           </>
         );
-      case 'type':
-        return (
-          <EventTypeStep
-            selectedType={formData.eventType}
-            onSelect={handleEventTypeChange}
-          />
-        );
-      case 'tickets':
-        return formData.eventType === 'SEATED' ? (
-          <div className="h-[600px]">
-            <SeatingMapEditor
-              initialSections={formData.seatingChart?.sections ?? []}
-              onChange={handleSeatingChartChange}
-            />
-          </div>
-        ) : (
-          <GeneralTicketsStep
-            tickets={formData.generalTickets ?? []}
-            onChange={handleGeneralTicketsChange}
-          />
-        );
-      case 'review':
-        return (
-          <ReviewStep
-            data={formData}
-            onEdit={setCurrentStep}
-          />
-        );
-      default:
-        return null;
     }
   };
 
   const moveToStep = (direction: 'next' | 'prev') => {
-    const stepArray: StepKey[] = Object.keys(STEPS) as StepKey[];
+    const stepArray: StepKey[] = ['info', 'type', 'tickets', 'review'];
     const currentIndex = stepArray.indexOf(currentStep);
     const newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
 

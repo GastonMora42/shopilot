@@ -1,13 +1,42 @@
 // components/admin/EventForm/steps/ReviewStep.tsx
 import React from 'react';
 import { EventFormData, StepKey } from './SeatingMap/types';
+import { SeatingChart, Section } from '@/types';
+import { GeneralTicket } from '@/types/event';
 
 interface ReviewStepProps {
-  data: EventFormData;
+  data: {
+    name: string;
+    description: string;
+    date: string;
+    location: string;
+    imageUrl: string;
+    basicInfo: {
+      name: string;
+      description: string;
+      date: string;
+      location: string;
+      imageUrl?: string;
+    };
+    eventType: 'SEATED' | 'GENERAL';
+    seatingChart?: SeatingChart;
+    seating?: {
+      sections: Section[];
+    } | null;
+    generalTickets: GeneralTicket[];
+  };
   onEdit: (step: StepKey) => void;
 }
 
+
 export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onEdit }) => {
+  const basicInfo = data.basicInfo || {
+    name: data.name,
+    description: data.description,
+    date: data.date,
+    location: data.location,
+    imageUrl: data.imageUrl
+  };
   return (
     <div className="space-y-8">
       {/* Basic Info Section */}
@@ -81,11 +110,18 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onEdit }) => {
           <div>
             <p className="mb-2">Tipos de Entrada:</p>
             <ul className="list-disc pl-5">
-              {data.generalTickets.map((ticket: { id: React.Key | null | undefined; name: string | number | bigint | boolean | React.ReactElement<any, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<React.AwaitedReactNode> | null | undefined; price: string | number | bigint | boolean | React.ReactElement<any, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<React.AwaitedReactNode> | null | undefined; quantity: string | number | bigint | boolean | React.ReactElement<any, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<React.AwaitedReactNode> | null | undefined; }) => (
-                <li key={ticket.id}>
-                  {ticket.name}: ${ticket.price} ({ticket.quantity} disponibles)
-                </li>
-              ))}
+            {data.eventType === 'GENERAL' && (
+    <div>
+      <h4 className="font-medium">Tipos de Entrada:</h4>
+      <ul className="mt-2 space-y-2">
+        {(data.generalTickets ?? []).map(ticket => (
+          <li key={ticket.id}>
+            {ticket.name} - ${ticket.price} (Cantidad: {ticket.quantity})
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
             </ul>
           </div>
         )}

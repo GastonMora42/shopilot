@@ -44,7 +44,8 @@ export const SeatingStep: React.FC<SeatingStepProps> = ({
           name: 'General',
           type: 'REGULAR',
           color: '#3B82F6',
-          price: 100
+          price: 100,
+          rowStart: 0
         }]
       }
     });
@@ -89,11 +90,9 @@ export const SeatingStep: React.FC<SeatingStepProps> = ({
       {(stepState.type === 'CUSTOM_EDITOR' || stepState.type === 'EDITOR') && (
         <div className="h-full">
           <SeatingMapEditor
-            initialSections={stepState.layout.sections}
             initialSeats={stepState.layout.seats}
             onChange={onChange}
-            onSave={onSave}
-          />
+            onSave={onSave} initialSections={[]}          />
         </div>
       )}
     </div>

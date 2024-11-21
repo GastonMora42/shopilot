@@ -1,5 +1,5 @@
-
 import { Button } from "../ui/Button";
+import { useState } from "react";
 
 interface BuyerFormProps {
   onSubmit: (buyerInfo: {
@@ -12,9 +12,18 @@ interface BuyerFormProps {
 }
 
 export function BuyerForm({ onSubmit, isLoading }: BuyerFormProps) {
+  const [emailError, setEmailError] = useState("");
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const email = formData.get('email') as string;
+    const confirmEmail = formData.get('confirmEmail') as string;
+
+    if (email !== confirmEmail) {
+      setEmailError("Los correos electrónicos no coinciden");
+      return;
+    }
     
     onSubmit({
       name: formData.get('name') as string,
@@ -50,6 +59,22 @@ export function BuyerForm({ onSubmit, isLoading }: BuyerFormProps) {
           required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
         />
+      </div>
+
+      <div>
+        <label htmlFor="confirmEmail" className="block text-sm font-medium text-gray-700">
+          Confirmar Email
+        </label>
+        <input
+          type="email"
+          name="confirmEmail"
+          id="confirmEmail"
+          required
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+        />
+        {emailError && (
+          <p className="text-red-500 text-sm mt-1">{emailError}</p>
+        )}
       </div>
 
       <div>

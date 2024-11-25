@@ -18,6 +18,14 @@ const geistMono = localFont({
   display: 'swap',
 });
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
+// Mantener el resto de metadata
 export const metadata: Metadata = {
   title: "ShowSpot",
   description: "Venta de tickets Online",
@@ -26,12 +34,6 @@ export const metadata: Metadata = {
     email: false,
     address: false,
     telephone: false,
-  },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
   },
 };
 

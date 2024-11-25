@@ -8,6 +8,7 @@ export interface Point {
 }
 
 export interface Seat {
+  screenPosition: any;
   id: string;
   row: number;
   column: number;

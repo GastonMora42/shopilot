@@ -10,7 +10,6 @@ interface EditorCanvasProps {
   bounds: { width: number; height: number };
   onSeatAdd: (seat: Omit<Seat, 'id'>) => void;
   onSeatSelect: (seatIds: string[]) => void;
-  // Modificamos esta línea para que coincida con el tipo esperado
   onSeatsUpdate: (updates: Partial<Seat>, seatIds?: string[]) => void;
 }
 
@@ -24,7 +23,15 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const [dragStart, setDragStart] = useState<Point | null>(null);
-  const [selectionRect, setSelectionRect] = useState<{ start: Point; end: Point } | null>(null);
+  const [dragState, setDragState] = useState<{
+    start: Point | null;
+    current: Point | null;
+    mode: 'SELECT' | 'PAN' | null;
+  }>({
+    start: null,
+    current: null,
+    mode: null
+  });
 
   // Memoize transformed seats for better performance
   const transformedSeats = React.useMemo(() => 
@@ -44,7 +51,11 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
       y: e.clientY - rect.top
     };
 
-    setDragStart(point);
+    setDragState({
+      start: point,
+      current: point,
+      mode: state.tool === 'SELECT' ? 'SELECT' : 'PAN'
+    });
 
     if (state.tool === 'DRAW' && state.activeSectionId) {
       const worldPoint = transformUtils.screenToWorld(point, state.pan, state.zoom);
@@ -56,13 +67,14 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
         row: Math.floor(snappedPoint.y / 20),
         column: Math.floor(snappedPoint.x / 20),
         label: `${String.fromCharCode(65 + Math.floor(snappedPoint.y / 20))}${Math.floor(snappedPoint.x / 20) + 1}`,
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        screenPosition: undefined
       });
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragStart || !canvasRef.current) return;
+    if (!dragState.start || !canvasRef.current) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
     const currentPoint = {
@@ -70,25 +82,26 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
       y: e.clientY - rect.top
     };
 
-    if (state.tool === 'SELECT') {
-      setSelectionRect({
-        start: dragStart,
-        end: currentPoint
-      });
-    }
+    setDragState(prev => ({
+      ...prev,
+      current: currentPoint
+    }));
   };
 
   const handleMouseUp = () => {
-    if (selectionRect && state.tool === 'SELECT') {
+    if (dragState.mode === 'SELECT' && dragState.start && dragState.current) {
       const selectedSeats = selectionUtils.getSeatsInSelection(
         state.seats,
-        selectionRect
+        { start: dragState.start, end: dragState.current }
       );
-      onSeatSelect(selectedSeats);
+      onSeatSelect(selectedSeats.map(seat => seat));
     }
 
-    setDragStart(null);
-    setSelectionRect(null);
+    setDragState({
+      start: null,
+      current: null,
+      mode: null
+    });
   };
 
   return (
@@ -107,7 +120,7 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
           x: state.pan.x,
           y: state.pan.y
         }}
-        drag={state.tool === 'SELECT' && !dragStart}
+        drag={state.tool === 'SELECT' && !dragState.start}
         dragControls={dragControls}
         dragMomentum={false}
       >
@@ -121,18 +134,17 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
         ))}
       </motion.div>
 
-      {selectionRect && (
+      {dragState.mode === 'SELECT' && dragState.start && dragState.current && (
         <div
           className="absolute border-2 border-blue-500 bg-blue-100 bg-opacity-20"
           style={{
-            left: Math.min(selectionRect.start.x, selectionRect.end.x),
-            top: Math.min(selectionRect.start.y, selectionRect.end.y),
-            width: Math.abs(selectionRect.end.x - selectionRect.start.x),
-            height: Math.abs(selectionRect.end.y - selectionRect.start.y)
+            left: Math.min(dragState.start.x, dragState.current.x),
+            top: Math.min(dragState.start.y, dragState.current.y),
+            width: Math.abs(dragState.current.x - dragState.start.x),
+            height: Math.abs(dragState.current.y - dragState.start.y)
           }}
         />
       )}
     </div>
   );
 };
-

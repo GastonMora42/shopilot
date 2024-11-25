@@ -1,13 +1,4 @@
-import { NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/mongodb';
-import { Event } from '@/app/models/Event';
-import { Seat } from '@/app/models/Seat';
-import { User } from '@/app/models/User';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/lib/auth';
-import mongoose from 'mongoose'
-
-// Definir tipos para la estrsuctura de seatingChart
+// types.ts
 interface Section {
   name: string;
   rowStart: number;
@@ -22,54 +13,46 @@ interface SeatingChart {
   rows: number;
   columns: number;
   sections: Section[];
+  customLayout?: boolean;
 }
 
-async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart) {
-  const seats = [];
-  
-  // Validar límites
-  if (seatingChart.rows > 26) {
-    throw new Error('Número de filas excede el límite (máximo 26)');
-  }
-
-  for (let rowIndex = 1; rowIndex <= seatingChart.rows; rowIndex++) {
-    for (let colIndex = 1; colIndex <= seatingChart.columns; colIndex++) {
-      const section = seatingChart.sections.find(s => 
-        rowIndex >= s.rowStart && 
-        rowIndex <= s.rowEnd && 
-        colIndex >= s.columnStart && 
-        colIndex <= s.columnEnd
-      );
-
-      if (section) {
-        const seatId = `${rowIndex}-${colIndex}`;
-
-        seats.push({
-          eventId,
-          seatId,
-          row: rowIndex,
-          column: colIndex,
-          status: 'AVAILABLE',
-          type: section.type,
-          price: section.price,
-          section: section.name,
-          temporaryReservation: null,
-          lastReservationAttempt: null
-        });
-      }
-    }
-  }
-  
-  console.log('Generated seats:', {
-    total: seats.length,
-    firstSeat: seats[0],
-    lastSeat: seats[seats.length - 1]
-  });
-  
-  return seats;
+interface GeneralTicketType {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  description?: string;
 }
 
 // app/api/events/create/route.ts
+import { NextResponse } from 'next/server';
+import dbConnect from '@/app/lib/mongodb';
+import { Event } from '@/app/models/Event';
+import { Seat } from '@/app/models/Seat';
+import { User } from '@/app/models/User';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/app/lib/auth';
+import mongoose from 'mongoose';
+
+function validateGeneralEvent(ticketTypes: GeneralTicketType[]): string | null {
+  if (!Array.isArray(ticketTypes) || ticketTypes.length === 0) {
+    return 'Debe definir al menos un tipo de entrada';
+  }
+
+  for (const ticket of ticketTypes) {
+    if (!ticket.name || ticket.name.trim() === '') {
+      return 'El nombre del tipo de entrada es requerido';
+    }
+    if (ticket.price < 0) {
+      return 'El precio no puede ser negativo';
+    }
+    if (ticket.quantity < 1) {
+      return 'La cantidad debe ser mayor a 0';
+    }
+  }
+
+  return null;
+}
 
 function validateSeatingChart(seatingChart: SeatingChart): string | null {
   if (!seatingChart.rows || seatingChart.rows < 1) {
@@ -84,14 +67,12 @@ function validateSeatingChart(seatingChart: SeatingChart): string | null {
     return 'Debe definir al menos una sección';
   }
 
-  // Los índices ahora empiezan en 1
   for (const section of seatingChart.sections) {
-    // Ajustar la validación para el nuevo formato de índices
     if (section.rowStart < 1 || section.rowEnd > seatingChart.rows) {
-      return `Límites de fila inválidos en sección ${section.name}. Debe estar entre 1 y ${seatingChart.rows}`;
+      return `Límites de fila inválidos en sección ${section.name}`;
     }
     if (section.columnStart < 1 || section.columnEnd > seatingChart.columns) {
-      return `Límites de columna inválidos en sección ${section.name}. Debe estar entre 1 y ${seatingChart.columns}`;
+      return `Límites de columna inválidos en sección ${section.name}`;
     }
     if (section.price < 0) {
       return 'Precio inválido en sección';
@@ -101,22 +82,23 @@ function validateSeatingChart(seatingChart: SeatingChart): string | null {
     }
   }
 
-  // Verificar que las secciones no se superpongan
-  for (let i = 0; i < seatingChart.sections.length; i++) {
-    for (let j = i + 1; j < seatingChart.sections.length; j++) {
-      const secA = seatingChart.sections[i];
-      const secB = seatingChart.sections[j];
-      
-      if (!(secA.rowEnd < secB.rowStart || secA.rowStart > secB.rowEnd ||
-            secA.columnEnd < secB.columnStart || secA.columnStart > secB.columnEnd)) {
-        return `Las secciones ${secA.name} y ${secB.name} se superponen`;
+  if (!seatingChart.customLayout) {
+    // Verificar superposición solo para layouts no personalizados
+    for (let i = 0; i < seatingChart.sections.length; i++) {
+      for (let j = i + 1; j < seatingChart.sections.length; j++) {
+        const secA = seatingChart.sections[i];
+        const secB = seatingChart.sections[j];
+        
+        if (!(secA.rowEnd < secB.rowStart || secA.rowStart > secB.rowEnd ||
+              secA.columnEnd < secB.columnStart || secA.columnStart > secB.columnEnd)) {
+          return `Las secciones ${secA.name} y ${secB.name} se superponen`;
+        }
       }
     }
   }
 
   return null;
 }
-
 
 export async function POST(req: Request) {
   let mongoSession = null;
@@ -129,7 +111,6 @@ export async function POST(req: Request) {
 
     await dbConnect();
     
-    // Obtener usuario y sus credenciales de MP
     const user = await User.findOne({ email: authSession.user.email });
     if (!user?.mercadopago?.accessToken) {
       return NextResponse.json(
@@ -139,26 +120,33 @@ export async function POST(req: Request) {
     }
 
     const data = await req.json();
-    console.log('Received event data:', data); // Debug log
+    console.log('Received event data:', data);
 
-    // Validar seatingChart
-    const validationError = validateSeatingChart(data.seatingChart);
-    if (validationError) {
+    // Validar según el tipo de evento
+    if (data.eventType === 'SEATED') {
+      const validationError = validateSeatingChart(data.seatingChart);
+      if (validationError) {
+        return NextResponse.json({ error: validationError }, { status: 400 });
+      }
+    } else if (data.eventType === 'GENERAL') {
+      const validationError = validateGeneralEvent(data.generalTickets);
+      if (validationError) {
+        return NextResponse.json({ error: validationError }, { status: 400 });
+      }
+    } else {
       return NextResponse.json(
-        { error: validationError },
+        { error: 'Tipo de evento inválido' },
         { status: 400 }
       );
     }
 
-    // Iniciar sesión de MongoDB
     mongoSession = await mongoose.startSession();
     mongoSession.startTransaction();
 
     try {
-      // Crear el evento con imageUrl
       const [event] = await Event.create([{
         ...data,
-        imageUrl: data.imageUrl || '', // Aseguramos que imageUrl esté incluido
+        imageUrl: data.imageUrl || '',
         organizerId: user._id,
         mercadopago: {
           accessToken: user.mercadopago.accessToken,
@@ -167,25 +155,19 @@ export async function POST(req: Request) {
         published: false
       }], { session: mongoSession });
 
-      console.log('Created event with image:', {
-        eventId: event._id,
-        imageUrl: event.imageUrl
-      }); // Debug log
-
-      // Generar y crear los asientos
-      const seats = await generateSeatsForEvent(
-        event._id.toString(), 
-        data.seatingChart
-      );
-      
-      await Seat.insertMany(seats, { session: mongoSession });
+      // Generar asientos solo si es un evento con asientos
+      let seats = [];
+      if (data.eventType === 'SEATED') {
+        seats = await generateSeatsForEvent(
+          event._id.toString(),
+          data.seatingChart
+        );
+        await Seat.insertMany(seats, { session: mongoSession });
+      }
 
       await mongoSession.commitTransaction();
 
-      // Incluir imageUrl en la respuesta
       const eventJSON = event.toJSON();
-      console.log('Final event data:', eventJSON); // Debug log
-
       return NextResponse.json({
         success: true,
         event: eventJSON,
@@ -209,4 +191,8 @@ export async function POST(req: Request) {
       await mongoSession.endSession();
     }
   }
+}
+
+function generateSeatsForEvent(arg0: any, seatingChart: any): any[] | PromiseLike<any[]> {
+  throw new Error('Function not implemented.');
 }

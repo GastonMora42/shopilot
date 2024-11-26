@@ -1,42 +1,13 @@
 // components/admin/EventForm/steps/ReviewStep.tsx
 import React from 'react';
-import { EventFormData, StepKey } from './SeatingMap/types';
-import { SeatingChart, Section } from '@/types';
-import { GeneralTicket } from '@/types/event';
+import { EventFormData, StepKey } from '@/types/event';
 
 interface ReviewStepProps {
-  data: {
-    name: string;
-    description: string;
-    date: string;
-    location: string;
-    imageUrl: string;
-    basicInfo: {
-      name: string;
-      description: string;
-      date: string;
-      location: string;
-      imageUrl?: string;
-    };
-    eventType: 'SEATED' | 'GENERAL';
-    seatingChart?: SeatingChart;
-    seating?: {
-      sections: Section[];
-    } | null;
-    generalTickets: GeneralTicket[];
-  };
+  data: EventFormData;
   onEdit: (step: StepKey) => void;
 }
 
-
 export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onEdit }) => {
-  const basicInfo = data.basicInfo || {
-    name: data.name,
-    description: data.description,
-    date: data.date,
-    location: data.location,
-    imageUrl: data.imageUrl
-  };
   return (
     <div className="space-y-8">
       {/* Basic Info Section */}
@@ -44,7 +15,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onEdit }) => {
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-medium">Información Básica</h3>
           <button
-            onClick={() => onEdit('BASIC_INFO')}
+            onClick={() => onEdit('info')}
             className="text-blue-600 hover:text-blue-700"
           >
             Editar
@@ -53,21 +24,35 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onEdit }) => {
         <dl className="grid grid-cols-2 gap-4">
           <div>
             <dt className="text-sm font-medium text-gray-500">Nombre</dt>
-            <dd className="mt-1">{data.basicInfo.name}</dd>
+            <dd className="mt-1">{data.name}</dd>
           </div>
           <div>
             <dt className="text-sm font-medium text-gray-500">Fecha</dt>
-            <dd className="mt-1">{new Date(data.basicInfo.date).toLocaleDateString()}</dd>
+            <dd className="mt-1">
+              {data.date ? new Date(data.date).toLocaleDateString() : '-'}
+            </dd>
           </div>
           <div>
             <dt className="text-sm font-medium text-gray-500">Ubicación</dt>
-            <dd className="mt-1">{data.basicInfo.location}</dd>
+            <dd className="mt-1">{data.location}</dd>
           </div>
           <div>
             <dt className="text-sm font-medium text-gray-500">Descripción</dt>
-            <dd className="mt-1">{data.basicInfo.description}</dd>
+            <dd className="mt-1">{data.description}</dd>
           </div>
         </dl>
+        {data.imageUrl && (
+          <div className="mt-4">
+            <dt className="text-sm font-medium text-gray-500">Imagen</dt>
+            <dd className="mt-1">
+              <img 
+                src={data.imageUrl} 
+                alt="Imagen del evento" 
+                className="w-48 h-48 object-cover rounded-lg"
+              />
+            </dd>
+          </div>
+        )}
       </div>
 
       {/* Event Type Section */}
@@ -75,7 +60,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onEdit }) => {
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-medium">Tipo de Evento</h3>
           <button
-            onClick={() => onEdit('EVENT_TYPE')}
+            onClick={() => onEdit('type')}
             className="text-blue-600 hover:text-blue-700"
           >
             Editar
@@ -89,40 +74,62 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onEdit }) => {
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-medium">Entradas</h3>
           <button
-            onClick={() => onEdit('TICKETS')}
+            onClick={() => onEdit('tickets')}
             className="text-blue-600 hover:text-blue-700"
           >
             Editar
           </button>
         </div>
+        
         {data.eventType === 'SEATED' ? (
           <div>
             <p className="mb-2">Configuración de Asientos:</p>
-            <ul className="list-disc pl-5">
-              {data.seating?.sections.map((section: { id: React.Key | null | undefined; name: string | number | bigint | boolean | React.ReactElement<any, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<React.AwaitedReactNode> | null | undefined; price: string | number | bigint | boolean | React.ReactElement<any, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<React.AwaitedReactNode> | null | undefined; }) => (
-                <li key={section.id}>
-                  {section.name}: ${section.price}
-                </li>
-              ))}
-            </ul>
+            {data.seatingChart && (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Dimensiones</p>
+                  <p>Filas: {data.seatingChart.rows}, Columnas: {data.seatingChart.columns}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Secciones</p>
+                  <ul className="list-disc pl-5 mt-2">
+                    {data.seatingChart.sections.map((section) => (
+                      <li key={section.id} className="mb-2">
+                        <span className="font-medium">{section.name}</span>
+                        <br />
+                        Precio: ${section.price}
+                        <br />
+                        Tipo: {section.type}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div>
             <p className="mb-2">Tipos de Entrada:</p>
-            <ul className="list-disc pl-5">
-            {data.eventType === 'GENERAL' && (
-    <div>
-      <h4 className="font-medium">Tipos de Entrada:</h4>
-      <ul className="mt-2 space-y-2">
-        {(data.generalTickets ?? []).map(ticket => (
-          <li key={ticket.id}>
-            {ticket.name} - ${ticket.price} (Cantidad: {ticket.quantity})
-          </li>
-        ))}
-      </ul>
-    </div>
-  )}
-            </ul>
+            {data.generalTickets && data.generalTickets.length > 0 ? (
+              <ul className="list-disc pl-5">
+                {data.generalTickets.map((ticket) => (
+                  <li key={ticket.id} className="mb-2">
+                    <span className="font-medium">{ticket.name}</span>
+                    <br />
+                    Precio: ${ticket.price}
+                    <br />
+                    Cantidad disponible: {ticket.quantity}
+                    {ticket.description && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        {ticket.description}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-gray-500">No se han configurado entradas</p>
+            )}
           </div>
         )}
       </div>

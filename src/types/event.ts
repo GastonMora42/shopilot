@@ -13,12 +13,15 @@ export interface Point {
 
 export interface Seat {
   id: string;
+  eventId: string; // Añadimos esta propiedad
   row: number;
   column: number;
   sectionId: string;
   status: SeatStatus;
   position: Point;
-  label: string; // Agregado para compatibilidad
+  label: string;
+  price: number;
+  type: SectionType;
 }
 
 export interface Section {
@@ -124,4 +127,27 @@ export interface StepConfig {
 export interface StepIndicatorProps {
   steps: StepConfig[];
   currentStep: StepKey;
+}
+
+export interface EditorSeat {
+  id: string;
+  label: string;
+  position: Point;
+  row: number;
+  column: number;
+  sectionId: string;
+  status: 'ACTIVE' | 'DISABLED';
+  screenPosition?: Point; // Agregamos esta propiedad opcional
+}
+
+export interface EditorSection {
+  id: string;
+  name: string;
+  type: 'REGULAR' | 'VIP' | 'DISABLED';
+  price: number;
+  rowStart: number;
+  rowEnd: number;
+  columnStart: number;
+  columnEnd: number;
+  color: string;
 }

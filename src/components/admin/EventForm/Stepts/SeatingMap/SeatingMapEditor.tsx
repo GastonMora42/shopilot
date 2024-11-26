@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { FC, useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { debounce } from 'lodash';
 import { EditorCanvas } from './components/EditorCanvas';
@@ -7,66 +7,39 @@ import { ZoomControls } from './components/ZoomControls';
 import { Sidebar } from './components/Sidebar';
 import { useEditorState } from './hooks/useEditorState';
 import { useSeatingMap } from './hooks/useSeatingMap';
-import { Section } from "../SeatedTickets/types";
+import { EditorSeat, EditorSection, SeatingMapEditorProps } from '@/types/editor';
 
-// Tipos base
+// Constantes
+const GRID_SIZE = 30;
+const DEBOUNCE_DELAY = 500;
+
+// Tipos
 export interface Point {
   x: number;
   y: number;
 }
 
-export interface EditorSeat {
-  id: string;
-  row: number;
-  column: number;
-  sectionId: string;
-  status: 'ACTIVE' | 'DISABLED';
-  position: Point;
-  label: string;
-}
-
-export interface EditorSection extends Section {
-  rowStart: number;
-  rowEnd: number;
-  columnStart: number;
-  columnEnd: number;
-  color: string;
-}
 
 interface ViewportBounds {
   width: number;
   height: number;
 }
 
-interface SeatingMapEditorProps {
-  initialSections: EditorSection[];
-  initialSeats: EditorSeat[];
-  onSave?: () => Promise<void>;
-  onChange: (layout: {
-    seats: EditorSeat[];
-    sections: EditorSection[];
-    rows: number;
-    columns: number;
-  }) => void;
-}
-
-const GRID_SIZE = 30;
-const DEBOUNCE_DELAY = 500;
-
-export const SeatingMapEditor: React.FC<SeatingMapEditorProps> = ({
+export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
   initialSections,
-  initialSeats = [],
+  initialSeats,
   onChange,
   onSave
 }) => {
+  // Referencias y estado
   const containerRef = useRef<HTMLDivElement>(null);
   const [bounds, setBounds] = useState<ViewportBounds>({ width: 0, height: 0 });
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Procesar secciones iniciales para asegurar que tengan todas las propiedades necesarias
+  // Procesar datos iniciales
   const processedInitialSections = useMemo(() => {
-    return initialSections.map(section => ({
+    return initialSections.map((section: EditorSection) => ({
       ...section,
       rowStart: section.rowStart || 1,
       rowEnd: section.rowEnd || 1,
@@ -77,12 +50,12 @@ export const SeatingMapEditor: React.FC<SeatingMapEditorProps> = ({
 
   // Procesar asientos iniciales
   const processedInitialSeats = useMemo(() => {
-    return initialSeats.map(seat => ({
+    return initialSeats.map((seat: EditorSeat) => ({
       ...seat,
       label: seat.label || `R${seat.row}C${seat.column}`,
       position: seat.position || {
-        x: seat.column * GRID_SIZE,
-        y: seat.row * GRID_SIZE
+        x: (seat.column || 0) * GRID_SIZE,
+        y: (seat.row || 0) * GRID_SIZE
       }
     }));
   }, [initialSeats]);
@@ -104,15 +77,13 @@ export const SeatingMapEditor: React.FC<SeatingMapEditorProps> = ({
     selectedSeats,
     activeSectionId,
     actions: mapActions
-  } = useSeatingMap(initialSections); // Pasamos Section[] directamente
-
-  // ... resto del código igual ...
-  // Calcular dimensiones máximas
+  } = useSeatingMap(processedInitialSections);
+  // Funciones auxiliares
   const calculateDimensions = (seats: EditorSeat[]) => {
     if (seats.length === 0) return { rows: 0, columns: 0 };
     return {
-      rows: Math.max(...seats.map(s => s.row)),
-      columns: Math.max(...seats.map(s => s.column))
+      rows: Math.max(...seats.map(s => s.row)) + 1,
+      columns: Math.max(...seats.map(s => s.column)) + 1
     };
   };
 
@@ -130,7 +101,7 @@ export const SeatingMapEditor: React.FC<SeatingMapEditorProps> = ({
     }, DEBOUNCE_DELAY)
   ).current;
 
-  // Actualizar dimensiones del contenedor
+  // Efectos
   useEffect(() => {
     const updateBounds = () => {
       if (containerRef.current) {
@@ -150,11 +121,42 @@ export const SeatingMapEditor: React.FC<SeatingMapEditorProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Actualizar cuando cambien los asientos o secciones
   useEffect(() => {
-    return debouncedOnChange(seats, sections);
-  }, [seats, sections]);
-  // Manejar guardado
+    debouncedOnChange(seats, sections);
+  }, [seats, sections, debouncedOnChange]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && ['s', 'v', 'd', 'e'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        handleSave();
+      }
+
+      if (e.key === 'Delete' && selectedSeats.length > 0) {
+        mapActions.removeSeats(selectedSeats);
+      }
+
+      switch (e.key.toLowerCase()) {
+        case 'v':
+          actions.setTool('SELECT');
+          break;
+        case 'd':
+          actions.setTool('DRAW');
+          break;
+        case 'e':
+          actions.setTool('ERASE');
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedSeats, mapActions, actions]);
+
+  // Manejadores
   const handleSave = async () => {
     if (!onSave) return;
     
@@ -169,45 +171,23 @@ export const SeatingMapEditor: React.FC<SeatingMapEditorProps> = ({
     }
   };
 
-  // Manejar atajos de teclado
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevenir comportamiento por defecto para atajos
-      if ((e.ctrlKey || e.metaKey) && ['s', 'v', 'd', 'e'].includes(e.key.toLowerCase())) {
-        e.preventDefault();
-      }
-
-      // Atajos de teclado
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        handleSave();
-      }
-
-      if (e.key === 'Delete' && selectedSeats.length > 0) {
-        mapActions.removeSeats(selectedSeats);
-      }
-
-      // Atajos de herramientas
-      switch (e.key.toLowerCase()) {
-        case 'v': actions.setTool('SELECT'); break;
-        case 'd': actions.setTool('DRAW'); break;
-        case 'e': actions.setTool('ERASE'); break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedSeats, mapActions, actions]);
-
   const createNewSeat = (seatData: Partial<EditorSeat>): EditorSeat => ({
-    ...seatData,
     id: seatData.id || `seat-${Date.now()}`,
-    label: seatData.label || `R${seatData.row}C${seatData.column}`,
+    row: seatData.row || 0,
+    column: seatData.column || 0,
+    sectionId: seatData.sectionId || '',
     status: 'ACTIVE',
+    label: seatData.label || `R${seatData.row}C${seatData.column}`,
     position: {
       x: (seatData.column || 0) * GRID_SIZE,
       y: (seatData.row || 0) * GRID_SIZE
+    },
+    screenPosition: seatData.screenPosition || {
+      x: (seatData.column || 0) * GRID_SIZE,
+      y: (seatData.row || 0) * GRID_SIZE
     }
-  } as EditorSeat);
+  });
+
 
   return (
     <div className="relative flex h-full" ref={containerRef}>

@@ -19,6 +19,7 @@ import {
   Seat
 } from '@/types/event';
 import { SeatStatus } from '@/types';
+import { EditorSeat, EditorSection } from '@/types/editor';
 
 const INITIAL_SEATING_CHART: SeatingChart = {
   rows: 18,
@@ -98,6 +99,14 @@ const STEPS: Record<StepKey, { title: string; description: string }> = {
   }
 };
 
+const showError = (message: string) => {
+  alert(message);
+};
+
+const showSuccess = () => {
+  alert('Evento creado exitosamente');
+};
+
 export default function NewEventPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<StepKey>('info');
@@ -123,15 +132,19 @@ export default function NewEventPage() {
   };
 
   const handleSeatingChartChange = (layout: { 
-    seats: Seat[]; 
-    sections: Section[]; 
+    seats: EditorSeat[]; 
+    sections: EditorSection[]; 
     rows: number; 
     columns: number; 
   }) => {
+    // Convertimos los asientos del editor al formato que necesitamos
     const convertedSeats = layout.seats.map(seat => ({
       ...seat,
       label: seat.label || `R${seat.row}C${seat.column}`,
-      status: seat.status as SeatStatus
+      status: seat.status === 'ACTIVE' ? 'AVAILABLE' as const : 'DISABLED' as const,
+      eventId: '', // Se asignará cuando se cree el evento
+      price: layout.sections.find(s => s.id === seat.sectionId)?.price || 0,
+      type: layout.sections.find(s => s.id === seat.sectionId)?.type || 'REGULAR'
     }));
   
     const convertedSections = layout.sections.map(section => ({
@@ -139,53 +152,126 @@ export default function NewEventPage() {
       rowStart: section.rowStart || 1,
       rowEnd: section.rowEnd || layout.rows,
       columnStart: section.columnStart || 1,
-      columnEnd: section.columnEnd || layout.columns,
+      columnEnd: section.columnEnd || layout.columns
     }));
   
     setFormData(prev => ({
       ...prev,
       seatingChart: {
-        ...layout,
+        rows: layout.rows,
+        columns: layout.columns,
         seats: convertedSeats,
         sections: convertedSections,
         customLayout: prev.seatingChart?.customLayout ?? false
       }
     }));
   };
+  
 
   const validateSeatingConfiguration = (): boolean => {
-    if (!formData.seatingChart) return true;
-    const { sections, rows, columns } = formData.seatingChart;
+    if (!formData.seatingChart) return false;
+    const { sections, rows, columns, seats } = formData.seatingChart;
 
-    if (rows < 1 || rows > 50 || columns < 1 || columns > 50) return false;
+    // Validar dimensiones básicas
+    if (rows < 1 || rows > 50 || columns < 1 || columns > 50) {
+      showError('Las dimensiones del mapa de asientos son inválidas');
+      return false;
+    }
 
-    return sections.every(section => (
+    // Validar secciones
+    if (!sections.length) {
+      showError('Debe definir al menos una sección');
+      return false;
+    }
+    
+    const sectionsValid = sections.every(section => (
       section.rowStart >= 1 &&
       section.rowEnd <= rows &&
       section.columnStart >= 1 &&
       section.columnEnd <= columns &&
-      section.price > 0
+      section.price > 0 &&
+      section.name.trim() !== '' &&
+      ['REGULAR', 'VIP', 'DISABLED'].includes(section.type)
     ));
+
+    if (!sectionsValid) {
+      showError('Hay secciones con configuración inválida');
+      return false;
+    }
+
+    // Si es layout personalizado, validar asientos
+    if (formData.seatingChart.customLayout) {
+      if (!seats.length) {
+        showError('Debe definir al menos un asiento para layout personalizado');
+        return false;
+      }
+      
+      const seatsValid = seats.every(seat => (
+        seat.row >= 0 &&
+        seat.row < rows &&
+        seat.column >= 0 &&
+        seat.column < columns &&
+        seat.sectionId &&
+        sections.some(s => s.id === seat.sectionId)
+      ));
+
+      if (!seatsValid) {
+        showError('Hay asientos con configuración inválida');
+        return false;
+      }
+    }
+
+    return true;
   };
 
   const validateGeneralTickets = (): boolean => {
-    if (!formData.generalTickets?.length) return false;
-    return formData.generalTickets.every(ticket => 
-      ticket.name && 
-      ticket.price > 0 && 
-      ticket.quantity > 0
+    if (!formData.generalTickets?.length) {
+      showError('Debe definir al menos un tipo de entrada');
+      return false;
+    }
+
+    const ticketsValid = formData.generalTickets.every(ticket => 
+      ticket.name.trim() !== '' && 
+      Number(ticket.price) > 0 && 
+      Number(ticket.quantity) > 0
     );
+
+    if (!ticketsValid) {
+      showError('Hay tipos de entrada con configuración inválida');
+      return false;
+    }
+
+    return true;
+  };
+
+  const validateBasicInfo = (): boolean => {
+    if (!formData.name.trim()) {
+      showError('El nombre del evento es requerido');
+      return false;
+    }
+    if (!formData.description.trim()) {
+      showError('La descripción es requerida');
+      return false;
+    }
+    if (!formData.date) {
+      showError('La fecha es requerida');
+      return false;
+    }
+    if (new Date(formData.date) < new Date()) {
+      showError('La fecha debe ser futura');
+      return false;
+    }
+    if (!formData.location.trim()) {
+      showError('La ubicación es requerida');
+      return false;
+    }
+    return true;
   };
 
   const validateStep = (step: StepKey): boolean => {
     switch (step) {
       case 'info':
-        return Boolean(
-          formData.name &&
-          formData.description &&
-          formData.date &&
-          formData.location
-        );
+        return validateBasicInfo();
       case 'type':
         return Boolean(formData.eventType);
       case 'tickets':
@@ -203,16 +289,19 @@ export default function NewEventPage() {
     try {
       setIsSubmitting(true);
 
+      // Validación final antes de enviar
+      if (!validateBasicInfo()) return;
+      
       if (formData.eventType === 'SEATED' && !validateSeatingConfiguration()) {
-        throw new Error('La configuración de asientos no es válida');
+        return;
       }
 
       if (formData.eventType === 'GENERAL' && !validateGeneralTickets()) {
-        throw new Error('La configuración de entradas generales no es válida');
+        return;
       }
 
+      // Procesar imagen si existe
       let imageUrl = formData.imageUrl;
-
       if (imageFile) {
         const formDataUpload = new FormData();
         formDataUpload.append('file', imageFile);
@@ -230,12 +319,40 @@ export default function NewEventPage() {
         imageUrl = uploadData.url;
       }
 
+      // Preparar datos del evento
       const eventData = {
-        ...formData,
+        name: formData.name,
+        description: formData.description,
+        date: new Date(formData.date).toISOString(),
+        location: formData.location,
         imageUrl,
-        date: new Date(formData.date).toISOString()
+        eventType: formData.eventType,
+        ...(formData.eventType === 'SEATED' ? {
+          seatingChart: {
+            rows: formData.seatingChart!.rows,
+            columns: formData.seatingChart!.columns,
+            sections: formData.seatingChart!.sections.map(section => ({
+              ...section,
+              price: Number(section.price)
+            })),
+            customLayout: formData.seatingChart!.customLayout,
+            seats: formData.seatingChart!.seats.map(seat => ({
+              ...seat,
+              row: Number(seat.row),
+              column: Number(seat.column),
+              status: 'AVAILABLE'
+            }))
+          }
+        } : {
+          generalTickets: formData.generalTickets!.map(ticket => ({
+            ...ticket,
+            price: Number(ticket.price),
+            quantity: Number(ticket.quantity)
+          }))
+        })
       };
 
+      // Enviar datos a la API
       const response = await fetch('/api/events/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -244,13 +361,21 @@ export default function NewEventPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Error al crear el evento');
+        throw new Error(error.error || 'Error al crear el evento');
       }
 
-      router.push('/admin/events');
+      const result = await response.json();
+      
+      if (result.success) {
+        showSuccess();
+        router.push('/admin/events');
+      } else {
+        throw new Error(result.error || 'Error desconocido al crear el evento');
+      }
+
     } catch (error) {
       console.error('Error:', error);
-      alert(error instanceof Error ? error.message : 'Error al crear el evento');
+      showError(error instanceof Error ? error.message : 'Error al crear el evento');
     } finally {
       setIsSubmitting(false);
     }
@@ -266,53 +391,41 @@ export default function NewEventPage() {
           />
         );
       
-      case 'tickets':
-        return formData.eventType === 'SEATED' ? (
-          <div className="h-[600px]">
-            <SeatingMapEditor
-              initialSections={formData.seatingChart?.sections ?? []}
-              initialSeats={formData.seatingChart?.seats.map(seat => ({
-                ...seat,
-                status: seat.status === 'AVAILABLE' ? 'ACTIVE' : 'DISABLED',
-                label: `R${seat.row}C${seat.column}`,
-                position: { x: seat.column * 30, y: seat.row * 30 }
-              })) ?? []}
-              onChange={handleSeatingChartChange}
+        case 'tickets':
+          return formData.eventType === 'SEATED' ? (
+            <div className="h-[600px]">
+         <SeatingMapEditor
+  initialSections={formData.seatingChart?.sections ?? []}
+  initialSeats={formData.seatingChart?.seats.map(seat => ({
+    id: seat.id,
+    row: seat.row,
+    column: seat.column,
+    sectionId: seat.sectionId,
+    status: seat.status === 'AVAILABLE' ? 'ACTIVE' : 'DISABLED',
+    label: seat.label,
+    position: seat.position,
+    screenPosition: seat.position || { // Agregamos screenPosition
+      x: seat.column * 30, // Usando GRID_SIZE o un valor fijo
+      y: seat.row * 30
+    }
+  })) ?? []}
+  onChange={handleSeatingChartChange}
+/>
+            </div>
+          ) : (
+            <GeneralTicketsStep
+              tickets={formData.generalTickets ?? []}
+              onChange={handleGeneralTicketsChange}
             />
-          </div>
-        ) : (
-          <GeneralTicketsStep
-            tickets={formData.generalTickets ?? []}
-            onChange={handleGeneralTicketsChange}
-          />
-        );
-
-      case 'review':
-        return (
-          <ReviewStep
-            data={{
-              name: formData.name,
-              description: formData.description,
-              date: formData.date,
-              location: formData.location,
-              imageUrl: formData.imageUrl,
-              basicInfo: {
-                name: formData.name,
-                description: formData.description,
-                date: formData.date,
-                location: formData.location,
-                imageUrl: formData.imageUrl
-              },
-              eventType: formData.eventType,
-              seatingChart: formData.seatingChart,
-              seating: formData.seating,
-              generalTickets: formData.generalTickets ?? []
-            }}
-            onEdit={(step: StepKey) => {
-              setCurrentStep(step);
-            }}
-          />
-        );
+          );
+          
+        case 'review':
+          return (
+            <ReviewStep
+              data={formData}
+              onEdit={setCurrentStep}
+            />
+          );
 
       default:
         return (
@@ -358,6 +471,9 @@ export default function NewEventPage() {
         <h2 className="text-xl font-semibold mb-4">
           {STEPS[currentStep].title}
         </h2>
+        <p className="text-gray-600 mb-6">
+          {STEPS[currentStep].description}
+        </p>
         {renderStepContent()}
       </Card>
 
@@ -365,29 +481,79 @@ export default function NewEventPage() {
         <Button
           variant="outline"
           onClick={() => moveToStep('prev')}
-          disabled={currentStep === 'info'}
+          disabled={currentStep === 'info' || isSubmitting}
         >
           Atrás
         </Button>
 
         <Button
-          onClick={() => {
-            if (!validateStep(currentStep)) {
-              alert('Por favor completa todos los campos requeridos');
-              return;
-            }
+onClick={() => {
+  if (!validateStep(currentStep)) {
+    return;
+  }
 
-            if (currentStep === 'review') {
-              handleSubmit();
-            } else {
-              moveToStep('next');
-            }
-          }}
-          disabled={isSubmitting}
-        >
-          {currentStep === 'review' ? 'Crear Evento' : 'Siguiente'}
-        </Button>
-      </div>
+  if (currentStep === 'review') {
+    handleSubmit();
+  } else {
+    moveToStep('next');
+  }
+}}
+disabled={isSubmitting}
+>
+{isSubmitting 
+  ? 'Procesando...' 
+  : currentStep === 'review' 
+    ? 'Crear Evento' 
+    : 'Siguiente'
+}
+</Button>
+</div>
+
+{/* Indicador de progreso */}
+<div className="mt-6">
+<div className="flex justify-between mb-2">
+{['info', 'type', 'tickets', 'review'].map((step, index) => (
+  <div
+    key={step}
+    className={`flex items-center ${
+      index < ['info', 'type', 'tickets', 'review'].indexOf(currentStep)
+        ? 'text-blue-600'
+        : index === ['info', 'type', 'tickets', 'review'].indexOf(currentStep)
+        ? 'text-blue-600 font-bold'
+        : 'text-gray-400'
+    }`}
+  >
+    <div
+      className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${
+        index <= ['info', 'type', 'tickets', 'review'].indexOf(currentStep)
+          ? 'border-blue-600 bg-blue-50'
+          : 'border-gray-300'
+      }`}
+    >
+      {index + 1}
     </div>
-  );
+    <div className="ml-2">{STEPS[step as StepKey].title}</div>
+  </div>
+))}
+</div>
+<div className="relative h-2 bg-gray-200 rounded-full">
+<div
+  className="absolute h-full bg-blue-600 rounded-full transition-all duration-300"
+  style={{
+    width: `${
+      ((['info', 'type', 'tickets', 'review'].indexOf(currentStep) + 1) / 4) * 100
+    }%`
+  }}
+/>
+</div>
+</div>
+
+{/* Toast o notificaciones */}
+{isSubmitting && (
+<div className="fixed bottom-4 right-4 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg">
+Creando evento...
+</div>
+)}
+</div>
+);
 }

@@ -1,16 +1,18 @@
 // components/admin/EventForm/steps/SeatingMap/hooks/useEditorState.ts
 import { useReducer, useCallback } from 'react';
-import { EditorState, Seat, Point } from '../types';
+import { EditorState, Point, EditorSection } from '../types';
+import { EditorSeat } from '@/types/editor';
 
 type EditorAction =
-  | { type: 'ADD_SEAT'; seat: Seat }
+  | { type: 'ADD_SEAT'; seat: EditorSeat }
   | { type: 'REMOVE_SEATS'; seatIds: string[] }
-  | { type: 'UPDATE_SEATS'; seats: Seat[] }
+  | { type: 'UPDATE_SEATS'; seats: EditorSeat[] }
   | { type: 'SET_SELECTION'; seatIds: string[] }
   | { type: 'SET_TOOL'; tool: EditorState['tool'] }
   | { type: 'SET_ACTIVE_SECTION'; sectionId: string | null }
   | { type: 'SET_ZOOM'; zoom: number }
-  | { type: 'SET_PAN'; pan: Point };
+  | { type: 'SET_PAN'; pan: Point }
+  | { type: 'SET_SECTIONS'; sections: EditorSection[] };
 
 const editorReducer = (state: EditorState, action: EditorAction): EditorState => {
   switch (action.type) {
@@ -66,6 +68,12 @@ const editorReducer = (state: EditorState, action: EditorAction): EditorState =>
         ...state,
         pan: action.pan
       };
+
+    case 'SET_SECTIONS':
+      return {
+        ...state,
+        sections: action.sections
+      };
     
     default:
       return state;
@@ -75,6 +83,7 @@ const editorReducer = (state: EditorState, action: EditorAction): EditorState =>
 export const useEditorState = (initialState: Partial<EditorState> = {}) => {
   const [state, dispatch] = useReducer(editorReducer, {
     seats: [],
+    sections: [], // Inicializamos sections
     selectedSeats: [],
     zoom: 1,
     pan: { x: 0, y: 0 },
@@ -84,7 +93,7 @@ export const useEditorState = (initialState: Partial<EditorState> = {}) => {
   });
 
   const actions = {
-    addSeat: useCallback((seat: Seat) => {
+    addSeat: useCallback((seat: EditorSeat) => {
       dispatch({ type: 'ADD_SEAT', seat });
     }, []),
 
@@ -92,7 +101,7 @@ export const useEditorState = (initialState: Partial<EditorState> = {}) => {
       dispatch({ type: 'REMOVE_SEATS', seatIds });
     }, []),
 
-    updateSeats: useCallback((seats: Seat[]) => {
+    updateSeats: useCallback((seats: EditorSeat[]) => {
       dispatch({ type: 'UPDATE_SEATS', seats });
     }, []),
 
@@ -114,6 +123,10 @@ export const useEditorState = (initialState: Partial<EditorState> = {}) => {
 
     setPan: useCallback((pan: Point) => {
       dispatch({ type: 'SET_PAN', pan });
+    }, []),
+
+    setSections: useCallback((sections: EditorSection[]) => {
+      dispatch({ type: 'SET_SECTIONS', sections });
     }, [])
   };
 

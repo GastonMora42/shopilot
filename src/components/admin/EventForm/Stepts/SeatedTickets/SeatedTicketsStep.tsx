@@ -22,7 +22,8 @@ export const SeatedTicketsStep: React.FC<SeatedTicketsStepProps> = ({
       name: '',
       type: 'REGULAR',
       price: 0,
-      color: '#3B82F6'
+      color: '#3B82F6',
+      rowStart: 0
     };
     
     onChange({

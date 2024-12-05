@@ -4,12 +4,12 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutConfig } from './EventForm/Stepts/SeatingMap/types/layout';
 import { BasicInfoStep } from './EventForm/Stepts/BasicInfoStep';
 import { EventTypeStep } from './EventForm/Stepts/EventTypeStep';
 import { SeatingStep } from './EventForm/Stepts/SeatingStep';
 import { GeneralTicketsStep } from './EventForm/Stepts/GeneralTicketsStep';
 import { ReviewStep } from './EventForm/Stepts/ReviewStep';
+import { LayoutConfig } from '@/types/editor';
 
 // Definición de tipos
 interface EventFormData {
@@ -279,12 +279,6 @@ export const EventForm: React.FC = () => {
               />
             )}
 
-{currentStep === 'REVIEW' && (
-    <ReviewStep
-      data={formData}  // Ahora formData es del tipo EventFormData
-      onEdit={(step: StepKey) => setCurrentStep(step)}
-    />
-  )}
           </motion.div>
         </AnimatePresence>
       </div>

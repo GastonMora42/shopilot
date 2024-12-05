@@ -1,3 +1,4 @@
+// components/admin/EventForm/steps/SeatingMap/SeatingMapEditor.tsx
 import React, { FC, useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { debounce } from 'lodash';
@@ -5,20 +6,15 @@ import { EditorCanvas } from './components/EditorCanvas';
 import { Toolbar } from './components/ToolBar';
 import { ZoomControls } from './components/ZoomControls';
 import { Sidebar } from './components/Sidebar';
+import { TemplateSelector } from './components/TemplateSelector';
 import { useEditorState } from './hooks/useEditorState';
 import { useSeatingMap } from './hooks/useSeatingMap';
-import { EditorSeat, EditorSection, SeatingMapEditorProps } from '@/types/editor';
+import { EditorSeat, EditorSection, LayoutTemplate, SeatingMapEditorProps } from '@/types/editor';
+import { templates } from './templates';
 
 // Constantes
 const GRID_SIZE = 30;
 const DEBOUNCE_DELAY = 500;
-
-// Tipos
-export interface Point {
-  x: number;
-  y: number;
-}
-
 
 interface ViewportBounds {
   width: number;
@@ -31,12 +27,13 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
   onChange,
   onSave
 }) => {
-  // Referencias y estado
+  // Referencias y estados
   const containerRef = useRef<HTMLDivElement>(null);
   const [bounds, setBounds] = useState<ViewportBounds>({ width: 0, height: 0 });
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-
+  const [showTemplateSelector, setShowTemplateSelector] = useState(!initialSeats.length);
+  const [isDrawing, setIsDrawing] = useState(false);
   // Procesar datos iniciales
   const processedInitialSections = useMemo(() => {
     return initialSections.map((section: EditorSection) => ({
@@ -48,7 +45,6 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
     }));
   }, [initialSections]);
 
-  // Procesar asientos iniciales
   const processedInitialSeats = useMemo(() => {
     return initialSeats.map((seat: EditorSeat) => ({
       ...seat,
@@ -56,21 +52,25 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
       position: seat.position || {
         x: (seat.column || 0) * GRID_SIZE,
         y: (seat.row || 0) * GRID_SIZE
+      },
+      screenPosition: seat.screenPosition || {
+        x: (seat.column || 0) * GRID_SIZE,
+        y: (seat.row || 0) * GRID_SIZE
       }
     }));
   }, [initialSeats]);
 
-  // Estado del editor
+  // Estado del editor y mapa de asientos
   const { state, actions } = useEditorState({
     seats: processedInitialSeats,
+    sections: processedInitialSections,
     zoom: 1,
     pan: { x: 0, y: 0 },
     tool: 'SELECT',
     selectedSeats: [],
-    activeSectionId: null
+    activeSectionId: initialSections[0]?.id || null
   });
 
-  // Estado del mapa de asientos
   const {
     seats,
     sections,
@@ -78,6 +78,7 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
     activeSectionId,
     actions: mapActions
   } = useSeatingMap(processedInitialSections);
+
   // Funciones auxiliares
   const calculateDimensions = (seats: EditorSeat[]) => {
     if (seats.length === 0) return { rows: 0, columns: 0 };
@@ -87,7 +88,49 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
     };
   };
 
-  // Manejador de cambios con debounce
+  const createNewSeat = (seatData: Partial<EditorSeat>): EditorSeat => ({
+    id: seatData.id || `seat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    row: seatData.row || 0,
+    column: seatData.column || 0,
+    sectionId: seatData.sectionId || state.activeSectionId || '',
+    status: 'ACTIVE',
+    label: seatData.label || `R${seatData.row}C${seatData.column}`,
+    position: {
+      x: (seatData.column || 0) * GRID_SIZE,
+      y: (seatData.row || 0) * GRID_SIZE
+    },
+    screenPosition: seatData.screenPosition || {
+      x: (seatData.column || 0) * GRID_SIZE,
+      y: (seatData.row || 0) * GRID_SIZE
+    }
+  });
+  // Efectos
+  useEffect(() => {
+    const updateBounds = () => {
+      if (containerRef.current) {
+        setBounds({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight
+        });
+      }
+    };
+
+    // Dentro de SeatingMapEditor
+useEffect(() => {
+  if (processedInitialSections.length > 0 && !state.activeSectionId) {
+    actions.setActiveSection(processedInitialSections[0].id);
+  }
+}, [processedInitialSections, state.activeSectionId, actions]);
+
+    updateBounds();
+    const resizeObserver = new ResizeObserver(updateBounds);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => resizeObserver.disconnect();
+  }, []);
+
   const debouncedOnChange = useRef(
     debounce((seats: EditorSeat[], sections: EditorSection[]) => {
       const { rows, columns } = calculateDimensions(seats);
@@ -101,30 +144,17 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
     }, DEBOUNCE_DELAY)
   ).current;
 
-  // Efectos
   useEffect(() => {
-    const updateBounds = () => {
-      if (containerRef.current) {
-        setBounds({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight
-        });
-      }
+    return () => {
+      debouncedOnChange.cancel();
     };
-
-    updateBounds();
-    const resizeObserver = new ResizeObserver(updateBounds);
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
-
-    return () => resizeObserver.disconnect();
-  }, []);
+  }, [debouncedOnChange]);
 
   useEffect(() => {
     debouncedOnChange(seats, sections);
-  }, [seats, sections, debouncedOnChange]);
+  }, [seats, sections]);
 
+  // Manejo de atajos de teclado
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && ['s', 'v', 'd', 'e'].includes(e.key.toLowerCase())) {
@@ -159,7 +189,6 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
   // Manejadores
   const handleSave = async () => {
     if (!onSave) return;
-    
     try {
       setIsSaving(true);
       await onSave();
@@ -171,101 +200,105 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
     }
   };
 
-  const createNewSeat = (seatData: Partial<EditorSeat>): EditorSeat => ({
-    id: seatData.id || `seat-${Date.now()}`,
-    row: seatData.row || 0,
-    column: seatData.column || 0,
-    sectionId: seatData.sectionId || '',
-    status: 'ACTIVE',
-    label: seatData.label || `R${seatData.row}C${seatData.column}`,
-    position: {
-      x: (seatData.column || 0) * GRID_SIZE,
-      y: (seatData.row || 0) * GRID_SIZE
-    },
-    screenPosition: seatData.screenPosition || {
-      x: (seatData.column || 0) * GRID_SIZE,
-      y: (seatData.row || 0) * GRID_SIZE
+  const handleTemplateSelect = (template: LayoutTemplate) => {
+    actions.setSections(template.sections);
+    if (template.seats) {
+      const processedSeats = template.seats.map((seat: Partial<EditorSeat>) => createNewSeat({
+        ...seat,
+        sectionId: template.sections[0].id
+      }));
+      actions.updateSeats(processedSeats);
     }
-  });
+    setShowTemplateSelector(false);
+  };
 
+  const handleCustomLayout = () => {
+    setShowTemplateSelector(false);
+  };
 
   return (
     <div className="relative flex h-full" ref={containerRef}>
-      <div className="flex-1 relative overflow-hidden bg-gray-50">
-        <EditorCanvas
-          state={state}
-          bounds={bounds}
-          onSeatAdd={(seatData) => {
-            mapActions.addSeat(createNewSeat(seatData));
-          }}
-          onSeatSelect={mapActions.setSelectedSeats}
-          onSeatsUpdate={(updates, seatIds) => {
-            mapActions.updateSeats(updates, seatIds);
-          }}
-        />
+        <>
+          <div className="flex-1 relative overflow-hidden bg-gray-50">
+            <EditorCanvas
+              state={{
+                ...state,
+                sections: sections || []
+              }}
+              bounds={bounds}
+              onSeatAdd={(seatData) => {
+                mapActions.addSeat(createNewSeat(seatData));
+              }}
+              onSeatSelect={mapActions.setSelectedSeats}
+              onSeatsUpdate={(updates, seatIds) => {
+                mapActions.updateSeats(updates, seatIds);
+              }}
+              onSectionSelect={actions.setActiveSection}
+            />
 
-        <Toolbar
-          tool={state.tool}
-          onToolChange={actions.setTool}
-          onDelete={() => mapActions.removeSeats(selectedSeats)}
-          hasSelection={selectedSeats.length > 0}
-        />
+            <Toolbar
+              tool={state.tool}
+              onToolChange={actions.setTool}
+              onDelete={() => mapActions.removeSeats(selectedSeats)}
+              hasSelection={selectedSeats.length > 0}
+            />
 
-        <ZoomControls
-          zoom={state.zoom}
-          onZoomChange={actions.setZoom}
-          onReset={() => {
-            actions.setZoom(1);
-            actions.setPan({ x: 0, y: 0 });
-          }}
-        />
+            <ZoomControls
+              zoom={state.zoom}
+              onZoomChange={actions.setZoom}
+              onReset={() => {
+                actions.setZoom(1);
+                actions.setPan({ x: 0, y: 0 });
+              }}
+            />
 
-        <AnimatePresence>
-          {hasUnsavedChanges && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-2 flex items-center space-x-2"
-            >
-              <span className="text-sm text-gray-600">
-                {isSaving ? 'Guardando...' : 'Cambios sin guardar'}
-              </span>
-              {!isSaving && (
-                <button
-                  onClick={handleSave}
-                  className="text-sm text-blue-600 hover:text-blue-700"
+            <AnimatePresence>
+              {hasUnsavedChanges && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-2 flex items-center space-x-2"
                 >
-                  Guardar
-                </button>
+                  <span className="text-sm text-gray-600">
+                    {isSaving ? 'Guardando...' : 'Cambios sin guardar'}
+                  </span>
+                  {!isSaving && (
+                    <button
+                      onClick={handleSave}
+                      className="text-sm text-blue-600 hover:text-blue-700"
+                    >
+                      Guardar
+                    </button>
+                  )}
+                </motion.div>
               )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+            </AnimatePresence>
+          </div>
 
-      <Sidebar
-        sections={sections}
-        activeSectionId={activeSectionId}
-        selectedSeats={selectedSeats}
-        onSectionSelect={(sectionId) => {
-          actions.setActiveSection(sectionId);
-          if (state.tool !== 'DRAW') {
-            actions.setTool('DRAW');
-          }
-        }}
-        onSectionUpdate={mapActions.updateSection}
-        onBulkSeatUpdate={(updates) => {
-          mapActions.updateSeats(updates, selectedSeats);
-        }}
-      />
+          <Sidebar
+            sections={sections}
+            activeSectionId={activeSectionId}
+            selectedSeats={selectedSeats}
+            onSectionSelect={(sectionId) => {
+              actions.setActiveSection(sectionId);
+              if (state.tool !== 'DRAW') {
+                actions.setTool('DRAW');
+              }
+            }}
+            onSectionUpdate={mapActions.updateSection}
+            onBulkSeatUpdate={(updates) => {
+              mapActions.updateSeats(updates, selectedSeats);
+            }}
+          />
 
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-2 text-sm text-gray-600 flex gap-4">
-        <span>⌘V: Seleccionar</span>
-        <span>⌘D: Dibujar</span>
-        <span>⌘E: Borrar</span>
-        <span>⌘S: Guardar</span>
-      </div>
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-2 text-sm text-gray-600 flex gap-4">
+            <span>⌘V: Seleccionar</span>
+            <span>⌘D: Dibujar</span>
+            <span>⌘E: Borrar</span>
+            <span>⌘S: Guardar</span>
+          </div>
+        </>
     </div>
   );
 };

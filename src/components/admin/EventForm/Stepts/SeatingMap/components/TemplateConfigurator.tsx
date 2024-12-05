@@ -1,5 +1,5 @@
+import { LayoutConfig, LayoutTemplate, TemplateParams } from '@/types/editor';
 import React, { Key, useState } from 'react';
-import { LayoutTemplate, LayoutConfig, TemplateParams } from '../types/layout';
 
 interface TemplateConfiguratorProps {
   template: LayoutTemplate;

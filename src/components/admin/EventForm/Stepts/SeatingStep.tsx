@@ -4,8 +4,7 @@ import { SeatingMapEditor } from './SeatingMap/SeatingMapEditor';
 import { TemplateSelector } from './SeatingMap/components/TemplateSelector';
 import { TemplateConfigurator } from './SeatingMap/components/TemplateConfigurator';
 import { SeatingPreview } from './SeatingMap/components/SeatingPreview';
-import { PREDEFINED_TEMPLATES } from './SeatingMap/templates';
-import { LayoutTemplate, LayoutConfig } from './SeatingMap/types/layout';
+import { LayoutConfig, LayoutTemplate } from '@/types/editor';
 
 interface SeatingStepProps {
   initialLayout?: LayoutConfig;
@@ -45,8 +44,13 @@ export const SeatingStep: React.FC<SeatingStepProps> = ({
           type: 'REGULAR',
           color: '#3B82F6',
           price: 100,
-          rowStart: 0
-        }]
+          rowStart: 0,
+          rowEnd: 0,
+          columnStart: 0,
+          columnEnd: 0
+        }],
+        rows: 0,
+        columns: 0
       }
     });
   };
@@ -58,13 +62,6 @@ export const SeatingStep: React.FC<SeatingStepProps> = ({
 
   return (
     <div className="h-full">
-      {stepState.type === 'TEMPLATE_SELECT' && (
-        <TemplateSelector
-          templates={PREDEFINED_TEMPLATES}
-          onSelect={handleTemplateSelect}
-          onCustomLayout={handleCustomLayout}
-        />
-      )}
 
       {stepState.type === 'TEMPLATE_CONFIG' && (
         <div className="grid grid-cols-2 gap-6 h-full">

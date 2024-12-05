@@ -1,5 +1,6 @@
 // components/admin/EventForm/steps/SeatingMap/utils/storage.ts
-import { LayoutConfig } from '../types/layout';
+
+import { LayoutConfig } from "@/types/editor";
 
 export interface SavedLayout extends LayoutConfig {
   id: string;

@@ -1,46 +1,84 @@
-// components/admin/EventForm/steps/SeatingMap/components/EditorCanvas.tsx
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useCallback, useState, useMemo } from 'react';
 import { motion, useDragControls } from 'framer-motion';
-import { Seat, Point, EditorState } from '../types';
-import { transformUtils, selectionUtils } from '@/components/admin/EventForm/Stepts/SeatingMap/utils/transform';
-import {SeatComponent} from '@/components/admin/EventForm/Stepts/SeatingMap/components/SeatComponent'
-
-interface EditorCanvasProps {
-  state: EditorState;
-  bounds: { width: number; height: number };
-  onSeatAdd: (seat: Omit<Seat, 'id'>) => void;
-  onSeatSelect: (seatIds: string[]) => void;
-  onSeatsUpdate: (updates: Partial<Seat>, seatIds?: string[]) => void;
-}
+import { 
+  EditorCanvasProps, 
+  Point, 
+  DragState, 
+  EditorSection, 
+} from '../types';
+import { transformUtils, selectionUtils } from '../utils/transform';
+import { SeatComponent } from './SeatComponent';
+import { GRID_SIZE } from '../constants';
 
 export const EditorCanvas: React.FC<EditorCanvasProps> = ({
   state,
   bounds,
   onSeatAdd,
   onSeatSelect,
-  onSeatsUpdate
+  onSeatsUpdate,
+  onSectionSelect
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
-  const [dragStart, setDragStart] = useState<Point | null>(null);
-  const [dragState, setDragState] = useState<{
-    start: Point | null;
-    current: Point | null;
-    mode: 'SELECT' | 'PAN' | null;
-  }>({
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [dragState, setDragState] = useState<DragState>({
     start: null,
     current: null,
     mode: null
   });
 
-  // Memoize transformed seats for better performance
-  const transformedSeats = React.useMemo(() => 
+  // Grid settings
+  const gridSize = GRID_SIZE * state.zoom;
+  const gridOffset = {
+    x: state.pan.x % gridSize,
+    y: state.pan.y % gridSize
+  };
+
+  // Transform seats for rendering
+  const transformedSeats = useMemo(() => 
     state.seats.map(seat => ({
       ...seat,
       screenPosition: transformUtils.worldToScreen(seat.position, state.pan, state.zoom)
     })),
     [state.seats, state.pan, state.zoom]
   );
+
+  // Create new seat with validation
+  const createNewSeat = useCallback((point: Point) => {
+    if (!state.activeSectionId) return;
+
+    const worldPoint = transformUtils.screenToWorld(point, state.pan, state.zoom);
+    const snappedPoint = transformUtils.snapToGrid(worldPoint, GRID_SIZE);
+    
+    const row = Math.floor(snappedPoint.y / GRID_SIZE);
+    const column = Math.floor(snappedPoint.x / GRID_SIZE);
+    
+    const existingSeat = state.seats.find(
+      s => s.row === row && s.column === column
+    );
+
+    if (!existingSeat) {
+      const activeSection = state.sections.find(s => s.id === state.activeSectionId);
+      if (!activeSection) return;
+
+      if (
+        row >= activeSection.rowStart - 1 &&
+        row <= activeSection.rowEnd - 1 &&
+        column >= activeSection.columnStart - 1 &&
+        column <= activeSection.columnEnd - 1
+      ) {
+        onSeatAdd({
+          position: snappedPoint,
+          sectionId: state.activeSectionId,
+          row,
+          column,
+          label: `${String.fromCharCode(65 + row)}${column + 1}`,
+          status: 'ACTIVE',
+          screenPosition: point
+        });
+      }
+    }
+  }, [state.activeSectionId, state.pan, state.zoom, state.seats, state.sections, onSeatAdd]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!canvasRef.current) return;
@@ -51,57 +89,79 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
       y: e.clientY - rect.top
     };
 
-    setDragState({
-      start: point,
-      current: point,
-      mode: state.tool === 'SELECT' ? 'SELECT' : 'PAN'
-    });
-
-    if (state.tool === 'DRAW' && state.activeSectionId) {
-      const worldPoint = transformUtils.screenToWorld(point, state.pan, state.zoom);
-      const snappedPoint = transformUtils.snapToGrid(worldPoint, 20);
-
-      onSeatAdd({
-        position: snappedPoint,
-        sectionId: state.activeSectionId,
-        row: Math.floor(snappedPoint.y / 20),
-        column: Math.floor(snappedPoint.x / 20),
-        label: `${String.fromCharCode(65 + Math.floor(snappedPoint.y / 20))}${Math.floor(snappedPoint.x / 20) + 1}`,
-        status: 'ACTIVE',
-        screenPosition: undefined
+    if (state.tool === 'DRAW') {
+      createNewSeat(point);
+      setIsDrawing(true);
+      setDragState({
+        start: point,
+        current: point,
+        mode: 'DRAW'
+      });
+    } else {
+      setDragState({
+        start: point,
+        current: point,
+        mode: state.tool === 'SELECT' ? 'SELECT' : 'PAN'
       });
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragState.start || !canvasRef.current) return;
+    if (!canvasRef.current || !dragState.start) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
-    const currentPoint = {
+    const point = {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top
     };
 
     setDragState(prev => ({
       ...prev,
-      current: currentPoint
+      current: point
     }));
+
+    if (isDrawing && state.tool === 'DRAW') {
+      createNewSeat(point);
+    }
   };
 
   const handleMouseUp = () => {
     if (dragState.mode === 'SELECT' && dragState.start && dragState.current) {
       const selectedSeats = selectionUtils.getSeatsInSelection(
-        state.seats,
+        transformedSeats,
         { start: dragState.start, end: dragState.current }
       );
-      onSeatSelect(selectedSeats.map(seat => seat));
+      onSeatSelect(selectedSeats.map(seat => seat.id));
     }
 
+    setIsDrawing(false);
     setDragState({
       start: null,
       current: null,
       mode: null
     });
+  };
+
+  const renderSections = () => {
+    return state.sections.map((section: EditorSection) => (
+      <div
+        key={section.id}
+        className={`absolute border-2 ${
+          section.id === state.activeSectionId
+            ? 'border-blue-500'
+            : 'border-gray-300'
+        } rounded-md bg-opacity-20`}
+        style={{
+          left: section.columnStart * gridSize + state.pan.x,
+          top: section.rowStart * gridSize + state.pan.y,
+          width: (section.columnEnd - section.columnStart + 1) * gridSize,
+          height: (section.rowEnd - section.rowStart + 1) * gridSize,
+          backgroundColor: section.color,
+          opacity: 0.2
+        }}
+        onClick={() => onSectionSelect?.(section.id)}
+      />
+    ));
   };
 
   return (
@@ -113,6 +173,17 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     >
+      {/* Grid */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: 'radial-gradient(circle, #ccc 1px, transparent 1px)',
+          backgroundSize: `${gridSize}px ${gridSize}px`,
+          backgroundPosition: `${gridOffset.x}px ${gridOffset.y}px`
+        }}
+      />
+
+      {/* Main container */}
       <motion.div
         className="absolute inset-0"
         style={{
@@ -124,16 +195,21 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
         dragControls={dragControls}
         dragMomentum={false}
       >
+        {renderSections()}
         {transformedSeats.map(seat => (
           <SeatComponent
             key={seat.id}
             seat={seat}
             selected={state.selectedSeats.includes(seat.id)}
             tool={state.tool}
+            sectionColor={
+              state.sections?.find(s => s.id === seat.sectionId)?.color
+            }
           />
         ))}
       </motion.div>
 
+      {/* Selection box */}
       {dragState.mode === 'SELECT' && dragState.start && dragState.current && (
         <div
           className="absolute border-2 border-blue-500 bg-blue-100 bg-opacity-20"

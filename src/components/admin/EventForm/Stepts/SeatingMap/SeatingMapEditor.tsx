@@ -1,4 +1,3 @@
-// components/admin/EventForm/steps/SeatingMap/SeatingMapEditor.tsx
 import React, { FC, useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { debounce } from 'lodash';
@@ -6,13 +5,14 @@ import { EditorCanvas } from './components/EditorCanvas';
 import { Toolbar } from './components/ToolBar';
 import { ZoomControls } from './components/ZoomControls';
 import { Sidebar } from './components/Sidebar';
-import { TemplateSelector } from './components/TemplateSelector';
+import { TemplateSelectorProps } from '@/types/editor';
 import { useEditorState } from './hooks/useEditorState';
 import { useSeatingMap } from './hooks/useSeatingMap';
-import { EditorSeat, EditorSection, LayoutTemplate, SeatingMapEditorProps } from '@/types/editor';
-import { templates } from './templates';
+import { EditorSeat, EditorSection, SeatingMapEditorProps } from '@/types/editor';
+import { seatingTemplates } from './templates/layout';
+import { TemplateSelector } from './components/TemplateSelector';
+import { validateSeatingLayout, ValidationError } from './validations/seatingRules';
 
-// Constantes
 const GRID_SIZE = 30;
 const DEBOUNCE_DELAY = 500;
 
@@ -27,14 +27,11 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
   onChange,
   onSave
 }) => {
-  // Referencias y estados
   const containerRef = useRef<HTMLDivElement>(null);
   const [bounds, setBounds] = useState<ViewportBounds>({ width: 0, height: 0 });
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [showTemplateSelector, setShowTemplateSelector] = useState(!initialSeats.length);
-  const [isDrawing, setIsDrawing] = useState(false);
-  // Procesar datos iniciales
+const [showTemplateSelector, setShowTemplateSelector] = useState(true); // Cambiar a true por defecto
   const processedInitialSections = useMemo(() => {
     return initialSections.map((section: EditorSection) => ({
       ...section,
@@ -60,7 +57,6 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
     }));
   }, [initialSeats]);
 
-  // Estado del editor y mapa de asientos
   const { state, actions } = useEditorState({
     seats: processedInitialSeats,
     sections: processedInitialSections,
@@ -79,15 +75,6 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
     actions: mapActions
   } = useSeatingMap(processedInitialSections);
 
-  // Funciones auxiliares
-  const calculateDimensions = (seats: EditorSeat[]) => {
-    if (seats.length === 0) return { rows: 0, columns: 0 };
-    return {
-      rows: Math.max(...seats.map(s => s.row)) + 1,
-      columns: Math.max(...seats.map(s => s.column)) + 1
-    };
-  };
-
   const createNewSeat = (seatData: Partial<EditorSeat>): EditorSeat => ({
     id: seatData.id || `seat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     row: seatData.row || 0,
@@ -104,7 +91,7 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
       y: (seatData.row || 0) * GRID_SIZE
     }
   });
-  // Efectos
+
   useEffect(() => {
     const updateBounds = () => {
       if (containerRef.current) {
@@ -115,12 +102,9 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
       }
     };
 
-    // Dentro de SeatingMapEditor
-useEffect(() => {
-  if (processedInitialSections.length > 0 && !state.activeSectionId) {
-    actions.setActiveSection(processedInitialSections[0].id);
-  }
-}, [processedInitialSections, state.activeSectionId, actions]);
+    if (processedInitialSections.length > 0 && !state.activeSectionId) {
+      actions.setActiveSection(processedInitialSections[0].id);
+    }
 
     updateBounds();
     const resizeObserver = new ResizeObserver(updateBounds);
@@ -129,64 +113,56 @@ useEffect(() => {
     }
 
     return () => resizeObserver.disconnect();
-  }, []);
+  }, [processedInitialSections, state.activeSectionId, actions]);
 
   const debouncedOnChange = useRef(
     debounce((seats: EditorSeat[], sections: EditorSection[]) => {
-      const { rows, columns } = calculateDimensions(seats);
       onChange({
         seats,
         sections,
-        rows,
-        columns
+        rows: Math.max(...seats.map(s => s.row)) + 1,
+        columns: Math.max(...seats.map(s => s.column)) + 1
       });
       setHasUnsavedChanges(true);
     }, DEBOUNCE_DELAY)
   ).current;
 
   useEffect(() => {
-    return () => {
-      debouncedOnChange.cancel();
-    };
+    return () => debouncedOnChange.cancel();
   }, [debouncedOnChange]);
 
   useEffect(() => {
     debouncedOnChange(seats, sections);
   }, [seats, sections]);
 
-  // Manejo de atajos de teclado
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && ['s', 'v', 'd', 'e'].includes(e.key.toLowerCase())) {
-        e.preventDefault();
-      }
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+  const handleKeyboardShortcuts = (e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && ['s', 'v', 'd', 'e'].includes(e.key.toLowerCase())) {
+      e.preventDefault();
+      
+      if (e.key.toLowerCase() === 's') {
         handleSave();
+        return;
       }
 
-      if (e.key === 'Delete' && selectedSeats.length > 0) {
-        mapActions.removeSeats(selectedSeats);
-      }
+      const toolMap = {
+        v: 'SELECT',
+        d: 'DRAW',
+        e: 'ERASE'
+      } as const;
 
-      switch (e.key.toLowerCase()) {
-        case 'v':
-          actions.setTool('SELECT');
-          break;
-        case 'd':
-          actions.setTool('DRAW');
-          break;
-        case 'e':
-          actions.setTool('ERASE');
-          break;
-      }
-    };
+      actions.setTool(toolMap[e.key.toLowerCase() as keyof typeof toolMap]);
+    }
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedSeats, mapActions, actions]);
+    if (e.key === 'Delete' && selectedSeats.length > 0) {
+      mapActions.removeSeats(selectedSeats);
+    }
+  };
 
-  // Manejadores
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyboardShortcuts);
+    return () => window.removeEventListener('keydown', handleKeyboardShortcuts);
+  }, [selectedSeats]);
+
   const handleSave = async () => {
     if (!onSave) return;
     try {
@@ -200,24 +176,31 @@ useEffect(() => {
     }
   };
 
-  const handleTemplateSelect = (template: LayoutTemplate) => {
-    actions.setSections(template.sections);
-    if (template.seats) {
-      const processedSeats = template.seats.map((seat: Partial<EditorSeat>) => createNewSeat({
-        ...seat,
-        sectionId: template.sections[0].id
-      }));
-      actions.updateSeats(processedSeats);
-    }
-    setShowTemplateSelector(false);
-  };
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
 
-  const handleCustomLayout = () => {
-    setShowTemplateSelector(false);
+  const handleValidate = () => {
+    const errors = validateSeatingLayout({
+      seats: state.seats,
+      sections: state.sections,
+      rows: Math.max(...state.seats.map(s => s.row)) + 1,
+      columns: Math.max(...state.seats.map(s => s.column)) + 1
+    });
+  
+    setValidationErrors(errors);
+    return errors.length === 0;
   };
 
   return (
     <div className="relative flex h-full" ref={containerRef}>
+      {showTemplateSelector ? (
+        <TemplateSelector
+          onSelect={(template) => {
+            actions.setSections(template.sections);
+            setShowTemplateSelector(false);
+          }}
+          onCustomLayout={() => setShowTemplateSelector(false)}
+        />
+      ) : (
         <>
           <div className="flex-1 relative overflow-hidden bg-gray-50">
             <EditorCanvas
@@ -230,12 +213,10 @@ useEffect(() => {
                 mapActions.addSeat(createNewSeat(seatData));
               }}
               onSeatSelect={mapActions.setSelectedSeats}
-              onSeatsUpdate={(updates, seatIds) => {
-                mapActions.updateSeats(updates, seatIds);
-              }}
+              onSeatsUpdate={mapActions.updateSeats}
               onSectionSelect={actions.setActiveSection}
             />
-
+  
             <Toolbar
               tool={state.tool}
               onToolChange={actions.setTool}
@@ -251,7 +232,27 @@ useEffect(() => {
                 actions.setPan({ x: 0, y: 0 });
               }}
             />
-
+{validationErrors.length > 0 && (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="absolute bottom-4 right-4 w-80 bg-white rounded-lg shadow-lg p-4"
+  >
+    <h4 className="text-red-600 font-medium mb-2">
+      Errores encontrados ({validationErrors.length}):
+    </h4>
+    <div className="max-h-60 overflow-y-auto">
+      {validationErrors.map((error, index) => (
+        <div 
+          key={index}
+          className="p-2 mb-2 bg-red-50 rounded text-sm text-red-600"
+        >
+          {error.message}
+        </div>
+      ))}
+    </div>
+  </motion.div>
+)}
             <AnimatePresence>
               {hasUnsavedChanges && (
                 <motion.div
@@ -291,14 +292,8 @@ useEffect(() => {
               mapActions.updateSeats(updates, selectedSeats);
             }}
           />
-
-          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-2 text-sm text-gray-600 flex gap-4">
-            <span>⌘V: Seleccionar</span>
-            <span>⌘D: Dibujar</span>
-            <span>⌘E: Borrar</span>
-            <span>⌘S: Guardar</span>
-          </div>
         </>
+      )}
     </div>
   );
 };

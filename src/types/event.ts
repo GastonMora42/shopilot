@@ -129,17 +129,6 @@ export interface StepIndicatorProps {
   currentStep: StepKey;
 }
 
-export interface EditorSeat {
-  id: string;
-  label: string;
-  position: Point;
-  row: number;
-  column: number;
-  sectionId: string;
-  status: 'ACTIVE' | 'DISABLED';
-  screenPosition?: Point; // Agregamos esta propiedad opcional
-}
-
 export interface EditorSection {
   id: string;
   name: string;

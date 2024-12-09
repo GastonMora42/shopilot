@@ -17,7 +17,7 @@ export interface EditorSeat {
   status: SeatStatus;
   position: Point;
   label: string;
-  screenPosition: Point;
+  screenPosition: Point;  // Asegúrate que no sea opcional (sin ?)
 }
 
 export interface EditorSection extends Section {
@@ -97,4 +97,25 @@ export interface EditorState {
   pan: Point;
   tool: 'SELECT' | 'DRAW' | 'ERASE';
   activeSectionId: string | null;
+}
+
+export interface EditorActions {
+  setTool: (tool: EditorState['tool']) => void;
+  setActiveSection: (sectionId: string | null) => void;
+  setZoom: (zoom: number) => void;
+  setPan: (pan: Point) => void;
+  setSections: (sections: EditorSection[]) => void;
+  updateSeats: (seats: EditorSeat[]) => void;
+}
+
+export interface TemplateSelectorProps {
+  templates: Array<{
+    id: string;
+    name: string;
+    description: string;
+    thumbnail: string;
+    sections: EditorSection[];
+  }>;
+  onSelect: (templateId: string) => void;
+  onCustomLayout: () => void;
 }

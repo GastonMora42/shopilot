@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Event } from '@/app/models/Event';
-import { Seat } from '@/app/models/Seat';
+import { ISeat, Seat } from '@/app/models/Seat';
 import { User } from '@/app/models/User';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/lib/auth';
@@ -15,8 +15,6 @@ import {
   Section,
   Seat as SeatType
 } from '@/types/event';
-
-// app/api/events/create/route.ts
 
 function validateGeneralEvent(tickets: GeneralTicket[]): string | null {
   if (!Array.isArray(tickets) || tickets.length === 0) {
@@ -49,6 +47,8 @@ function validateGeneralEvent(tickets: GeneralTicket[]): string | null {
   return null;
 }
 
+// api/events/create/route.ts
+
 function validateSeatingChart(seatingChart: SeatingChart): string | null {
   if (!seatingChart) {
     return 'La configuración de asientos es requerida';
@@ -68,6 +68,10 @@ function validateSeatingChart(seatingChart: SeatingChart): string | null {
     return 'Debe definir al menos una sección';
   }
 
+  // Crear una matriz para verificar superposición
+  const grid: string[][] = Array(seatingChart.rows).fill(null)
+    .map(() => Array(seatingChart.columns).fill(null));
+
   for (const section of seatingChart.sections) {
     // Validar propiedades requeridas
     if (!section.name || section.name.trim() === '') {
@@ -81,31 +85,25 @@ function validateSeatingChart(seatingChart: SeatingChart): string | null {
     }
 
     // Validar límites de la sección
-    if (section.rowStart < 1 || section.rowStart > seatingChart.rows) {
-      return `Fila inicial inválida en sección ${section.name}`;
-    }
-    if (section.rowEnd < section.rowStart || section.rowEnd > seatingChart.rows) {
-      return `Fila final inválida en sección ${section.name}`;
-    }
-    if (section.columnStart < 1 || section.columnStart > seatingChart.columns) {
-      return `Columna inicial inválida en sección ${section.name}`;
-    }
-    if (section.columnEnd < section.columnStart || section.columnEnd > seatingChart.columns) {
-      return `Columna final inválida en sección ${section.name}`;
-    }
-  }
+    const rowStart = section.rowStart - 1;
+    const rowEnd = section.rowEnd - 1;
+    const colStart = section.columnStart - 1;
+    const colEnd = section.columnEnd - 1;
 
-  // Validar solapamiento de secciones si no es layout personalizado
-  if (!seatingChart.customLayout) {
-    for (let i = 0; i < seatingChart.sections.length; i++) {
-      for (let j = i + 1; j < seatingChart.sections.length; j++) {
-        const secA = seatingChart.sections[i];
-        const secB = seatingChart.sections[j];
-        
-        if (!(secA.rowEnd < secB.rowStart || secA.rowStart > secB.rowEnd ||
-              secA.columnEnd < secB.columnStart || secA.columnStart > secB.columnEnd)) {
-          return `Las secciones ${secA.name} y ${secB.name} se superponen`;
+    if (rowStart < 0 || rowStart >= seatingChart.rows ||
+        rowEnd < rowStart || rowEnd >= seatingChart.rows ||
+        colStart < 0 || colStart >= seatingChart.columns ||
+        colEnd < colStart || colEnd >= seatingChart.columns) {
+      return `Límites inválidos en sección ${section.name}`;
+    }
+
+    // Verificar superposición
+    for (let row = rowStart; row <= rowEnd; row++) {
+      for (let col = colStart; col <= colEnd; col++) {
+        if (grid[row][col] !== null) {
+          return `La sección ${section.name} se superpone con ${grid[row][col]}`;
         }
+        grid[row][col] = section.name;
       }
     }
   }
@@ -134,46 +132,37 @@ function validateEvent(data: any): string | null {
 }
 
 // Función para generar los asientos
-async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart): Promise<SeatType[]> {
-  const seats: SeatType[] = [];
+// En api/events/create/route.ts
+async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart): Promise<ISeat[]> {
+  const seats: ISeat[] = [];
   const { sections, customLayout } = seatingChart;
 
-  if (customLayout && seatingChart.seats) {
-    // Manejar layout personalizado
-    return seatingChart.seats.map(seat => ({
-      id: seat.id,
-      eventId,
-      row: seat.row,
-      column: seat.column,
-      sectionId: seat.sectionId,
-      status: 'AVAILABLE',
-      label: seat.label || `R${seat.row}C${seat.column}`,
-      position: seat.position,
-      price: sections.find(s => s.id === seat.sectionId)?.price || 0,
-      type: sections.find(s => s.id === seat.sectionId)?.type || 'REGULAR'
-    }));
-  }
+  // Ajustar índices para que empiecen desde 0
+  sections.forEach(section => {
+    const rowStart = section.rowStart - 1;
+    const rowEnd = section.rowEnd - 1;
+    const colStart = section.columnStart - 1;
+    const colEnd = section.columnEnd - 1;
 
-  // Generar asientos para layout regular
-  for (const section of sections) {
-    for (let row = section.rowStart; row <= section.rowEnd; row++) {
-      for (let col = section.columnStart; col <= section.columnEnd; col++) {
-        const rowLetter = String.fromCharCode(64 + row); // A = 65 en ASCII
+    for (let row = rowStart; row <= rowEnd; row++) {
+      for (let col = colStart; col <= colEnd; col++) {
+        const rowLetter = String.fromCharCode(65 + row);
+        const seatId = `${rowLetter}${(col + 1).toString().padStart(2, '0')}`;
+        
         seats.push({
-          id: `${eventId}-${rowLetter}${col}`,
-          eventId,
-          row: row - 1,
-          column: col - 1,
-          sectionId: section.id,
+          eventId: new mongoose.Types.ObjectId(eventId),
+          seatId,
+          section: section.name,
+          row,
+          column: col,
           status: 'AVAILABLE',
-          label: `${rowLetter}${col}`,
-          position: { x: col * 30, y: row * 30 },
+          type: section.type,
           price: section.price,
-          type: section.type
-        });
+          label: seatId
+        } as ISeat);
       }
     }
-  }
+  });
 
   return seats;
 }
@@ -252,9 +241,17 @@ export async function POST(req: Request) {
       // Generar asientos solo si es evento con asientos
       let seats = [];
       if (data.eventType === 'SEATED') {
-        seats = await generateSeatsForEvent(event._id.toString(), data.seatingChart);
-        if (seats.length > 0) {
-          await Seat.insertMany(seats, { session: mongoSession });
+        const seatsData = await generateSeatsForEvent(event._id.toString(), data.seatingChart);
+        if (seatsData.length > 0) {
+          try {
+            await Seat.insertMany(seatsData, { 
+              session: mongoSession,
+              ordered: true // Para asegurar la inserción ordenada
+            });
+          } catch (error) {
+            console.error('Error al crear los asientos:', error);
+            throw new Error('Error al crear los asientos del evento');
+          }
         }
       }
 

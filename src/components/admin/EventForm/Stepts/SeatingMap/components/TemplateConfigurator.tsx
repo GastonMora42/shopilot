@@ -1,120 +1,187 @@
-import { LayoutConfig, LayoutTemplate, TemplateParams } from '@/types/editor';
-import React, { Key, useState } from 'react';
+// components/events/SeatMapConfigurator.tsx
+import React, { useState } from 'react';
+import { Seat } from '@/types';
+import { SeatMap } from '@/components/events/SeatMap';
 
-interface TemplateConfiguratorProps {
-  template: LayoutTemplate;
-  onGenerate: (layout: LayoutConfig) => void;
+interface Section {
+  id: string;
+  name: string;
+  type: 'REGULAR' | 'VIP' | 'DISABLED';
+  price: number;
+  color: string;
+}
+
+interface SeatMapConfiguratorProps {
+  onGenerate: (config: { seats: Seat[], sections: Section[] }) => void;
   onBack: () => void;
 }
-  export const TemplateConfigurator: React.FC<TemplateConfiguratorProps> = ({
-    template,
-    onGenerate,
-    onBack
-  }) => {
-    const [params, setParams] = useState<TemplateParams>({
-        totalRows: 10,
-        seatsPerRow: 20,
-        aislePositions: [10],
-        sectionConfigs: [
-          {
-            id: 'regular',
-            name: 'Regular',
-            type: 'REGULAR',
-            color: '#3B82F6',
-            price: 100,
-            rowRange: [3, 9]
-          },
-          {
-            id: 'vip',
-            name: 'VIP',
-            type: 'VIP',
-            color: '#EF4444',
-            price: 200,
-            rowRange: [0, 2]
-          }
-        ]
-      });
-  
-    const handleGenerate = () => {
-      const layout = template.generateLayout(params);
-      onGenerate(layout);
-    };
-  
-    return (
-      <div className="space-y-6 p-6">
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={onBack}
-            className="text-gray-600 hover:text-gray-900"
-          >
-            ← Volver
-          </button>
-          <h3 className="text-lg font-medium text-gray-900">
-            Configurar {template.name}
-          </h3>
-        </div>
-  
-        {/* Configuración básica */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Número de Filas
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="50"
-              value={params.totalRows}
-              onChange={(e) => setParams((prev: any) => ({
-                ...prev,
-                totalRows: Number(e.target.value)
-              }))}
-              className="w-full p-2 border rounded-md"
-            />
-          </div>
-  
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Asientos por Fila
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="50"
-              value={params.seatsPerRow}
-              onChange={(e) => setParams((prev: any) => ({
-                ...prev,
-                seatsPerRow: Number(e.target.value)
-              }))}
-              className="w-full p-2 border rounded-md"
-            />
-          </div>
-        </div>
-  
-        {/* Configuración de secciones */}
-        <div className="space-y-4">
-          <h4 className="font-medium text-gray-900">Secciones</h4>
-          {params.sectionConfigs.map((section: { id: Key | null | undefined; }, index: any) => (
-            <div key={section.id} className="border rounded-lg p-4">
-              {/* ... Campos de configuración de sección ... */}
-            </div>
-          ))}
-        </div>
-  
-        <div className="flex justify-end space-x-4">
-          <button
-            onClick={onBack}
-            className="px-4 py-2 border rounded-md hover:bg-gray-50"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleGenerate}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Generar Layout
-          </button>
-        </div>
-      </div>
-    );
+
+export const SeatMapConfigurator: React.FC<SeatMapConfiguratorProps> = ({
+  onGenerate,
+  onBack
+}) => {
+  const [seats, setSeats] = useState<Seat[]>([]);
+  const [sections, setSections] = useState<Section[]>([
+    {
+      id: '1',
+      name: 'Regular',
+      type: 'REGULAR',
+      price: 1000,
+      color: '#3B82F6'
+    }
+  ]);
+  const [selectedSection, setSelectedSection] = useState(sections[0].id);
+
+  const handleSeatCreate = (seatData: Partial<Seat>) => {
+    const newSeat = {
+      _id: Date.now().toString(),
+      ...seatData
+    } as Seat;
+    setSeats(prev => [...prev, newSeat]);
   };
+
+  const handleSeatDelete = (seatId: string) => {
+    setSeats(prev => prev.filter(s => s._id !== seatId));
+  };
+
+  return (
+    <div className="space-y-6 p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onBack}
+          className="text-gray-600 hover:text-gray-900"
+        >
+          ← Volver
+        </button>
+        <h3 className="text-lg font-medium">Configurar Mapa de Asientos</h3>
+      </div>
+
+      {/* Secciones */}
+      <div className="space-y-4">
+        <h4 className="font-medium">Secciones</h4>
+        <div className="flex flex-wrap gap-2">
+          {sections.map(section => (
+            <button
+              key={section.id}
+              onClick={() => setSelectedSection(section.id)}
+              className={`px-4 py-2 rounded-lg ${
+                selectedSection === section.id ? 'ring-2 ring-offset-2' : ''
+              }`}
+              style={{ backgroundColor: section.color, color: 'white' }}
+            >
+              {section.name}
+            </button>
+          ))}
+          <button
+            onClick={() => {
+              const newSection: Section = {
+                id: Date.now().toString(),
+                name: `Sección ${sections.length + 1}`,
+                type: 'REGULAR',
+                price: 1000,
+                color: `#${Math.floor(Math.random()*16777215).toString(16)}`
+              };
+              setSections(prev => [...prev, newSection]);
+            }}
+            className="px-4 py-2 border-2 border-dashed rounded-lg hover:border-gray-400"
+          >
+            + Agregar Sección
+          </button>
+        </div>
+
+        {/* Editor de sección seleccionada */}
+        {sections.map(section => section.id === selectedSection && (
+          <div key={section.id} className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+            <div>
+              <label className="block text-sm font-medium mb-2">Nombre</label>
+              <input
+                type="text"
+                value={section.name}
+                onChange={e => {
+                  setSections(prev => prev.map(s =>
+                    s.id === section.id ? { ...s, name: e.target.value } : s
+                  ));
+                }}
+                className="w-full p-2 border rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Tipo</label>
+              <select
+                value={section.type}
+                onChange={e => {
+                  setSections(prev => prev.map(s =>
+                    s.id === section.id ? { ...s, type: e.target.value as 'REGULAR' | 'VIP' | 'DISABLED' } : s
+                  ));
+                }}
+                className="w-full p-2 border rounded-md"
+              >
+                <option value="REGULAR">Regular</option>
+                <option value="VIP">VIP</option>
+                <option value="DISABLED">Discapacitados</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Precio</label>
+              <input
+                type="number"
+                value={section.price}
+                onChange={e => {
+                  setSections(prev => prev.map(s =>
+                    s.id === section.id ? { ...s, price: Number(e.target.value) } : s
+                  ));
+                }}
+                className="w-full p-2 border rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Color</label>
+              <input
+                type="color"
+                value={section.color}
+                onChange={e => {
+                  setSections(prev => prev.map(s =>
+                    s.id === section.id ? { ...s, color: e.target.value } : s
+                  ));
+                }}
+                className="w-full p-2 border rounded-md"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Mapa de Asientos */}
+      <div className="border rounded-lg p-4">
+        <SeatMap
+          mode="edit"
+          seats={seats}
+          selectedSeats={[]}
+          onSeatClick={() => {}}
+          onSeatCreate={handleSeatCreate}
+          onSeatDelete={handleSeatDelete}
+          sections={sections}
+          selectedSection={selectedSection}
+        />
+      </div>
+
+      {/* Botones de acción */}
+      <div className="flex justify-end space-x-4">
+        <button
+          onClick={onBack}
+          className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={() => onGenerate({ seats, sections })}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          disabled={seats.length === 0}
+        >
+          Generar Mapa
+        </button>
+      </div>
+    </div>
+  );
+};

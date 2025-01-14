@@ -43,45 +43,101 @@ export async function POST(req: Request) {
       );
     }
 
-    // Calcular precio total
-    const total = seats.reduce((sum: number, seat: string) => {
-      const [row, col] = seat.split('-');
-      const rowNumber = parseInt(row);
+    
+// Calcular precio total
+// Calcular precio total
+const total = seats.reduce((sum: number, seatId: string) => {
+  try {
+    if (!/^[A-Z]\d{2}$/.test(seatId)) {
+      throw new Error(`Formato de asiento inválido: ${seatId}`);
+    }
+
+    const rowLetter = seatId[0];
+    const rowNumber = rowLetter.charCodeAt(0) - 65;
+
+    console.log('Processing seat:', {
+      seatId,
+      rowLetter,
+      calculatedRowNumber: rowNumber,
+      convertedToLetter: String.fromCharCode(rowNumber + 65),
+      sections: event.seatingChart.sections
+    });
+
+    // Primero busca la sección correspondiente
+    const section = event.seatingChart.sections.find((s: { rowStart: number; rowEnd: number; name: any; }) => {
+      const isInSection = rowNumber >= s.rowStart && rowNumber <= s.rowEnd;
       
-      const section = event.seatingChart.sections.find((s: { rowStart: number; rowEnd: number; }) => 
-        rowNumber >= s.rowStart && rowNumber <= s.rowEnd
+      console.log(`Checking section ${s.name}:`, {
+        rowNumber,
+        sectionStart: s.rowStart,
+        sectionEnd: s.rowEnd,
+        isInSection,
+        letterEquivalent: {
+          start: String.fromCharCode(s.rowStart + 65),
+          end: String.fromCharCode(s.rowEnd + 65)
+        }
+      });
+      
+      return isInSection;
+    });
+
+    if (!section) {
+      const availableRows = event.seatingChart.sections.map((s: { name: any; rowStart: number; rowEnd: number; }) => ({
+        section: s.name,
+        rows: {
+          start: String.fromCharCode(s.rowStart + 65),
+          end: String.fromCharCode(s.rowEnd + 65)
+        }
+      }));
+
+      console.error('Section mapping error:', {
+        requestedSeat: {
+          id: seatId,
+          letter: rowLetter,
+          number: rowNumber,
+        },
+        availableSections: availableRows
+      });
+
+      throw new Error(
+        `Sección no encontrada para el asiento ${seatId}. ` +
+        `Fila ${rowLetter} (${rowNumber}) no está en ninguna sección configurada.`
       );
+    }
 
-      if (!section) {
-        throw new Error(`Sección no encontrada para el asiento ${seat}`);
-      }
-
-      return sum + section.price;
-    }, 0);
+    return sum + section.price;
+  } catch (error) {
+    console.error(`Error processing seat ${seatId}:`, error);
+    throw error;
+  }
+}, 0);
 
     session = await mongoose.startSession();
     session.startTransaction();
 
-    // Verificar disponibilidad de asientos
-    const seatsStatus = await Seat.find({
-      eventId,
-      seatId: { $in: seats },
-      $or: [
-        { status: { $ne: 'RESERVED'} },
-        {
-          status: 'RESERVED',
-          'temporaryReservation.sessionId': { $ne: sessionId }
-        }
-      ]
-    }).session(session);
-
-    if (seatsStatus.length > 0) {
-      throw new Error('Algunos asientos no están disponibles o no están reservados para esta sesión');
+// Verificar disponibilidad de asientos
+const seatsStatus = await Seat.find({
+  eventId,
+  seatId: { $in: seats },
+  $or: [
+    { status: { $ne: 'RESERVED' } },
+    {
+      status: 'RESERVED',
+      'temporaryReservation.sessionId': { $ne: sessionId },
+      'temporaryReservation.expiresAt': { $lt: new Date() }
     }
+  ]
+}).session(session);
+
+if (seatsStatus.length > 0) {
+  console.log('Unavailable seats:', seatsStatus.map(s => s.seatId));
+  throw new Error('Algunos asientos no están disponibles o no están reservados para esta sesión');
+}
 
     // Crear ticket
     const [newTicket] = await Ticket.create([{
       eventId,
+      eventType: event.eventType, // Añadimos esta línea
       seats,
       qrCode: await generateQRCode(),
       status: 'PENDING',
@@ -90,8 +146,9 @@ export async function POST(req: Request) {
         email: buyerInfo.email.toLowerCase().trim()
       },
       price: total,
-      organizerId: event.organizerId // Opcional: guardar referencia al organizador
+      organizerId: event.organizerId
     }], { session });
+
 
     // Actualizar estado de asientos
     const seatUpdateResult = await Seat.updateMany(

@@ -1,11 +1,10 @@
-import { EditorSeat } from "@/types/event";
+import { EditorSeat } from "@/types/editor";
 
 // Tipos básicos
 export type StepKey = 'info' | 'type' | 'tickets' | 'review';
 export type Tool = 'SELECT' | 'DRAW' | 'ERASE';
 export type SectionType = 'REGULAR' | 'VIP' | 'DISABLED';
-export type SeatStatus = 'ACTIVE' | 'DISABLED';
-
+export type SeatStatus = 'ACTIVE' | 'AVAILABLE' | 'DISABLED';
 // Interfaces base
 export interface Point {
   x: number;

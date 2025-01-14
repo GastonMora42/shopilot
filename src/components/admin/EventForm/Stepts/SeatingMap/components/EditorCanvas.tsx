@@ -1,88 +1,110 @@
 import React, { useRef, useCallback, useState, useMemo } from 'react';
-import { motion, useDragControls } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
   EditorCanvasProps, 
   Point, 
   DragState, 
-  EditorSection, 
-} from '../types';
-import { transformUtils, selectionUtils } from '../utils/transform';
-import { SeatComponent } from './SeatComponent';
-import { GRID_SIZE } from '../constants';
+  EditorSeat,
+  EditorSection 
+} from '@/types/editor';
+
+const GRID_SIZE = 30;
 
 export const EditorCanvas: React.FC<EditorCanvasProps> = ({
   state,
   bounds,
+  showGrid = true,
   onSeatAdd,
   onSeatSelect,
   onSeatsUpdate,
   onSectionSelect
 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
-  const dragControls = useDragControls();
-  const [isDrawing, setIsDrawing] = useState(false);
   const [dragState, setDragState] = useState<DragState>({
     start: null,
     current: null,
     mode: null
   });
-
-  // Grid settings
-  const gridSize = GRID_SIZE * state.zoom;
-  const gridOffset = {
-    x: state.pan.x % gridSize,
-    y: state.pan.y % gridSize
-  };
+  const [isDragging, setIsDragging] = useState(false);
 
   // Transform seats for rendering
   const transformedSeats = useMemo(() => 
     state.seats.map(seat => ({
       ...seat,
-      screenPosition: transformUtils.worldToScreen(seat.position, state.pan, state.zoom)
+      screenPosition: {
+        x: seat.position.x + state.pan.x,
+        y: seat.position.y + state.pan.y
+      }
     })),
-    [state.seats, state.pan, state.zoom]
+    [state.seats, state.pan]
   );
 
-  // Create new seat with validation
+  const Tooltip = ({ children }: { children: React.ReactNode }) => (
+    <div className="absolute top-full mt-1 px-2 py-1 text-xs text-white bg-gray-800 rounded whitespace-nowrap">
+      {children}
+    </div>
+  );
+  
+  // Función para crear nuevo asiento
   const createNewSeat = useCallback((point: Point) => {
     if (!state.activeSectionId) return;
 
-    const worldPoint = transformUtils.screenToWorld(point, state.pan, state.zoom);
-    const snappedPoint = transformUtils.snapToGrid(worldPoint, GRID_SIZE);
-    
-    const row = Math.floor(snappedPoint.y / GRID_SIZE);
-    const column = Math.floor(snappedPoint.x / GRID_SIZE);
-    
+    const gridPoint = {
+      x: Math.floor((point.x - state.pan.x) / (GRID_SIZE * state.zoom)),
+      y: Math.floor((point.y - state.pan.y) / (GRID_SIZE * state.zoom))
+    };
+
+    const activeSection = state.sections.find(s => s.id === state.activeSectionId);
+    if (!activeSection) return;
+
+    // Verificar si ya existe un asiento en esa posición
     const existingSeat = state.seats.find(
-      s => s.row === row && s.column === column
+      s => s.row === gridPoint.y && s.column === gridPoint.x
     );
 
     if (!existingSeat) {
-      const activeSection = state.sections.find(s => s.id === state.activeSectionId);
-      if (!activeSection) return;
-
-      if (
-        row >= activeSection.rowStart - 1 &&
-        row <= activeSection.rowEnd - 1 &&
-        column >= activeSection.columnStart - 1 &&
-        column <= activeSection.columnEnd - 1
-      ) {
-        onSeatAdd({
-          position: snappedPoint,
-          sectionId: state.activeSectionId,
-          row,
-          column,
-          label: `${String.fromCharCode(65 + row)}${column + 1}`,
-          status: 'ACTIVE',
-          screenPosition: point
-        });
-      }
+      onSeatAdd({
+        row: gridPoint.y,
+        column: gridPoint.x,
+        sectionId: state.activeSectionId,
+        position: {
+          x: gridPoint.x * GRID_SIZE,
+          y: gridPoint.y * GRID_SIZE
+        },
+        label: `R${gridPoint.y + 1}C${gridPoint.x + 1}`
+      });
     }
-  }, [state.activeSectionId, state.pan, state.zoom, state.seats, state.sections, onSeatAdd]);
+  }, [state.activeSectionId, state.sections, state.seats, state.pan, state.zoom, onSeatAdd]);
 
+  // Función para mover asientos
+  const moveSeat = useCallback((seat: EditorSeat, delta: Point) => {
+    const newPosition = {
+      x: seat.position.x + delta.x,
+      y: seat.position.y + delta.y
+    };
+
+    const gridPosition = {
+      x: Math.round(newPosition.x / GRID_SIZE),
+      y: Math.round(newPosition.y / GRID_SIZE)
+    };
+
+    onSeatsUpdate(
+      {
+        row: gridPosition.y,
+        column: gridPosition.x,
+        position: {
+          x: gridPosition.x * GRID_SIZE,
+          y: gridPosition.y * GRID_SIZE
+        }
+      },
+      [seat.id]
+    );
+  }, [onSeatsUpdate]);
+
+  // Manejadores de eventos del mouse
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!canvasRef.current) return;
-
+    
     const rect = canvasRef.current.getBoundingClientRect();
     const point = {
       x: e.clientX - rect.left,
@@ -91,17 +113,16 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
 
     if (state.tool === 'DRAW') {
       createNewSeat(point);
-      setIsDrawing(true);
       setDragState({
         start: point,
         current: point,
         mode: 'DRAW'
       });
-    } else {
+    } else if (state.tool === 'SELECT') {
       setDragState({
         start: point,
         current: point,
-        mode: state.tool === 'SELECT' ? 'SELECT' : 'PAN'
+        mode: 'SELECT'
       });
     }
   };
@@ -120,48 +141,52 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
       current: point
     }));
 
-    if (isDrawing && state.tool === 'DRAW') {
+    if (dragState.mode === 'DRAW') {
       createNewSeat(point);
     }
   };
 
   const handleMouseUp = () => {
     if (dragState.mode === 'SELECT' && dragState.start && dragState.current) {
-      const selectedSeats = selectionUtils.getSeatsInSelection(
-        transformedSeats,
-        { start: dragState.start, end: dragState.current }
-      );
+      // Seleccionar asientos dentro del área
+      const selectedSeats = transformedSeats.filter(seat => {
+        const isInSelectionBox = 
+          seat.screenPosition.x >= Math.min(dragState.start!.x, dragState.current!.x) &&
+          seat.screenPosition.x <= Math.max(dragState.start!.x, dragState.current!.x) &&
+          seat.screenPosition.y >= Math.min(dragState.start!.y, dragState.current!.y) &&
+          seat.screenPosition.y <= Math.max(dragState.start!.y, dragState.current!.y);
+        return isInSelectionBox;
+      });
+
       onSeatSelect(selectedSeats.map(seat => seat.id));
     }
 
-    setIsDrawing(false);
     setDragState({
       start: null,
       current: null,
       mode: null
     });
+    setIsDragging(false);
   };
 
-  const renderSections = () => {
-    return state.sections.map((section: EditorSection) => (
+  // Renderizado de la cuadrícula
+  const renderGrid = () => {
+    if (!showGrid) return null;
+  
+    return (
       <div
-        key={section.id}
-        className={`absolute border-2 ${
-          section.id === state.activeSectionId
-            ? 'border-blue-500'
-            : 'border-gray-300'
-        } rounded-md bg-opacity-20`}
+        className="absolute inset-0 pointer-events-none"
         style={{
-          left: section.columnStart * gridSize + state.pan.x,
-          top: section.rowStart * gridSize + state.pan.y,
-          width: (section.columnEnd - section.columnStart + 1) * gridSize,
-          height: (section.rowEnd - section.rowStart + 1) * gridSize,
-          backgroundColor: section.color,
-          opacity: 0.2
+          backgroundImage: `
+            linear-gradient(to right, #E5E7EB 1px, transparent 1px),
+            linear-gradient(to bottom, #E5E7EB 1px, transparent 1px)
+          `,
+          backgroundSize: `${GRID_SIZE * state.zoom}px ${GRID_SIZE * state.zoom}px`,
+          backgroundPosition: `${state.pan.x}px ${state.pan.y}px`,
+          opacity: 0.5
         }}
-        onClick={() => onSectionSelect?.(section.id)}
       />
-    ));
+    );
   };
 
   return (
@@ -173,40 +198,75 @@ export const EditorCanvas: React.FC<EditorCanvasProps> = ({
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     >
-      {/* Grid */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage: 'radial-gradient(circle, #ccc 1px, transparent 1px)',
-          backgroundSize: `${gridSize}px ${gridSize}px`,
-          backgroundPosition: `${gridOffset.x}px ${gridOffset.y}px`
-        }}
-      />
+      {renderGrid()}
 
-      {/* Main container */}
       <motion.div
         className="absolute inset-0"
         style={{
-          scale: state.zoom,
-          x: state.pan.x,
-          y: state.pan.y
+          transform: `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`
         }}
-        drag={state.tool === 'SELECT' && !dragState.start}
-        dragControls={dragControls}
-        dragMomentum={false}
       >
-        {renderSections()}
-        {transformedSeats.map(seat => (
-          <SeatComponent
-            key={seat.id}
-            seat={seat}
-            selected={state.selectedSeats.includes(seat.id)}
-            tool={state.tool}
-            sectionColor={
-              state.sections?.find(s => s.id === seat.sectionId)?.color
-            }
-          />
-        ))}
+        {/* Render sections */}
+{state.sections.map(section => (
+  <div
+    key={section.id}
+    className={`absolute transition-all duration-200
+      ${section.id === state.activeSectionId 
+        ? 'border-2 border-blue-500 ring-4 ring-blue-200 ring-opacity-50' 
+        : 'border border-gray-300'}`}
+    style={{
+      left: section.columnStart * GRID_SIZE,
+      top: section.rowStart * GRID_SIZE,
+      width: (section.columnEnd - section.columnStart + 1) * GRID_SIZE,
+      height: (section.rowEnd - section.rowStart + 1) * GRID_SIZE,
+      backgroundColor: section.color,
+      opacity: section.id === state.activeSectionId ? 0.3 : 0.1,
+      borderRadius: '0.5rem'
+    }}
+    onClick={() => onSectionSelect(section.id)}
+  />
+))}
+
+        {/* Render seats */}
+{transformedSeats.map(seat => (
+  <motion.div
+    key={seat.id}
+    className={`absolute flex items-center justify-center 
+      w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded 
+      ${state.selectedSeats.includes(seat.id) ? 'ring-2 ring-blue-500' : ''}
+      ${seat.status === 'DISABLED' ? 'opacity-50' : ''}`}
+    style={{
+      left: seat.screenPosition.x,
+      top: seat.screenPosition.y,
+      backgroundColor: state.sections.find(s => s.id === seat.sectionId)?.color || '#E5E7EB',
+      cursor: state.tool === 'SELECT' ? 'move' : 'pointer',
+      fontSize: '0.75rem',
+      fontWeight: 'medium',
+      color: 'white',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    }}
+    whileHover={{ scale: 1.1 }}
+    animate={{
+      scale: state.selectedSeats.includes(seat.id) ? 1.1 : 1
+    }}
+    
+    onMouseEnter={(e) => {
+      if (state.tool === 'SELECT') {
+        e.currentTarget.title = 'Arrastra para mover';
+      }
+    }}
+  >
+    {seat.label}
+    {state.selectedSeats.includes(seat.id) && (
+      <Tooltip>
+        {seat.status === 'AVAILABLE' ? 'Disponible' : 'Deshabilitado'}
+        {` - ${state.sections.find(s => s.id === seat.sectionId)?.name}`}
+      </Tooltip>
+    )}
+    
+    {seat.label}
+  </motion.div>
+))}
       </motion.div>
 
       {/* Selection box */}

@@ -1,5 +1,5 @@
-// components/events/SeatSelector/SeatMap.tsx
-import React, { useMemo } from 'react';
+// components/events/SeatMap.tsx
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Seat } from '@/types';
 
@@ -7,35 +7,62 @@ interface SeatMapProps {
   seats: Seat[];
   selectedSeats: Seat[];
   onSeatClick: (seat: Seat) => void;
+  mode?: 'display' | 'edit';
+  onSeatCreate?: (seat: Partial<Seat>) => void;
+  onSeatDelete?: (seatId: string) => void;
+  sections?: Array<{
+    id: string;
+    name: string;
+    type: 'REGULAR' | 'VIP' | 'DISABLED';
+    price: number;
+    color: string;
+  }>;
+  selectedSection?: string;
 }
 
 export const SeatMap: React.FC<SeatMapProps> = ({
   seats,
   selectedSeats,
-  onSeatClick
+  onSeatClick,
+  mode = 'display',
+  onSeatCreate,
+  onSeatDelete,
+  sections = [],
+  selectedSection
 }) => {
+  const [isDrawing, setIsDrawing] = useState(false);
+
   const {
     maxRow,
     maxCol,
     seatSize,
     padding,
-    viewBox
+    viewBox,
+    grid
   } = useMemo(() => {
-    const maxRow = Math.max(...seats.map(s => s.row));
-    const maxCol = Math.max(...seats.map(s => s.column));
+    const maxRow = mode === 'edit' ? 15 : Math.max(...seats.map(s => s.row));
+    const maxCol = mode === 'edit' ? 20 : Math.max(...seats.map(s => s.column));
     const seatSize = 30;
     const padding = 40;
+    
+    const grid = mode === 'edit' ? Array.from({ length: maxRow * maxCol }) : [];
     
     return {
       maxRow,
       maxCol,
       seatSize,
       padding,
-      viewBox: `0 0 ${(maxCol * seatSize) + (padding * 2)} ${(maxRow * seatSize) + (padding * 2)}`
+      viewBox: `0 0 ${(maxCol * seatSize) + (padding * 2)} ${(maxRow * seatSize) + (padding * 2)}`,
+      grid
     };
-  }, [seats]);
+  }, [seats, mode]);
 
   const getSeatColor = (seat: Seat) => {
+    if (mode === 'edit') {
+      const section = sections.find(s => s.id === seat.section);
+      return section?.color || 'rgb(255, 255, 255)';
+    }
+
     if (selectedSeats.some(s => s._id === seat._id)) {
       return 'rgb(59, 130, 246)'; // blue-500
     }
@@ -56,12 +83,37 @@ export const SeatMap: React.FC<SeatMapProps> = ({
     }
   };
 
+  const handleGridClick = (row: number, col: number) => {
+    if (mode !== 'edit' || !onSeatCreate || !selectedSection) return;
+
+    const existingSeat = seats.find(s => s.row === row && s.column === col);
+    if (existingSeat) {
+      onSeatDelete?.(existingSeat._id);
+    } else {
+      const section = sections.find(s => s.id === selectedSection);
+      if (!section) return;
+
+      onSeatCreate({
+        row,
+        column: col,
+        label: `${String.fromCharCode(65 + row)}${col + 1}`,
+        status: 'AVAILABLE',
+        type: section.type,
+        section: section.id,
+        price: section.price
+      });
+    }
+  };
+
   return (
     <div className="relative w-full overflow-auto bg-gray-100 rounded-lg">
       <svg
         viewBox={viewBox}
         className="w-full"
         style={{ minHeight: '400px' }}
+        onMouseDown={() => setIsDrawing(true)}
+        onMouseUp={() => setIsDrawing(false)}
+        onMouseLeave={() => setIsDrawing(false)}
       >
         {/* Escenario */}
         <rect
@@ -80,6 +132,27 @@ export const SeatMap: React.FC<SeatMapProps> = ({
         >
           ESCENARIO
         </text>
+
+        {/* Grid en modo edición */}
+        {mode === 'edit' && grid.map((_, index) => {
+          const row = Math.floor(index / maxCol);
+          const col = index % maxCol;
+          const x = padding + (col * seatSize);
+          const y = padding + (row * seatSize);
+
+          return (
+            <rect
+              key={`grid-${row}-${col}`}
+              x={x}
+              y={y}
+              width={25}
+              height={25}
+              rx={4}
+              className="fill-transparent stroke-gray-200 stroke-dashed cursor-pointer hover:stroke-gray-400"
+              onClick={() => handleGridClick(row, col)}
+            />
+          );
+        })}
 
         {/* Asientos */}
         {seats.map((seat) => {
@@ -101,12 +174,14 @@ export const SeatMap: React.FC<SeatMapProps> = ({
                 }}
                 className={`
                   stroke-gray-300
-                  ${seat.status === 'AVAILABLE' ? 'cursor-pointer hover:stroke-blue-500' : ''}
-                  ${seat.status === 'RESERVED' ? 'cursor-not-allowed' : ''}
-                  ${seat.status === 'OCCUPIED' ? 'cursor-not-allowed' : ''}
+                  ${mode === 'edit' ? 'cursor-pointer' : ''}
+                  ${mode === 'display' && seat.status === 'AVAILABLE' ? 'cursor-pointer hover:stroke-blue-500' : ''}
+                  ${mode === 'display' && seat.status !== 'AVAILABLE' ? 'cursor-not-allowed' : ''}
                 `}
                 onClick={() => {
-                  if (seat.status === 'AVAILABLE') {
+                  if (mode === 'edit') {
+                    handleGridClick(seat.row, seat.column);
+                  } else if (seat.status === 'AVAILABLE') {
                     onSeatClick(seat);
                   }
                 }}
@@ -126,4 +201,3 @@ export const SeatMap: React.FC<SeatMapProps> = ({
     </div>
   );
 };
-

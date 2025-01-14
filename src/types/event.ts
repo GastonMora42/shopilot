@@ -1,28 +1,38 @@
 // types/event.ts
 
-// Tipos básicos
+import { SeatingChart } from ".";
+import { Seat } from "./seating";
+
+// Tipos básicos (mantenemos los existentes)
 export type StepKey = 'info' | 'type' | 'tickets' | 'review' | 'BASIC_INFO' | 'EVENT_TYPE' | 'TICKETS' | 'REVIEW';
 export type EventType = 'SEATED' | 'GENERAL';
 export type SectionType = 'REGULAR' | 'VIP' | 'DISABLED';
 export type SeatStatus = 'AVAILABLE' | 'RESERVED' | 'OCCUPIED' | 'ACTIVE' | 'DISABLED';
 
+// Interfaces base
 export interface Point {
   x: number;
   y: number;
 }
 
-export interface Seat {
+// Interfaces para tickets generales
+export interface GeneralTicket {
+  _id: string;
   id: string;
-  eventId: string; // Añadimos esta propiedad
-  row: number;
-  column: number;
-  sectionId: string;
-  status: SeatStatus;
-  position: Point;
-  label: string;
+  name: string;
   price: number;
-  type: SectionType;
+  quantity: number;
+  description?: string;
+  availableQuantity?: number; // Cantidad disponible para venta
+  maxPerPurchase?: number;    // Máximo por compra
 }
+
+export interface SelectedGeneralTicket {
+  ticketId: string;
+  quantity: number;
+  price: number;
+}
+
 
 export interface Section {
   id: string;
@@ -34,16 +44,42 @@ export interface Section {
   columnStart: number;
   columnEnd: number;
   color: string;
-  capacity?: number;
+  capacity: number;     // Hacemos capacity requerido
+  availableSeats?: number; // Asientos disponibles
 }
 
-// ... resto del archivo igual ...
-export interface SeatingChart {
-  rows: number;
-  columns: number;
-  sections: Section[];
-  seats: Seat[];
-  customLayout?: boolean;
+// Interfaces para compra de tickets
+export interface TicketPurchase {
+  eventId: string;
+  type: EventType;
+  seated?: {
+    seats: string[];  // IDs de asientos seleccionados
+  };
+  general?: {
+    tickets: SelectedGeneralTicket[];
+  };
+  totalAmount: number;
+}
+
+// Interfaces para el estado de selección
+export interface TicketSelectionState {
+  eventType: EventType;
+  selectedSeats: Seat[];
+  selectedTickets: SelectedGeneralTicket[];
+  totalAmount: number;
+}
+
+// Props para componentes de tickets
+export interface TicketDisplayProps {
+  event: Event;
+  seats?: Seat[];
+  selectedSeats: Seat[];
+  selectedTickets: SelectedGeneralTicket[];
+  onSeatSelect: (seat: Seat) => void;
+  onTicketSelect: (ticketId: string, quantity: number) => void;
+  maxTicketsPerPurchase?: number;
+  isLoading?: boolean;
+  error?: string;
 }
 
 export interface GeneralTicket {
@@ -140,3 +176,69 @@ export interface EditorSection {
   columnEnd: number;
   color: string;
 }
+
+interface BaseEvent {
+  _id: string;
+  name: string;
+  description: string;
+  date: Date;
+  location: string;
+  imageUrl?: string;
+  eventType: EventType;
+  status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
+  maxTicketsPerPurchase: number;
+}
+
+export interface SeatedEvent extends BaseEvent {
+  eventType: 'SEATED';
+  seatingChart: SeatingChart;
+}
+
+export interface GeneralEvent extends BaseEvent {
+  eventType: 'GENERAL';
+  generalTickets: GeneralTicket[];
+}
+
+export type Event = SeatedEvent | GeneralEvent;
+// Modifica la interfaz IEvent para incluir los campos faltantes
+interface IBaseEvent {
+  _id: string;
+  name: string;
+  description: string;
+  date: Date;
+  location: string;
+  imageUrl?: string;
+  eventType: 'SEATED' | 'GENERAL';
+  status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
+  maxTicketsPerPurchase: number;
+}
+
+interface IGeneralEvent extends IBaseEvent {
+  eventType: 'GENERAL';
+  generalTickets: Array<{
+    id: string;
+    name: string;
+    price: number;
+    quantity: number;
+    description?: string;
+  }>;
+}
+
+interface ISeatedEvent extends IBaseEvent {
+  eventType: 'SEATED';
+  seatingChart: {
+    rows: number;
+    columns: number;
+    sections: Array<{
+      name: string;
+      type: 'REGULAR' | 'VIP' | 'DISABLED';
+      price: number;
+      rowStart: number;
+      rowEnd: number;
+      columnStart: number;
+      columnEnd: number;
+    }>;
+  };
+}
+
+export type IEvent = IGeneralEvent | ISeatedEvent;

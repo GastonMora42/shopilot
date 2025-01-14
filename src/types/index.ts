@@ -126,52 +126,6 @@ export interface ReservationResponse {
   unavailableSeats?: string[];
 }
 
-// Nuevas interfaces para tipos de eventos
-interface IBaseEvent {
-  _id: string;
-  name: string;
-  slug: string;
-  description: string;
-  date: Date;
-  location: string;
-  published: boolean;
-  organizerId: string;
-  imageUrl: string;
-  mercadopago: {
-    accessToken: string;
-    userId: string;
-  };
-}
-
-interface IGeneralEvent extends IBaseEvent {
-  eventType: 'GENERAL';
-  ticketTypes: Array<{
-    name: string;
-    price: number;
-    quantity: number;
-    description?: string;
-  }>;
-}
-
-interface ISeatedEvent extends IBaseEvent {
-  eventType: 'SEATED';
-  seatingChart: {
-    rows: number;
-    columns: number;
-    sections: Array<ISection>;
-    customLayout?: {
-      seatMap: Array<{
-        id: string;
-        x: number;
-        y: number;
-        sectionId: string;
-      }>;
-    };
-  };
-}
-
-export type IEvent = IGeneralEvent | ISeatedEvent;
-
 // app/types/event.ts
 export interface Section {
   id: string;
@@ -188,12 +142,12 @@ export interface Section {
 export interface SeatingChart {
   rows: number;
   columns: number;
+  seats: Seat[];
   sections: Section[];
-  customLayout?: boolean;
 }
 
 export interface Seat {
-  id: any;
+  id: string;  // Añadido para compatibilidad
   _id: string;
   eventId: string;
   seatId: string;
@@ -210,3 +164,48 @@ export interface Seat {
   };
   lastReservationAttempt?: Date;
 }
+
+interface IBaseEvent {
+  _id: string;
+  name: string;
+  description: string;
+  date: Date;
+  location: string;
+  imageUrl?: string;
+  eventType: 'SEATED' | 'GENERAL';
+  status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
+  maxTicketsPerPurchase: number;
+  organizerId: string;
+}
+
+export interface IGeneralEvent extends IBaseEvent {
+  eventType: 'GENERAL';
+  generalTickets: Array<{
+    id: string;
+    name: string;
+    price: number;
+    quantity: number;
+    description?: string;
+  }>;
+}
+
+export interface ISeatedEvent extends IBaseEvent {
+  eventType: 'SEATED';
+  seatingChart: {
+    rows: number;
+    columns: number;
+    sections: Array<{
+      id: string;
+      name: string;
+      type: 'REGULAR' | 'VIP' | 'DISABLED';
+      price: number;
+      rowStart: number;
+      rowEnd: number;
+      columnStart: number;
+      columnEnd: number;
+      color: string;
+    }>;
+  };
+}
+
+export type IEvent = IGeneralEvent | ISeatedEvent;

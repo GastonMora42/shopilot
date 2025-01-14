@@ -152,39 +152,84 @@ export const EventForm: React.FC = () => {
     }
   };
 
-  const handleSubmit = async () => {
-    try {
-      setIsLoading(true);
+const validateSeatingStep = (layout: LayoutConfig | null): boolean => {
+  if (!layout) return false;
 
-      const eventData = {
-        ...formData.basicInfo,
-        eventType: formData.eventType,
-        ...(formData.eventType === 'SEATED'
-          ? { seating: formData.seating }
-          : { tickets: formData.generalTickets })
-      };
+  // Validaciones básicas
+  if (!layout.sections.length || !layout.seats.length) {
+    return false;
+  }
 
-      const response = await fetch('/api/events/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(eventData),
-      });
+  // Validar precios
+  const hasInvalidPrices = layout.sections.some(section => section.price <= 0);
+  if (hasInvalidPrices) return false;
 
-      if (!response.ok) {
-        throw new Error('Error al crear el evento');
-      }
+  // Validar que cada sección tenga asientos
+  for (const section of layout.sections) {
+    const sectionSeats = layout.seats.filter(seat => seat.sectionId === section.id);
+    if (sectionSeats.length === 0) return false;
+  }
 
-      const event = await response.json();
-      router.push(`/admin/events/${event._id}`);
-    } catch (error) {
-      console.error('Error:', error);
-      alert('Error al crear el evento');
-    } finally {
-      setIsLoading(false);
+  return true;
+};
+
+const handleSubmit = async () => {
+  try {
+    setIsLoading(true);
+
+    if (formData.eventType === 'SEATED' && !validateSeatingStep(formData.seating)) {
+      alert('Por favor completa correctamente la configuración de asientos');
+      return;
     }
-  };
+
+    const eventData = {
+      ...formData.basicInfo,
+      eventType: formData.eventType,
+      seatingChart: formData.eventType === 'SEATED' ? {
+        rows: formData.seating?.rows || 0,
+        columns: formData.seating?.columns || 0,
+        sections: formData.seating?.sections.map(section => ({
+          name: section.name,
+          type: section.type,
+          price: section.price,
+          rowStart: section.rowStart,
+          rowEnd: section.rowEnd,
+          columnStart: section.columnStart,
+          columnEnd: section.columnEnd
+        })) || [],
+        seats: formData.seating?.seats.map(seat => ({
+          row: seat.row,
+          column: seat.column,
+          section: formData.seating?.sections.find(s => s.id === seat.sectionId)?.name || '',
+          status: seat.status,
+          label: seat.label
+        })) || []
+      } : undefined,
+      tickets: formData.eventType === 'GENERAL' ? formData.generalTickets : undefined
+    };
+
+    const response = await fetch('/api/events/create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(eventData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error al crear el evento');
+    }
+
+    const event = await response.json();
+    router.push(`/admin/events/${event._id}`);
+  } catch (error) {
+    console.error('Error:', error);
+    alert(error instanceof Error ? error.message : 'Error al crear el evento');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="max-w-6xl mx-auto p-6">

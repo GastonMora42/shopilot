@@ -28,7 +28,7 @@ export default function SettingsPage() {
   }, [searchParams]);
 
   const connectMP = () => {
-    // Limpiar cualquier estado de error previo
+    // Limpiar cualquier estado de error previos
     setStatus({});
     
     const authUrl = `https://auth.mercadopago.com.ar/authorization?client_id=${process.env.NEXT_PUBLIC_MP_CLIENT_ID}&response_type=code&platform_id=mp&redirect_uri=${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/mercadopago/callback`;
@@ -169,6 +169,4 @@ export default function SettingsPage() {
   );
 }
 
-function getErrorMessage(error: string): string | undefined {
-  throw new Error('Function not implemented.');
-}
+

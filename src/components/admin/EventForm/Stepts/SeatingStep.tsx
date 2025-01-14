@@ -18,71 +18,65 @@ type StepState =
   | { type: 'CUSTOM_EDITOR'; layout: LayoutConfig }
   | { type: 'EDITOR'; layout: LayoutConfig };
 
-export const SeatingStep: React.FC<SeatingStepProps> = ({
-  initialLayout,
-  onChange,
-  onSave
-}) => {
-  const [stepState, setStepState] = useState<StepState>(
-    initialLayout 
-      ? { type: 'EDITOR', layout: initialLayout }
-      : { type: 'TEMPLATE_SELECT' }
-  );
-
-  const handleTemplateSelect = (template: LayoutTemplate) => {
-    setStepState({ type: 'TEMPLATE_CONFIG', template });
-  };
-
-  const handleCustomLayout = () => {
-    setStepState({
-      type: 'CUSTOM_EDITOR',
-      layout: {
-        seats: [],
-        sections: [{
-          id: 'default',
-          name: 'General',
-          type: 'REGULAR',
-          color: '#3B82F6',
-          price: 100,
-          rowStart: 0,
-          rowEnd: 0,
-          columnStart: 0,
-          columnEnd: 0
-        }],
-        rows: 0,
-        columns: 0
+  export const SeatingStep: React.FC<SeatingStepProps> = ({
+    initialLayout,
+    onChange,
+    onSave
+  }) => {
+    const [stepState, setStepState] = useState<StepState>(
+      initialLayout 
+        ? { type: 'EDITOR', layout: initialLayout }
+        : { type: 'TEMPLATE_SELECT' }
+    );
+    const [errors, setErrors] = useState<string[]>([]);
+  
+    // Validación del layout
+    const validateLayout = (layout: LayoutConfig): boolean => {
+      const newErrors: string[] = [];
+  
+      // Validar secciones
+      if (!layout.sections.length) {
+        newErrors.push('Debe crear al menos una sección');
+        return false;
       }
-    });
-  };
-
-  const handleLayoutGenerate = (layout: LayoutConfig) => {
-    setStepState({ type: 'EDITOR', layout });
-    onChange(layout);
-  };
-
-  return (
-    <div className="h-full">
-
-      {stepState.type === 'TEMPLATE_CONFIG' && (
-        <div className="grid grid-cols-2 gap-6 h-full">
-          <TemplateConfigurator
-            template={stepState.template}
-            onGenerate={handleLayoutGenerate}
-            onBack={() => setStepState({ type: 'TEMPLATE_SELECT' })}
-          />
-          <div className="border-l pl-6">
-            <h4 className="text-sm font-medium text-gray-700 mb-4">
-              Vista Previa
-            </h4>
-            <SeatingPreview
-              seats={[]} // Se actualizará con la preview del template
-              sections={[]} // Se actualizará con la preview del template
-              width={400}
-              height={300}
-            />
+  
+      // Validar que cada sección tenga asientos
+      layout.sections.forEach(section => {
+        const sectionSeats = layout.seats.filter(seat => seat.sectionId === section.id);
+        if (sectionSeats.length === 0) {
+          newErrors.push(`La sección "${section.name}" no tiene asientos asignados`);
+        }
+        if (section.price <= 0) {
+          newErrors.push(`La sección "${section.name}" debe tener un precio válido`);
+        }
+      });
+  
+      // Validar dimensiones
+      if (layout.rows <= 0 || layout.columns <= 0) {
+        newErrors.push('Las dimensiones del mapa son inválidas');
+      }
+  
+      setErrors(newErrors);
+      return newErrors.length === 0;
+    };
+  
+    const handleLayoutChange = (layout: LayoutConfig) => {
+      validateLayout(layout);
+      onChange(layout);
+    };
+  
+    return (
+      <div className="h-full">
+        {errors.length > 0 && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+            <h4 className="text-red-700 font-medium mb-2">Por favor corrige los siguientes errores:</h4>
+            <ul className="list-disc pl-5 space-y-1">
+              {errors.map((error, index) => (
+                <li key={index} className="text-red-600">{error}</li>
+              ))}
+            </ul>
           </div>
-        </div>
-      )}
+        )}
 
       {(stepState.type === 'CUSTOM_EDITOR' || stepState.type === 'EDITOR') && (
         <div className="h-full">

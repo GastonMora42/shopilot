@@ -24,15 +24,37 @@ export async function GET(
     // Obtener todos los asientos
     const allSeats = await Seat.find({ 
       eventId: params.id 
-    }).select('seatId status type section temporaryReservation price').lean();
+    }).select('_id seatId row column status type section label temporaryReservation price').lean();
+
+    console.log('Total seats found:', allSeats.length);
 
     if (!allSeats || allSeats.length === 0) {
       return NextResponse.json({ 
         success: true, 
+        seats: [],
         occupiedSeats: [],
         debug: { totalSeats: 0, occupiedCount: 0 }
       });
     }
+
+    // Preparar los asientos con el formato correcto
+    const formattedSeats = allSeats.map(seat => ({
+      _id: seat._id.toString(),
+      seatId: seat.seatId,
+      row: seat.row,
+      column: seat.column,
+      status: seat.status,
+      type: seat.type,
+      section: seat.section,
+      label: seat.label,
+      price: seat.price,
+      temporaryReservation: seat.temporaryReservation
+        ? {
+            sessionId: seat.temporaryReservation.sessionId,
+            expiresAt: seat.temporaryReservation.expiresAt
+          }
+        : undefined
+    }));
 
     // Filtrar asientos no disponibles
     const occupiedSeats = allSeats
@@ -50,8 +72,14 @@ export async function GET(
           : undefined
       }));
 
+    console.log('Response prepared:', {
+      totalSeats: formattedSeats.length,
+      occupiedSeats: occupiedSeats.length
+    });
+
     return NextResponse.json({ 
-      success: true, 
+      success: true,
+      seats: formattedSeats,
       occupiedSeats,
       debug: {
         totalSeats: allSeats.length,

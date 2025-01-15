@@ -1,4 +1,4 @@
-import { Section } from "@/components/admin/EventForm/Stepts/SeatedTickets/types";
+import { SetStateAction } from "react";
 
 export interface Point {
   x: number;
@@ -13,7 +13,8 @@ export type EditorTool =
   | 'ROW_DRAW'
   | 'SECTION'
   | 'TEXT'
-  | 'SHAPE';
+  | 'SHAPE'
+  | 'SPACE'
 
 export type SeatStatus = 
   | 'AVAILABLE' 
@@ -26,6 +27,18 @@ export type SectionType =
   | 'VIP' 
   | 'DISABLED';
 
+
+  export interface ToolbarProps {
+    tool: EditorTool;
+    onToolChange: (tool: SetStateAction<EditorTool>) => void;
+    onDelete: () => void;
+    hasSelection: boolean;
+    selectedCount?: number;
+    onSave?: () => void;
+    onUndo?: () => void;
+    onRedo?: () => void;
+  }
+  
 // Interfaces principales
 export interface EditorSeat {
   id: string;
@@ -137,7 +150,7 @@ export interface EditorState {
   sections: EditorSection[];
   selectedSeats: string[];
   activeSectionId: string | null;
-  tool: 'SELECT' | 'DRAW' | 'ERASE';
+  tool: EditorTool;
   zoom: number;
   pan: Point;
 }
@@ -164,13 +177,25 @@ export interface SeatingMapEditorProps {
 }
 
 export interface EditorCanvasProps {
-  state: EditorState;
-  bounds: ViewportBounds;
+  state: {
+    seats: EditorSeat[];
+    sections: EditorSection[];
+    selectedSeats: string[];
+    activeSectionId: string | null;
+    tool: EditorTool;  // Asegúrate de usar el tipo actualizado aquí
+    zoom: number;
+    pan: Point;
+  };
+  bounds: {
+    width: number;
+    height: number;
+  };
   showGrid?: boolean;
   onSeatAdd: (seatData: Partial<EditorSeat>) => void;
   onSeatSelect: (seatIds: string[]) => void;
   onSeatsUpdate: (updates: Partial<EditorSeat>, seatIds?: string[]) => void;
   onSectionSelect: (sectionId: string) => void;
+  onDeleteSeat: (seatId: string) => void;  // Agregamos esta línea
 }
 
 export interface TemplateSelectorProps {
@@ -189,7 +214,7 @@ export interface ViewportBounds {
 export interface DragState {
   start: Point | null;
   current: Point | null;
-  mode: 'SELECT' | 'PAN' | 'DRAW' | null;
+  mode: 'SELECT' | 'DRAW' | 'ERASE' | 'PAN' | null;  // Agregamos 'ERASE' aquí
 }
 
 export interface ValidationError {

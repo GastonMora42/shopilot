@@ -6,6 +6,7 @@ interface ToolbarProps {
   tool: EditorState['tool'];
   onToolChange: (tool: EditorState['tool']) => void;
   onDelete: () => void;
+  onSpacingClick?: () => void;
   hasSelection: boolean;
   selectedCount?: number;
   onSave?: () => void;
@@ -37,6 +38,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       label: 'Dibujar',
       shortcut: '(D)',
       description: 'Haz clic o arrastra para dibujar múltiples asientos'
+    },
+    {
+      id: 'SPACE' as const,
+      icon: '⬜',
+      label: 'Espacios',
+      shortcut: '(S)',
+      description: 'Marca espacios que deben permanecer vacíos'
     }
   ];
 
@@ -46,12 +54,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       icon: '🗑️',
       label: 'Borrar',
       shortcut: '(E)',
-      description: 'Selecciona asientos y presiona Delete para eliminar'
+      description: 'Selecciona asientos para eliminarlos'
     }
   ];
 
   const handleDelete = () => {
-    if (!hasSelection) return;
+    if (!hasSelection && tool !== 'ERASE') return;
     
     if (selectedCount > 1) {
       const confirm = window.confirm(`¿Estás seguro de eliminar ${selectedCount} asientos?`);
@@ -60,6 +68,26 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     
     onDelete();
   };
+
+  // Agregar manejador de teclas para borrar
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Delete' && hasSelection) {
+        handleDelete();
+      }
+      // Atajos de teclado para herramientas
+      if (e.ctrlKey) return; // Evitar conflictos con atajos del sistema
+      switch (e.key.toLowerCase()) {
+        case 'v': onToolChange('SELECT'); break;
+        case 'd': onToolChange('DRAW'); break;
+        case 'e': onToolChange('ERASE'); break;
+        case 's': onToolChange('SPACE'); break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [hasSelection, onDelete, onToolChange]);
 
   return (
     <div className="fixed top-4 left-1/2 transform -translate-x-1/2 flex flex-col items-center z-50">
@@ -141,6 +169,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 >
                   <span className="text-xl">↩️</span>
                 </button>
+                
               </Tooltip>
               <Tooltip content="Rehacer (Ctrl+Y)">
                 <button

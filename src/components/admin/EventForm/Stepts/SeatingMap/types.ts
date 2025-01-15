@@ -1,8 +1,7 @@
-import { EditorSeat } from "@/types/editor";
+import { EditorSeat, EditorTool } from "@/types/editor";
 
 // Tipos básicos
 export type StepKey = 'info' | 'type' | 'tickets' | 'review';
-export type Tool = 'SELECT' | 'DRAW' | 'ERASE';
 export type SectionType = 'REGULAR' | 'VIP' | 'DISABLED';
 export type SeatStatus = 'ACTIVE' | 'AVAILABLE' | 'DISABLED';
 // Interfaces base
@@ -42,7 +41,8 @@ export interface EditorState {
   selectedSeats: string[];
   zoom: number;
   pan: Point;
-  tool: 'SELECT' | 'DRAW' | 'ERASE';
+  tool: EditorTool;
+  onToolChange: (tool: EditorTool) => void;
   activeSectionId: string | null;
 }
 
@@ -59,7 +59,8 @@ export interface EditorCanvasProps {
 export interface SeatComponentProps {
   seat: Seat & { screenPosition: Point };
   selected: boolean;
-  tool: Tool;
+  tool: EditorTool;
+  onToolChange: (tool: EditorTool) => void;
   sectionColor?: string;
 }
 
@@ -74,7 +75,7 @@ export interface ViewportBounds {
 export interface DragState {
   start: Point | null;
   current: Point | null;
-  mode: 'SELECT' | 'PAN' | 'DRAW' | null;
+  mode: 'SELECT' | 'PAN' | 'DRAW' | 'ERASE' | null;
 }
 
 // Props adicionales

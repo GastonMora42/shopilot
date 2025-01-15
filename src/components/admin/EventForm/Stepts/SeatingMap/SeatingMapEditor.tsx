@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useRef, useState, useMemo } from 'react';
+import React, { FC, useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   EditorSeat, 
@@ -7,13 +7,13 @@ import {
   ValidationError,
   ValidationResult,
   Point, 
-  SeatStatus
+  SeatStatus,
+  EditorTool
 } from '@/types/editor';
 import { EditorCanvas } from './components/EditorCanvas';
 import { Toolbar } from './components/ToolBar';
 import { Sidebar } from './components/Sidebar';
 import { ZoomControls } from './components/ZoomControls';
-import { Tooltip } from '@/components/ui/ToolTip';
 
 const GRID_SIZE = 30;
 const MIN_ZOOM = 0.5;
@@ -22,8 +22,11 @@ const MAX_ZOOM = 2;
 const DRAWING_TOOLTIP = {
   SELECT: 'Selecciona y mueve asientos haciendo click o arrastrando',
   DRAW: 'Haz click o arrastra para dibujar múltiples asientos',
-  ERASE: 'Selecciona asientos y presiona eliminar o usa esta herramienta'
+  ERASE: 'Selecciona asientos y presiona eliminar o usa esta herramienta',
+  SPACE: 'Marca espacios que deben permanecer vacíos'
 };
+
+
 
 export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
   initialSections = [],
@@ -37,13 +40,96 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
   const [sections, setSections] = useState<EditorSection[]>(initialSections);
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
-  const [tool, setTool] = useState<'SELECT' | 'DRAW' | 'ERASE'>('SELECT');
+  const [tool, setTool] = useState<EditorTool>('SELECT');
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
   const [showDrawingHelp, setShowDrawingHelp] = useState(true);
+  const [emptySpaces, setEmptySpaces] = useState<{row: number, column: number}[]>([]);
+  const [spacing, setSpacing] = useState({ rows: 1, columns: 1 });
+const [showSpacingSettings, setShowSpacingSettings] = useState(false);
+
+const SpacingSettings = () => {
+  return (
+    <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-lg p-4">
+      <h3 className="text-sm font-medium mb-3">Configuración de espaciado</h3>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm text-gray-600 mb-1">
+            Espacio entre filas
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="5"
+            value={spacing.rows}
+            onChange={e => setSpacing(prev => ({
+              ...prev,
+              rows: parseInt(e.target.value) || 1
+            }))}
+            className="w-full p-2 border rounded"
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-gray-600 mb-1">
+            Espacio entre columnas
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="5"
+            value={spacing.columns}
+            onChange={e => setSpacing(prev => ({
+              ...prev,
+              columns: parseInt(e.target.value) || 1
+            }))}
+            className="w-full p-2 border rounded"
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Modificar handleSeatAdd para usar el espaciado
+const handleSeatAdd = (seatData: Partial<EditorSeat>) => {
+  if (!activeSectionId) return;
+
+  const row = seatData.row || 0;
+  const column = seatData.column || 0;
+
+  // Verificar si ya existe un asiento considerando el espaciado
+  const existingSeat = seats.find(seat => 
+    Math.abs(seat.row - row) < spacing.rows &&
+    Math.abs(seat.column - column) < spacing.columns
+  );
+
+  if (existingSeat) return;
+
+  const newSeat: EditorSeat = {
+    id: `seat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    row,
+    column,
+    sectionId: activeSectionId,
+    status: 'AVAILABLE',
+    label: `${String.fromCharCode(65 + row)}${column + 1}`,
+    position: {
+      x: column * (GRID_SIZE * spacing.columns),
+      y: row * (GRID_SIZE * spacing.rows)
+    },
+    screenPosition: {
+      x: column * (GRID_SIZE * spacing.columns),
+      y: row * (GRID_SIZE * spacing.rows)
+    }
+  };
+
+  setSeats(prev => [...prev, newSeat]);
+  setHasUnsavedChanges(true);
+};
+
+
   // Validaciones
 
   const validateLayout = (): ValidationResult => {
@@ -92,55 +178,34 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
     };
   };
 
-  // Manejo de secciones
-  const handleCreateSection = (type: 'REGULAR' | 'VIP') => {
-    const newSection: EditorSection = {
-      id: `section-${Date.now()}`,
-      name: type === 'VIP' ? 'Sección VIP' : 'Sección Regular',
-      type,
-      color: type === 'VIP' ? '#FF4444' : '#3B82F6',
-      price: type === 'VIP' ? 2000 : 1000,
-      rowStart: 0,
-      rowEnd: 0,
-      columnStart: 0,
-      columnEnd: 0
-    };
+// Manejo de asientos
+// Modifica handleSeatAdd
 
-    setSections(prev => [...prev, newSection]);
-    setActiveSectionId(newSection.id);
-    setTool('DRAW');
-    setShowDrawingHelp(true);
-  };
 
-  // Manejo de asientos
-  const handleSeatAdd = (seatData: Partial<EditorSeat>) => {
-    if (!activeSectionId) return;
+// Agrega función para marcar espacios vacíos
+const handleMarkEmptySpace = (row: number, column: number) => {
+  // Si ya existe un asiento, lo removemos
+  setSeats(prev => prev.filter(
+    seat => !(seat.row === row && seat.column === column)
+  ));
 
-    const existingSeat = seats.find(
-      seat => seat.row === seatData.row && seat.column === seatData.column
+  // Agregar o remover espacio vacío
+  setEmptySpaces(prev => {
+    const exists = prev.some(
+      space => space.row === row && space.column === column
     );
-    if (existingSeat) return;
-
-    const newSeat: EditorSeat = {
-      id: `seat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      row: seatData.row || 0,
-      column: seatData.column || 0,
-      sectionId: activeSectionId,
-      status: 'AVAILABLE',
-      label: `R${seatData.row! + 1}C${seatData.column! + 1}`,
-      position: {
-        x: (seatData.column || 0) * GRID_SIZE,
-        y: (seatData.row || 0) * GRID_SIZE
-      },
-      screenPosition: {
-        x: (seatData.column || 0) * GRID_SIZE,
-        y: (seatData.row || 0) * GRID_SIZE
-      }
-    };
-
-    setSeats(prev => [...prev, newSeat]);
-    setHasUnsavedChanges(true);
-  };
+    
+    if (exists) {
+      return prev.filter(
+        space => !(space.row === row && space.column === column)
+      );
+    } else {
+      return [...prev, { row, column }];
+    }
+  });
+  
+  setHasUnsavedChanges(true);
+};
 
   // Manejo de zoom y pan
   const handleZoomChange = (newZoom: number) => {
@@ -219,6 +284,30 @@ const validateBeforeNext = (): boolean => {
       return false;
     }
   }
+  const handleDelete = useCallback(() => {
+    if (selectedSeats.length === 0) return;
+  
+    // Eliminar los asientos seleccionados
+    setSeats(prev => prev.filter(seat => !selectedSeats.includes(seat.id)));
+    
+    // Limpiar la selección
+    setSelectedSeats([]);
+    
+    // Marcar cambios sin guardar
+    setHasUnsavedChanges(true);
+  }, [selectedSeats]);
+  
+  // Agregar handler para la tecla Delete
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Delete' && selectedSeats.length > 0) {
+        handleDelete();
+      }
+    };
+  
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleDelete, selectedSeats]);
 
   // Calcular dimensiones reales
   const maxRow = Math.max(...seats.map(s => s.row)) + 1;
@@ -257,22 +346,22 @@ const validateBeforeNext = (): boolean => {
   return true;
 };
 
-// Actualiza el renderizado del toolbar
-
-// En el componente padre (EventForm o similar), maneja la continuación
-const handleNext = () => {
-  const isValid = validateBeforeNext();
-  if (isValid) {
-    // Continuar al siguiente paso
-    setCurrentStep('NEXT_STEP');
-  }
-};
-
 // Actualiza el botón de siguiente/continuar
   return (
     <div className="relative flex h-full" ref={containerRef}>
       <div className="flex-1 relative overflow-hidden bg-gray-50">
         {/* Editor Canvas */}
+                {/* Toolbar */}
+                <Toolbar
+      tool={tool}
+      onToolChange={setTool}
+      onDelete={handleDelete}
+      hasSelection={selectedSeats.length > 0}
+      selectedCount={selectedSeats.length}
+      onSave={hasUnsavedChanges ? validateBeforeNext : undefined}
+      onSpacingClick={() => setShowSpacingSettings(!showSpacingSettings)}
+    />
+        {showSpacingSettings && <SpacingSettings />}
         <EditorCanvas
           state={{
             seats,
@@ -281,7 +370,7 @@ const handleNext = () => {
             activeSectionId,
             tool,
             zoom,
-            pan
+            pan,
           }}
           bounds={{
             width: containerRef.current?.clientWidth || 0,
@@ -291,25 +380,15 @@ const handleNext = () => {
           onSeatAdd={handleSeatAdd}
           onSeatSelect={setSelectedSeats}
           onSeatsUpdate={(updates, seatIds) => {
-            setSeats(prev => prev.map(seat => 
-              (!seatIds || seatIds.includes(seat.id))
-                ? { ...seat, ...updates }
-                : seat
+            setSeats(prev => prev.map(seat => (!seatIds || seatIds.includes(seat.id))
+              ? { ...seat, ...updates }
+              : seat
             ));
             setHasUnsavedChanges(true);
-          }}
-          onSectionSelect={setActiveSectionId}
-        />
-
-        {/* Toolbar */}
-        <Toolbar
-  tool={tool}
-  onToolChange={setTool}
-  onDelete={handleDelete}
-  hasSelection={selectedSeats.length > 0}
-  selectedCount={selectedSeats.length}
-  onSave={hasUnsavedChanges ? validateBeforeNext : undefined}
-/>
+          } }
+          onSectionSelect={setActiveSectionId} onDeleteSeat={function (seatId: string): void {
+            throw new Error('Function not implemented.');
+          } }        />
 
 
         {/* Zoom Controls */}
@@ -329,7 +408,6 @@ const handleNext = () => {
           >
             <div className="text-sm text-gray-600 max-w-md">
               <p className="font-medium mb-1">Tip de dibujo:</p>
-              <p>{DRAWING_TOOLTIP[tool]}</p>
             </div>
             <button
               onClick={() => setShowDrawingHelp(false)}

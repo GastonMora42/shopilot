@@ -1,7 +1,7 @@
 // pages/events/[slug]/page.tsx
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, memo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Calendar, Clock, MapPin, Share2, AlertCircle, X } from 'lucide-react';
@@ -16,7 +16,8 @@ import { PurchaseSummary } from '@/components/ui/PurchaseSummary';
 import { AdaptiveHeader } from '@/components/ui/AdaptativeHeader';
 import { TicketSelector } from '@/components/tickets/TicketSelector';
 import { GeneralEvent, SelectedGeneralTicket } from '@/types/event';
-import { IEvent, IGeneralEvent, ISeatedEvent } from '@/types/index';
+import { IEvent, ISeatedEvent } from '@/types/index';
+import { EventImage } from '@/components/events/EventImage';
 
 interface UIState {
   loading: boolean;
@@ -33,6 +34,7 @@ interface ControlState {
   reservationTimeout: number | null;
   pollingInterval: NodeJS.Timeout | null;
 }
+
 
 export default function PublicEventPage() {
   const params = useParams();
@@ -73,10 +75,6 @@ export default function PublicEventPage() {
   // Agrega estas funciones type guard al inicio del archivo
 function isSeatedEvent(event: IEvent): event is ISeatedEvent {
   return event.eventType === 'SEATED';
-}
-
-function isGeneralEvent(event: IEvent): event is IGeneralEvent {
-  return event.eventType === 'GENERAL';
 }
 
   // Función para mostrar notificaciones
@@ -224,66 +222,81 @@ const fetchEvent = useCallback(async () => {
   }, [event?._id, event?.eventType, selectedSeats, controlState.sessionId, fetchOccupiedSeats, showToast]);
 
   // Manejo de compra
-  const handlePurchase = useCallback(async (buyerInfo: {
-    name: string;
-    email: string;
-    dni: string;
-    phone?: string;
-  }) => {
-    setUiState(prev => ({ ...prev, isProcessing: true }));
-    try {
-      if (!event?._id) throw new Error('Evento no válido');
+// En tu PublicEventPage o donde manejes la creación del ticket
+const handlePurchase = async (buyerInfo: {
+  name: string;
+  email: string;
+  dni: string;
+  phone?: string;
+}) => {
+  setUiState(prev => ({ ...prev, isProcessing: true }));
+  try {
+    if (!event?._id) throw new Error('Evento no válido');
 
-      const purchaseData = event.eventType === 'SEATED' 
-        ? {
-            eventId: event._id,
-            seats: selectedSeats.map(s => s.seatId),
-            buyerInfo,
-            sessionId: controlState.sessionId
-          }
-        : {
-            eventId: event._id,
-            tickets: selectedTickets,
-            buyerInfo
-          };
-
-      const response = await fetch('/api/tickets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(purchaseData),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Error al procesar la compra');
-      }
-
-      const { checkoutUrl } = await response.json();
-      
-      if (checkoutUrl) {
-        // Guardar información de compra
-        localStorage.setItem('lastPurchaseAttempt', JSON.stringify({
+    // Construir los datos del ticket según el tipo de evento
+    const purchaseData = event.eventType === 'SEATED' 
+      ? {
           eventId: event._id,
-          selectedSeats: event.eventType === 'SEATED' ? selectedSeats.map(s => s.seatId) : undefined,
-          selectedTickets: event.eventType === 'GENERAL' ? selectedTickets : undefined,
-          sessionId: controlState.sessionId,
-          timestamp: new Date().toISOString()
-        }));
+          eventType: 'SEATED',
+          seats: selectedSeats.map(s => s.seatId),
+          buyerInfo,
+          sessionId: controlState.sessionId
+        }
+      : {
+          eventId: event._id,
+          eventType: 'GENERAL',
+          ticketType: {
+            name: selectedTickets[0]?.ticketId, // Asumiendo que solo seleccionas un tipo de ticket
+            price: event.generalTickets.find(t => t.id === selectedTickets[0]?.ticketId)?.price || 0
+          },
+          quantity: selectedTickets[0]?.quantity || 0,
+          buyerInfo,
+          price: selectedTickets.reduce((total, ticket) => {
+            const ticketType = event.generalTickets.find(t => t.id === ticket.ticketId);
+            return total + ((ticketType?.price || 0) * ticket.quantity);
+          }, 0)
+        };
 
-        window.location.href = checkoutUrl;
-      } else {
-        throw new Error('No se pudo obtener el link de pago');
-      }
-    } catch (error) {
-      console.error('Purchase error:', error);
-      showToast(error instanceof Error ? error.message : 'Error al procesar la compra');
-      if (event?.eventType === 'SEATED') {
-        await fetchOccupiedSeats();
-      }
-    } finally {
-      setUiState(prev => ({ ...prev, isProcessing: false }));
+    console.log('Creating ticket request:', purchaseData);
+
+    const response = await fetch('/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(purchaseData),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Error al procesar la compra');
     }
-  }, [event, selectedSeats, selectedTickets, controlState.sessionId, fetchOccupiedSeats, showToast]);
+
+    const { checkoutUrl } = await response.json();
+    
+    if (checkoutUrl) {
+      // Guardar información de compra
+      localStorage.setItem('lastPurchaseAttempt', JSON.stringify({
+        eventId: event._id,
+        eventType: event.eventType,
+        selectedSeats: event.eventType === 'SEATED' ? selectedSeats.map(s => s.seatId) : undefined,
+        selectedTickets: event.eventType === 'GENERAL' ? selectedTickets : undefined,
+        sessionId: controlState.sessionId,
+        timestamp: new Date().toISOString()
+      }));
+
+      window.location.href = checkoutUrl;
+    } else {
+      throw new Error('No se pudo obtener el link de pago');
+    }
+  } catch (error) {
+    console.error('Purchase error:', error);
+    showToast(error instanceof Error ? error.message : 'Error al procesar la compra');
+    if (event?.eventType === 'SEATED') {
+      await fetchOccupiedSeats();
+    }
+  } finally {
+    setUiState(prev => ({ ...prev, isProcessing: false }));
+  }
+};
 
   // Manejo de compartir
   const handleShare = useCallback(async () => {
@@ -379,6 +392,7 @@ const fetchEvent = useCallback(async () => {
       {event.imageUrl && (
         <div className="fixed inset-0 w-screen h-screen overflow-hidden -z-10">
           <div className="absolute inset-0 bg-gradient-to-b from-black/60 to-black/90 z-10" />
+          
           <Image
             src={event.imageUrl}
             alt="Background"
@@ -402,26 +416,34 @@ const fetchEvent = useCallback(async () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                <Card className="backdrop-blur-sm bg-white/90">
-                  <CardContent className="space-y-8">
-                    <div className="flex items-center space-x-2 text-gray-500 pt-6">
-                      <Calendar className="h-5 w-5" />
-                      <span>
-                        {new Date(event.date).toLocaleDateString('es-ES', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </span>
-                      <Clock className="h-5 w-5 ml-4" />
-                      <span>
-                        {new Date(event.date).toLocaleTimeString('es-ES', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                    </div>
+<Card className="backdrop-blur-sm bg-white/90">
+  <CardHeader className="p-0">
+    {event.imageUrl && (
+      <EventImage 
+        imageUrl={event.imageUrl} 
+        eventName={event.name} 
+      />
+    )}
+  </CardHeader>
+  <CardContent className="space-y-8">
+    <div className="flex items-center space-x-2 text-gray-500 pt-6">
+      <Calendar className="h-5 w-5" />
+      <span>
+        {new Date(event.date).toLocaleDateString('es-ES', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        })}
+      </span>
+      <Clock className="h-5 w-5 ml-4" />
+      <span>
+        {new Date(event.date).toLocaleTimeString('es-ES', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })}
+      </span>
+    </div>
 
                     <div className="flex items-center space-x-2 text-gray-500">
                       <MapPin className="h-5 w-5" />

@@ -14,13 +14,37 @@ export async function POST(req: Request) {
   
   try {
     await dbConnect();
-    const { eventId, seats, buyerInfo, sessionId } = await req.json();
+    const { eventId, eventType, seats, ticketType, quantity, buyerInfo, sessionId } = await req.json();
     
-    console.log('Creating ticket request:', { eventId, seats, buyerInfo, sessionId });
+    console.log('Creating ticket request:', { 
+      eventId, 
+      eventType,
+      seats, 
+      ticketType,
+      quantity, 
+      buyerInfo, 
+      sessionId 
+    });
 
-    if (!isValidObjectId(eventId) || !seats?.length || !buyerInfo) {
+    // Validación básica
+    if (!isValidObjectId(eventId) || !buyerInfo) {
       return NextResponse.json(
         { error: 'Datos incompletos o inválidos' },
+        { status: 400 }
+      );
+    }
+
+    // Validación específica por tipo de evento
+    if (eventType === 'SEATED' && (!seats?.length)) {
+      return NextResponse.json(
+        { error: 'Asientos requeridos para evento con asientos' },
+        { status: 400 }
+      );
+    }
+
+    if (eventType === 'GENERAL' && (!ticketType || !quantity)) {
+      return NextResponse.json(
+        { error: 'Tipo de ticket y cantidad requeridos para evento general' },
         { status: 400 }
       );
     }
@@ -43,102 +67,98 @@ export async function POST(req: Request) {
       );
     }
 
-    
-// Calcular precio total
-// Calcular precio total
-const total = seats.reduce((sum: number, seatId: string) => {
-  try {
-    if (!/^[A-Z]\d{2}$/.test(seatId)) {
-      throw new Error(`Formato de asiento inválido: ${seatId}`);
-    }
+    let total = 0;
 
-    const rowLetter = seatId[0];
-    const rowNumber = rowLetter.charCodeAt(0) - 65;
+    if (eventType === 'SEATED') {
+      // Mantener la lógica existente para cálculo de precio en eventos con asientos
+      total = seats.reduce((sum: number, seatId: string) => {
+        try {
+          if (!/^[A-Z]\d{2}$/.test(seatId)) {
+            throw new Error(`Formato de asiento inválido: ${seatId}`);
+          }
 
-    console.log('Processing seat:', {
-      seatId,
-      rowLetter,
-      calculatedRowNumber: rowNumber,
-      convertedToLetter: String.fromCharCode(rowNumber + 65),
-      sections: event.seatingChart.sections
-    });
+          const rowLetter = seatId[0];
+          const rowNumber = rowLetter.charCodeAt(0) - 65;
 
-    // Primero busca la sección correspondiente
-    const section = event.seatingChart.sections.find((s: { rowStart: number; rowEnd: number; name: any; }) => {
-      const isInSection = rowNumber >= s.rowStart && rowNumber <= s.rowEnd;
-      
-      console.log(`Checking section ${s.name}:`, {
-        rowNumber,
-        sectionStart: s.rowStart,
-        sectionEnd: s.rowEnd,
-        isInSection,
-        letterEquivalent: {
-          start: String.fromCharCode(s.rowStart + 65),
-          end: String.fromCharCode(s.rowEnd + 65)
+          console.log('Processing seat:', {
+            seatId,
+            rowLetter,
+            calculatedRowNumber: rowNumber,
+            convertedToLetter: String.fromCharCode(rowNumber + 65),
+            sections: event.seatingChart.sections
+          });
+
+          const section = event.seatingChart.sections.find((s: { rowStart: number; rowEnd: number; name: any; }) => {
+            const isInSection = rowNumber >= s.rowStart && rowNumber <= s.rowEnd;
+            
+            console.log(`Checking section ${s.name}:`, {
+              rowNumber,
+              sectionStart: s.rowStart,
+              sectionEnd: s.rowEnd,
+              isInSection,
+              letterEquivalent: {
+                start: String.fromCharCode(s.rowStart + 65),
+                end: String.fromCharCode(s.rowEnd + 65)
+              }
+            });
+            
+            return isInSection;
+          });
+
+          if (!section) {
+            const availableRows = event.seatingChart.sections.map((s: { name: any; rowStart: number; rowEnd: number; }) => ({
+              section: s.name,
+              rows: {
+                start: String.fromCharCode(s.rowStart + 65),
+                end: String.fromCharCode(s.rowEnd + 65)
+              }
+            }));
+
+            throw new Error(
+              `Sección no encontrada para el asiento ${seatId}. ` +
+              `Fila ${rowLetter} (${rowNumber}) no está en ninguna sección configurada.`
+            );
+          }
+
+          return sum + section.price;
+        } catch (error) {
+          console.error(`Error processing seat ${seatId}:`, error);
+          throw error;
         }
-      });
-      
-      return isInSection;
-    });
-
-    if (!section) {
-      const availableRows = event.seatingChart.sections.map((s: { name: any; rowStart: number; rowEnd: number; }) => ({
-        section: s.name,
-        rows: {
-          start: String.fromCharCode(s.rowStart + 65),
-          end: String.fromCharCode(s.rowEnd + 65)
-        }
-      }));
-
-      console.error('Section mapping error:', {
-        requestedSeat: {
-          id: seatId,
-          letter: rowLetter,
-          number: rowNumber,
-        },
-        availableSections: availableRows
-      });
-
-      throw new Error(
-        `Sección no encontrada para el asiento ${seatId}. ` +
-        `Fila ${rowLetter} (${rowNumber}) no está en ninguna sección configurada.`
-      );
+      }, 0);
+    } else {
+      // Cálculo de precio para tickets generales
+      total = ticketType.price * quantity;
     }
-
-    return sum + section.price;
-  } catch (error) {
-    console.error(`Error processing seat ${seatId}:`, error);
-    throw error;
-  }
-}, 0);
 
     session = await mongoose.startSession();
     session.startTransaction();
 
-// Verificar disponibilidad de asientos
-const seatsStatus = await Seat.find({
-  eventId,
-  seatId: { $in: seats },
-  $or: [
-    { status: { $ne: 'RESERVED' } },
-    {
-      status: 'RESERVED',
-      'temporaryReservation.sessionId': { $ne: sessionId },
-      'temporaryReservation.expiresAt': { $lt: new Date() }
+    if (eventType === 'SEATED') {
+      // Verificar disponibilidad de asientos solo para eventos con asientos
+      const seatsStatus = await Seat.find({
+        eventId,
+        seatId: { $in: seats },
+        $or: [
+          { status: { $ne: 'RESERVED' } },
+          {
+            status: 'RESERVED',
+            'temporaryReservation.sessionId': { $ne: sessionId },
+            'temporaryReservation.expiresAt': { $lt: new Date() }
+          }
+        ]
+      }).session(session);
+
+      if (seatsStatus.length > 0) {
+        console.log('Unavailable seats:', seatsStatus.map(s => s.seatId));
+        throw new Error('Algunos asientos no están disponibles o no están reservados para esta sesión');
+      }
     }
-  ]
-}).session(session);
 
-if (seatsStatus.length > 0) {
-  console.log('Unavailable seats:', seatsStatus.map(s => s.seatId));
-  throw new Error('Algunos asientos no están disponibles o no están reservados para esta sesión');
-}
-
-    // Crear ticket
-    const [newTicket] = await Ticket.create([{
+    // Crear ticket con campos según el tipo de evento
+    const ticketData = {
       eventId,
-      eventType: event.eventType, // Añadimos esta línea
-      seats,
+      eventType,
       qrCode: await generateQRCode(),
       status: 'PENDING',
       buyerInfo: {
@@ -147,43 +167,60 @@ if (seatsStatus.length > 0) {
       },
       price: total,
       organizerId: event.organizerId
-    }], { session });
+    };
 
-
-    // Actualizar estado de asientos
-    const seatUpdateResult = await Seat.updateMany(
-      {
-        eventId,
-        seatId: { $in: seats },
-        'temporaryReservation.sessionId': sessionId
-      },
-      {
-        $set: {
-          ticketId: newTicket._id,
-          status: 'RESERVED'
-        }
-      },
-      { session }
-    );
-    
-    if (seatUpdateResult.modifiedCount !== seats.length) {
-      throw new Error('No se pudieron actualizar todos los asientos');
+    if (eventType === 'SEATED') {
+      Object.assign(ticketData, { seats });
+    } else {
+      Object.assign(ticketData, { 
+        ticketType,
+        quantity
+      });
     }
 
-    // Crear preferencia de MercadoPago usando el token del organizador
+    const [newTicket] = await Ticket.create([ticketData], { session });
+
+    if (eventType === 'SEATED') {
+      // Actualizar estado de asientos solo para eventos con asientos
+      const seatUpdateResult = await Seat.updateMany(
+        {
+          eventId,
+          seatId: { $in: seats },
+          'temporaryReservation.sessionId': sessionId
+        },
+        {
+          $set: {
+            ticketId: newTicket._id,
+            status: 'RESERVED'
+          }
+        },
+        { session }
+      );
+      
+      if (seatUpdateResult.modifiedCount !== seats.length) {
+        throw new Error('No se pudieron actualizar todos los asientos');
+      }
+    }
+
+    // Crear preferencia de MercadoPago
     const preference = await createPreference({
       _id: newTicket._id.toString(),
       eventName: event.name,
       price: newTicket.price,
-      description: `${seats.length} entrada(s) para ${event.name}`,
-      organizerAccessToken: organizer.mercadopago.accessToken // Añadido: token del organizador
+      description: eventType === 'SEATED' 
+        ? `${seats.length} entrada(s) para ${event.name}`
+        : `${quantity} entrada(s) para ${event.name}`,
+      organizerAccessToken: organizer.mercadopago.accessToken
     });
 
     await session.commitTransaction();
 
     console.log('Ticket created successfully:', {
       id: newTicket._id,
+      eventType,
       seats: newTicket.seats,
+      ticketType: newTicket.ticketType,
+      quantity: newTicket.quantity,
       status: newTicket.status,
       organizerId: event.organizerId
     });
@@ -198,7 +235,10 @@ if (seatsStatus.length > 0) {
       success: true,
       ticket: {
         id: newTicket._id,
+        eventType,
         seats: newTicket.seats,
+        ticketType: newTicket.ticketType,
+        quantity: newTicket.quantity,
         total: newTicket.price
       },
       checkoutUrl: preference.init_point,

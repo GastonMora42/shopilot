@@ -1,7 +1,6 @@
 import { CreditService } from "../services/creditService";
-import { Event } from '@/app/models/Event'; // Asegúrate de que la ruta de importación sea correcta
-import type { IEvent } from '@/types'; // Importa la interfaz si la tienes
-// controllers/eventController.ts
+import { Event } from '@/app/models/Event';
+
 export const createEvent = async (req: { body: any; user: { id: any; }; }, res: { status: (arg0: number) => { (): any; new(): any; json: { (arg0: { error: any; required?: any; }): void; new(): any; }; }; }) => {
     try {
       const eventData = req.body;

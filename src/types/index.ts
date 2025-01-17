@@ -1,211 +1,210 @@
 // types/index.ts
 import { ObjectId, Document } from 'mongoose';
 
-// Status como types para reutilización
+// Types básicos
 export type TicketStatus = 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
-export type SeatStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
+export type SeatStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'ACTIVE' | 'DISABLED';
 export type SeatType = 'REGULAR' | 'VIP' | 'DISABLED';
+export type EventType = 'SEATED' | 'GENERAL';
 
-export interface ISection {
-  name: string;
-  type: SeatType;
-  price: number;
-  rowStart: number;
-  rowEnd: number;
-  columnStart: number;
-  columnEnd: number;
+// Interfaces base
+export interface Point {
+ x: number;
+ y: number;
 }
 
+// Interfaces de Modelos
 export interface ISeat extends Document {
-  _id: ObjectId;
-  eventId: ObjectId;
-  row: number;
-  column: number;
-  number: string;
-  status: SeatStatus;
-  price: number;
-  type: SeatType;
-  ticketId?: ObjectId;
-  createdAt: Date;
-  updatedAt: Date;
+ _id: ObjectId;
+ eventId: ObjectId;
+ seatId: string;
+ row: number;
+ column: number;
+ status: SeatStatus;
+ type: SeatType;
+ price: number;
+ section: string;
+ sectionId: string;
+ label: string;
+ position?: Point;
+ temporaryReservation?: {
+   sessionId: string;
+   expiresAt: Date;
+ };
+ ticketId?: ObjectId;
+ createdAt: Date;
+ updatedAt: Date;
+}
+
+export interface ISection extends Document {
+ id: string;
+ name: string;
+ type: SeatType;
+ price: number;
+ rowStart: number;
+ rowEnd: number;
+ columnStart: number;
+ columnEnd: number;
+ color: string;
+ capacity: number;
+ availableSeats?: number;
+ published: boolean;
 }
 
 export interface ITicket extends Document {
-  _id: string;
-  eventId: ObjectId;
-  seats: string[];
-  buyerInfo: {
-    name: string;
-    email: string;
-    dni: string;
-    phone?: string;
-  };
-  qrCode: string;
-  status: TicketStatus;
-  paymentId?: string;
-  price: number;
-  createdAt: Date;
-  updatedAt: Date;
+ _id: string;
+ eventId: ObjectId;
+ eventType: EventType;
+ seats?: string[];
+ ticketType?: {
+   name: string;
+   price: number;
+ };
+ quantity?: number;
+ buyerInfo: {
+   name: string;
+   email: string;
+   dni: string;
+   phone?: string;
+ };
+ qrCode: string;
+ status: TicketStatus;
+ paymentId?: string;
+ price: number;
+ createdAt: Date;
+ updatedAt: Date;
 }
 
-export interface TicketValidation {
-  success: boolean;
-  ticket?: {
-    eventName: string;
-    buyerName: string;
-    seatNumber: string;
-    status: TicketStatus;
-  };
-  error?: string;
-}
-
-export interface CreateTicketRequest {
-  eventId: string;
-  seats: string[];
-  buyerInfo: {
-    name: string;
-    email: string;
-    dni: string;
-    phone?: string;
-  };
-}
-
-export interface PreferenceData {
-  _id: string;
-  eventName: string;
-  price: number;
-  description: string;
-  seats?: string;
-}
-
-// Interfaces adicionales para respuestas de API
-export interface TicketResponse {
-  success: boolean;
-  ticket?: {
-    id: string;
-    status: TicketStatus;
-    eventName: string;
-    date: string;
-    location: string;
-    seats: string[];
-    qrCode: string;
-    buyerInfo: {
-      name: string;
-      email: string;
-    };
-    price: number;
-  };
-  error?: string;
-}
-
-export interface PaymentVerificationResponse {
-  success: boolean;
-  status?: TicketStatus;
-  paymentId?: string;
-  error?: string;
-}
-
-export interface MercadoPagoWebhookData {
-  type: string;
-  data: {
-    id: string;
-    status: string;
-    external_reference: string;
-  };
-}
-
-export interface SeatReservation {
-  sessionId: string;
-  expiresAt: Date;
-}
-
-export interface ReservationResponse {
-  success: boolean;
-  expiresAt: string;
-  error?: string;
-  unavailableSeats?: string[];
-}
-
-// app/types/event.ts
+// Interfaces para el mapa de asientos
 export interface Section {
-  id: string;
-  name: string;
-  type: 'REGULAR' | 'VIP' | 'DISABLED';
-  price: number;
-  rowStart: number;
-  rowEnd: number;
-  columnStart: number;
-  columnEnd: number;
-  color: string;
-}
-
-export interface SeatingChart {
-  rows: number;
-  columns: number;
-  seats: Seat[];
-  sections: Section[];
+ id: string;
+ name: string;
+ type: SeatType;
+ price: number;
+ rowStart: number;
+ rowEnd: number;
+ columnStart: number;
+ columnEnd: number;
+ color: string;
+ published: boolean;
 }
 
 export interface Seat {
-  id: string;  // Añadido para compatibilidad
-  _id: string;
-  eventId: string;
-  seatId: string;
-  row: number;
-  column: number;
-  status: 'AVAILABLE' | 'RESERVED' | 'OCCUPIED';
-  type: 'REGULAR' | 'VIP' | 'DISABLED';
-  price: number;
-  section: string;
-  label: string;
-  temporaryReservation?: {
-    sessionId: string;
-    expiresAt: Date;
-  };
-  lastReservationAttempt?: Date;
+ _id: string;
+ id: string;
+ eventId: string;
+ seatId: string;
+ row: number;
+ column: number;
+ status: SeatStatus;
+ type: SeatType;
+ price: number;
+ section: string;
+ sectionId: string;
+ label: string;
+ position: Point;
+ temporaryReservation?: {
+   sessionId: string;
+   expiresAt: Date;
+ };
+ lastReservationAttempt?: Date;
 }
 
-interface IBaseEvent {
-  _id: string;
-  name: string;
-  description: string;
-  date: Date;
-  location: string;
-  imageUrl?: string;
-  eventType: 'SEATED' | 'GENERAL';
-  status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
-  maxTicketsPerPurchase: number;
-  organizerId: string;
+export interface SeatingChart {
+ rows: number;
+ columns: number;
+ seats: Seat[];
+ sections: Section[];
+ customLayout?: boolean;
 }
 
-export interface IGeneralEvent extends IBaseEvent {
-  eventType: 'GENERAL';
-  generalTickets: Array<{
-    id: string;
-    name: string;
-    price: number;
-    quantity: number;
-    description?: string;
-  }>;
+// Interfaces para requests/responses
+export interface CreateTicketRequest {
+ eventId: string;
+ eventType: EventType;
+ seats?: string[];
+ ticketType?: {
+   name: string;
+   price: number;
+ };
+ quantity?: number;
+ buyerInfo: {
+   name: string;
+   email: string;
+   dni: string;
+   phone?: string;
+ };
+ sessionId?: string;
 }
 
-export interface ISeatedEvent extends IBaseEvent {
-  eventType: 'SEATED';
-  seatingChart: {
-    rows: number;
-    columns: number;
-    sections: Array<{
-      id: string;
-      name: string;
-      type: 'REGULAR' | 'VIP' | 'DISABLED';
-      price: number;
-      rowStart: number;
-      rowEnd: number;
-      columnStart: number;
-      columnEnd: number;
-      color: string;
-    }>;
-  };
+export interface PreferenceData {
+ _id: string;
+ eventName: string;
+ price: number;
+ description: string;
+ seats?: string;
 }
 
-export type IEvent = IGeneralEvent | ISeatedEvent;
+export interface TicketResponse {
+ success: boolean;
+ ticket?: {
+   id: string;
+   status: TicketStatus;
+   eventName: string;
+   date: string;
+   location: string;
+   seats?: string[];
+   ticketType?: {
+     name: string;
+     quantity: number;
+   };
+   qrCode: string;
+   buyerInfo: {
+     name: string;
+     email: string;
+   };
+   price: number;
+ };
+ error?: string;
+}
+
+export interface TicketValidation {
+ success: boolean;
+ ticket?: {
+   eventName: string;
+   buyerName: string;
+   seatNumber?: string;
+   ticketType?: string;
+   quantity?: number;
+   status: TicketStatus;
+ };
+ error?: string;
+}
+
+export interface PaymentVerificationResponse {
+ success: boolean;
+ status?: TicketStatus;
+ paymentId?: string;
+ error?: string;
+}
+
+export interface MercadoPagoWebhookData {
+ type: string;
+ data: {
+   id: string;
+   status: string;
+   external_reference: string;
+ };
+}
+
+export interface SeatReservation {
+ sessionId: string;
+ expiresAt: Date;
+}
+
+export interface ReservationResponse {
+ success: boolean;
+ expiresAt: string;
+ error?: string;
+ unavailableSeats?: string[];
+}

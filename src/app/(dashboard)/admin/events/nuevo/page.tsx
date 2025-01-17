@@ -10,16 +10,22 @@ import { EventTypeStep } from '@/components/admin/EventForm/Stepts/EventTypeStep
 import { SeatingMapEditor } from '@/components/admin/EventForm/Stepts/SeatingMap/SeatingMapEditor';
 import { GeneralTicketsStep } from '@/components/admin/EventForm/Stepts/GeneralTicketsStep';
 import { ReviewStep } from '@/components/admin/EventForm/Stepts/ReviewStep';
-import {
-  type StepKey,
-  type EventFormData,
-  type SeatingChart,
-  type GeneralTicket,
-  Section,
-  Seat
+import { 
+  Seat, 
+  Section, 
+  SeatStatus, 
+  SeatType 
+} from '@/types/index';  // Importa desde index.ts
+import type { 
+  EditorSeat, 
+  EditorSection 
+} from '@/types/editor';
+import type { 
+  EventFormData, 
+  GeneralTicket, 
+  SeatingChart,
+  StepKey
 } from '@/types/event';
-import { SeatStatus } from '@/types';
-import { EditorSeat, EditorSection } from '@/types/editor';
 
 const INITIAL_SEATING_CHART: SeatingChart = {
   rows: 18,
@@ -34,7 +40,8 @@ const INITIAL_SEATING_CHART: SeatingChart = {
       rowEnd: 14,
       columnStart: 1,
       columnEnd: 12,
-      color: '#3B82F6'
+      color: '#3B82F6',
+      published: false
     },
     {
       id: 'vip',
@@ -45,7 +52,8 @@ const INITIAL_SEATING_CHART: SeatingChart = {
       rowEnd: 18,
       columnStart: 1,
       columnEnd: 12,
-      color: '#EF4444'
+      color: '#EF4444',
+      published: false
     }
   ],
   customLayout: false,
@@ -61,7 +69,8 @@ const INITIAL_FORM_DATA: EventFormData = {
   eventType: 'SEATED',
   seatingChart: INITIAL_SEATING_CHART,
   generalTickets: [],
-  seating: undefined
+  seating: undefined,
+  published: false
 };
 
 const STEPS: Record<StepKey, { title: string; description: string }> = {
@@ -131,40 +140,60 @@ export default function NewEventPage() {
     setFormData(prev => ({ ...prev, generalTickets: tickets }));
   };
 
+  
   const handleSeatingChartChange = (layout: { 
     seats: EditorSeat[]; 
     sections: EditorSection[]; 
     rows: number; 
     columns: number; 
   }) => {
-    // Convertimos los asientos del editor al formato que necesitamos
-    const convertedSeats = layout.seats.map(seat => ({
-      ...seat,
-      label: seat.label || `R${seat.row}C${seat.column}`,
-      status: seat.status === 'ACTIVE' ? 'AVAILABLE' as const : 'DISABLED' as const,
+    // Convertimos los asientos del editor al formato de Seat
+    const convertedSeats: Seat[] = layout.seats.map(seat => ({
+      _id: seat.id, // Aseguramos que tenga _id
+      id: seat.id,
       eventId: '', // Se asignará cuando se cree el evento
+      seatId: seat.label || `R${seat.row}C${seat.column}`,
+      row: seat.row,
+      column: seat.column,
+      status: (seat.status === 'DISABLED' ? 'DISABLED' : 'AVAILABLE') as SeatStatus,
+      type: layout.sections.find(s => s.id === seat.sectionId)?.type || 'REGULAR' as SeatType,
       price: layout.sections.find(s => s.id === seat.sectionId)?.price || 0,
-      type: layout.sections.find(s => s.id === seat.sectionId)?.type || 'REGULAR'
+      section: layout.sections.find(s => s.id === seat.sectionId)?.name || '',
+      sectionId: seat.sectionId,
+      label: seat.label || `R${seat.row}C${seat.column}`,
+      position: seat.position || { x: 0, y: 0 },
+      temporaryReservation: undefined,
+      lastReservationAttempt: undefined
     }));
   
-    const convertedSections = layout.sections.map(section => ({
-      ...section,
-      rowStart: section.rowStart || 1,
-      rowEnd: section.rowEnd || layout.rows,
-      columnStart: section.columnStart || 1,
-      columnEnd: section.columnEnd || layout.columns
+    // Convertimos las secciones asegurándonos que cumplan con el tipo Section
+    const convertedSections: Section[] = layout.sections.map(section => ({
+      id: section.id,
+      name: section.name,
+      type: section.type,
+      price: section.price,
+      rowStart: section.rowStart || 0,
+      rowEnd: section.rowEnd || layout.rows - 1,
+      columnStart: section.columnStart || 0,
+      columnEnd: section.columnEnd || layout.columns - 1,
+      color: section.color,
+      published: false, // Valor por defecto
+      capacity: (section.rowEnd - section.rowStart + 1) * (section.columnEnd - section.columnStart + 1)
     }));
   
-    setFormData(prev => ({
-      ...prev,
-      seatingChart: {
-        rows: layout.rows,
-        columns: layout.columns,
-        seats: convertedSeats,
-        sections: convertedSections,
-        customLayout: prev.seatingChart?.customLayout ?? false
-      }
-    }));
+    setFormData(prev => {
+      const updatedData: EventFormData = {
+        ...prev,
+        seatingChart: {
+          rows: layout.rows,
+          columns: layout.columns,
+          seats: convertedSeats,
+          sections: convertedSections,
+          customLayout: prev.seatingChart?.customLayout ?? false
+        }
+      };
+      return updatedData;
+    });
   };
   
 
@@ -394,19 +423,25 @@ export default function NewEventPage() {
         case 'tickets':
           return formData.eventType === 'SEATED' ? (
             <div className="h-[600px]">
-         <SeatingMapEditor
+    <SeatingMapEditor
   initialSections={formData.seatingChart?.sections ?? []}
   initialSeats={formData.seatingChart?.seats.map(seat => ({
     id: seat.id,
     row: seat.row,
     column: seat.column,
     sectionId: seat.sectionId,
-    status: seat.status === 'AVAILABLE' ? 'ACTIVE' : 'DISABLED',
+    status: seat.status === 'AVAILABLE' ? 'AVAILABLE' : 'DISABLED' as SeatStatus, // Cambiado de 'ACTIVE' a 'AVAILABLE'
     label: seat.label,
     position: seat.position,
-    screenPosition: seat.position || { // Agregamos screenPosition
-      x: seat.column * 30, // Usando GRID_SIZE o un valor fijo
+    screenPosition: seat.position || {
+      x: seat.column * 30,
       y: seat.row * 30
+    },
+    rotation: 0, // Agregamos las propiedades faltantes de EditorSeat
+    properties: {
+      isAisle: false,
+      isHandicap: false,
+      isReserved: false
     }
   })) ?? []}
   onChange={handleSeatingChartChange}

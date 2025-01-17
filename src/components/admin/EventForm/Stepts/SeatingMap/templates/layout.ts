@@ -37,6 +37,7 @@ export const seatingTemplates: LayoutTemplate[] = [
           seats: [],
           sections: []
       }),
+      
       seats: undefined
   },
   {

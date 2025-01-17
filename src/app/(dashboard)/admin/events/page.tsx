@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
-import { IEvent } from '@/types';
 import Link from 'next/link';
+import { IEvent } from '@/types/event';
 
 export default function EventosPage() {
   const [events, setEvents] = useState<IEvent[]>([]);
@@ -126,9 +126,6 @@ export default function EventosPage() {
               <p className="text-sm text-gray-600">{event.location}</p>
               
               <div className="mt-4 space-x-2 flex justify-end">
-                  <Button variant="outline" size="sm">
-                    Editar
-                  </Button>
                 <Button
                   variant={event.published ? "destructive" : "default"}
                   size="sm"

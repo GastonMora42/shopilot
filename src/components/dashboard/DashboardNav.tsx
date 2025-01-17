@@ -3,7 +3,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Calendar, LayoutDashboard, QrCode, Settings, Ticket } from 'lucide-react'
+import { Calendar, LayoutDashboard, QrCode, Settings, Ticket, } from 'lucide-react'
 import { cn } from '@/app/lib/utils'
 
 interface DashboardNavProps {
@@ -29,6 +29,11 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       name: 'Tickets',
       href: '/admin/tickets',
       icon: Ticket
+    },
+    {
+    name: 'Credits',
+    href: '/admin/credits',
+    icon: Ticket
     },
     { 
       name: 'Scanner', 

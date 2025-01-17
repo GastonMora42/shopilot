@@ -1,9 +1,7 @@
-// types/event.ts
-
-import { SeatingChart } from ".";
+import { SeatingChart, SeatType } from ".";
 import { Seat } from "./seating";
 
-// Tipos básicos (mantenemos los existentes)
+// Tipos básicos
 export type StepKey = 'info' | 'type' | 'tickets' | 'review' | 'BASIC_INFO' | 'EVENT_TYPE' | 'TICKETS' | 'REVIEW';
 export type EventType = 'SEATED' | 'GENERAL';
 export type SectionType = 'REGULAR' | 'VIP' | 'DISABLED';
@@ -15,16 +13,16 @@ export interface Point {
   y: number;
 }
 
-// Interfaces para tickets generales
+// Interfaces para tickets
 export interface GeneralTicket {
-  _id: string;
+  _id?: string;
   id: string;
   name: string;
   price: number;
   quantity: number;
   description?: string;
-  availableQuantity?: number; // Cantidad disponible para venta
-  maxPerPurchase?: number;    // Máximo por compra
+  availableQuantity?: number;
+  maxPerPurchase?: number;
 }
 
 export interface SelectedGeneralTicket {
@@ -32,7 +30,6 @@ export interface SelectedGeneralTicket {
   quantity: number;
   price: number;
 }
-
 
 export interface Section {
   id: string;
@@ -44,16 +41,16 @@ export interface Section {
   columnStart: number;
   columnEnd: number;
   color: string;
-  capacity: number;     // Hacemos capacity requerido
-  availableSeats?: number; // Asientos disponibles
+  capacity: number;
+  availableSeats?: number;
 }
 
-// Interfaces para compra de tickets
+// Interfaces para compras
 export interface TicketPurchase {
   eventId: string;
   type: EventType;
   seated?: {
-    seats: string[];  // IDs de asientos seleccionados
+    seats: string[];
   };
   general?: {
     tickets: SelectedGeneralTicket[];
@@ -61,7 +58,6 @@ export interface TicketPurchase {
   totalAmount: number;
 }
 
-// Interfaces para el estado de selección
 export interface TicketSelectionState {
   eventType: EventType;
   selectedSeats: Seat[];
@@ -69,7 +65,7 @@ export interface TicketSelectionState {
   totalAmount: number;
 }
 
-// Props para componentes de tickets
+// Props para componentes
 export interface TicketDisplayProps {
   event: Event;
   seats?: Seat[];
@@ -82,28 +78,22 @@ export interface TicketDisplayProps {
   error?: string;
 }
 
-export interface GeneralTicket {
-  id: string;
-  name: string;
-  price: number;
-  quantity: number;
-  description?: string;
-}
-
-// Interfaces para los formularios
+// Interfaces para formularios
 export interface EventFormData {
-  seating: { sections: Section[]; } | null | undefined;
   name: string;
   description: string;
   date: string;
   location: string;
   imageUrl: string;
   eventType: EventType;
+  published: boolean;
   seatingChart?: SeatingChart;
   generalTickets?: GeneralTicket[];
+  seating?: {
+    sections: Section[];
+  } | null;
 }
 
-// Props de los componentes
 export interface SeatingMapEditorProps {
   initialSections: Section[];
   initialSeats?: Seat[];
@@ -136,7 +126,7 @@ export interface GeneralTicketsStepProps {
   onChange: (tickets: GeneralTicket[]) => void;
 }
 
-// Interfaces para el editor de asientos
+// Interfaces para editor
 export interface EditorState {
   seats: Seat[];
   selectedSeats: string[];
@@ -153,7 +143,6 @@ export interface ViewportBounds {
   maxZoom: number;
 }
 
-// Interfaces para los pasos del formulario
 export interface StepConfig {
   key: StepKey;
   title: string;
@@ -168,7 +157,7 @@ export interface StepIndicatorProps {
 export interface EditorSection {
   id: string;
   name: string;
-  type: 'REGULAR' | 'VIP' | 'DISABLED';
+  type: SectionType;
   price: number;
   rowStart: number;
   rowEnd: number;
@@ -177,7 +166,8 @@ export interface EditorSection {
   color: string;
 }
 
-interface BaseEvent {
+// Interfaces de evento base y tipos
+interface IBaseEvent {
   _id: string;
   name: string;
   description: string;
@@ -187,30 +177,8 @@ interface BaseEvent {
   eventType: EventType;
   status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
   maxTicketsPerPurchase: number;
-}
-
-export interface SeatedEvent extends BaseEvent {
-  eventType: 'SEATED';
-  seatingChart: SeatingChart;
-}
-
-export interface GeneralEvent extends BaseEvent {
-  eventType: 'GENERAL';
-  generalTickets: GeneralTicket[];
-}
-
-export type Event = SeatedEvent | GeneralEvent;
-// Modifica la interfaz IEvent para incluir los campos faltantes
-interface IBaseEvent {
-  _id: string;
-  name: string;
-  description: string;
-  date: Date;
-  location: string;
-  imageUrl?: string;
-  eventType: 'SEATED' | 'GENERAL';
-  status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
-  maxTicketsPerPurchase: number;
+  organizerId: string;
+  published: boolean;
 }
 
 interface IGeneralEvent extends IBaseEvent {
@@ -221,6 +189,7 @@ interface IGeneralEvent extends IBaseEvent {
     price: number;
     quantity: number;
     description?: string;
+    published: boolean;
   }>;
 }
 
@@ -230,15 +199,30 @@ interface ISeatedEvent extends IBaseEvent {
     rows: number;
     columns: number;
     sections: Array<{
+      id: string;
       name: string;
-      type: 'REGULAR' | 'VIP' | 'DISABLED';
+      type: SectionType;
       price: number;
       rowStart: number;
       rowEnd: number;
       columnStart: number;
       columnEnd: number;
+      color: string;
+      published: boolean;
+    }>;
+    seats?: Array<{
+      label: string;
+      status: SeatStatus;
+      eventId: string;
+      price: number;
+      type: SeatType;
+      id: string;
+      row: number;
+      column: number;
+      sectionId: string;
     }>;
   };
 }
 
 export type IEvent = IGeneralEvent | ISeatedEvent;
+export type { SeatingChart, ISeatedEvent, IGeneralEvent };

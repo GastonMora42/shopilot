@@ -9,12 +9,12 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/lib/auth';
 import mongoose from 'mongoose';
 import { 
-  EventType, 
   GeneralTicket, 
-  SeatingChart, 
-  Section,
-  Seat as SeatType
 } from '@/types/event';
+import { SeatingChart } from '@/types';
+import { creditCheck } from '@/app/middlewares/creditCheck';
+import { CreditService } from '@/app/services/creditService';
+
 
 function validateGeneralEvent(tickets: GeneralTicket[]): string | null {
   if (!Array.isArray(tickets) || tickets.length === 0) {
@@ -46,8 +46,6 @@ function validateGeneralEvent(tickets: GeneralTicket[]): string | null {
 
   return null;
 }
-
-// api/events/create/route.ts
 
 function validateSeatingChart(seatingChart: SeatingChart): string | null {
   if (!seatingChart) {
@@ -135,7 +133,7 @@ function validateEvent(data: any): string | null {
 // En api/events/create/route.ts
 async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart): Promise<ISeat[]> {
   const seats: ISeat[] = [];
-  const { sections, customLayout } = seatingChart;
+  const { sections } = seatingChart;
 
   // Ajustar índices para que empiecen desde 0
   sections.forEach(section => {
@@ -190,13 +188,19 @@ export async function POST(req: Request) {
     const data = await req.json();
     console.log('Received event data:', data);
 
-    const validationError = validateEvent(data);
-    if (validationError) {
-      return NextResponse.json({ error: validationError }, { status: 400 });
-    }
-
-    mongoSession = await mongoose.startSession();
-    mongoSession.startTransaction();
+     // Verificar créditos antes de continuar
+     const creditCheckResult = await creditCheck(data, user._id.toString());
+     if (creditCheckResult.error) {
+       return NextResponse.json({ error: creditCheckResult.error }, { status: 400 });
+     }
+ 
+     const validationError = validateEvent(data);
+     if (validationError) {
+       return NextResponse.json({ error: validationError }, { status: 400 });
+     }
+ 
+     mongoSession = await mongoose.startSession();
+     mongoSession.startTransaction();
 
     try {
       // Preparar datos base del evento
@@ -255,9 +259,21 @@ export async function POST(req: Request) {
         }
       }
 
+      if (data.status === 'PUBLISHED') {
+        const credits = creditCheckResult.requiredCredits || 0;
+        await CreditService.deductCredits(
+          user._id.toString(), 
+          credits,
+          event._id.toString()
+        );
+      }
+
+      await mongoSession.commitTransaction();
+
       await mongoSession.commitTransaction();
 
       return NextResponse.json({
+        
         success: true,
         event: {
           ...event.toJSON(),

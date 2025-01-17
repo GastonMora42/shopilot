@@ -1,7 +1,7 @@
 // pages/events/[slug]/page.tsx
 'use client';
 
-import { useEffect, useState, useCallback, memo } from 'react';
+import { useEffect, useState, useCallback, memo, AwaitedReactNode, JSXElementConstructor, Key, ReactElement, ReactNode, ReactPortal } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Calendar, Clock, MapPin, Share2, AlertCircle, X } from 'lucide-react';
@@ -15,9 +15,10 @@ import { Toast } from '@/components/ui/Toast';
 import { PurchaseSummary } from '@/components/ui/PurchaseSummary';
 import { AdaptiveHeader } from '@/components/ui/AdaptativeHeader';
 import { TicketSelector } from '@/components/tickets/TicketSelector';
-import { GeneralEvent, SelectedGeneralTicket } from '@/types/event';
-import { IEvent, ISeatedEvent } from '@/types/index';
+import { IEvent, ISeatedEvent, SelectedGeneralTicket } from '@/types/event';
 import { EventImage } from '@/components/events/EventImage';
+import { IGeneralEvent } from '@/types/event';
+
 
 interface UIState {
   loading: boolean;
@@ -169,7 +170,7 @@ const fetchEvent = useCallback(async () => {
       const updated = prev.filter(t => t.ticketId !== ticketId);
       
       if (quantity > 0 && event?.eventType === 'GENERAL') {
-        const ticket = event.generalTickets.find(t => t.id === ticketId);
+        const ticket = event.generalTickets.find((t: { id: string; }) => t.id === ticketId);
         if (ticket) {
           updated.push({ ticketId, quantity, price: ticket.price });
         }
@@ -247,12 +248,12 @@ const handlePurchase = async (buyerInfo: {
           eventType: 'GENERAL',
           ticketType: {
             name: selectedTickets[0]?.ticketId, // Asumiendo que solo seleccionas un tipo de ticket
-            price: event.generalTickets.find(t => t.id === selectedTickets[0]?.ticketId)?.price || 0
+            price: event.generalTickets.find((t: { id: string; }) => t.id === selectedTickets[0]?.ticketId)?.price || 0
           },
           quantity: selectedTickets[0]?.quantity || 0,
           buyerInfo,
           price: selectedTickets.reduce((total, ticket) => {
-            const ticketType = event.generalTickets.find(t => t.id === ticket.ticketId);
+            const ticketType = event.generalTickets.find((t: { id: string; }) => t.id === ticket.ticketId);
             return total + ((ticketType?.price || 0) * ticket.quantity);
           }, 0)
         };
@@ -486,7 +487,7 @@ const handlePurchase = async (buyerInfo: {
     />
   ) : (
     <TicketSelector
-      event={event as unknown as GeneralEvent}
+      event={event as unknown as IGeneralEvent}
       seats={[]}
       selectedSeats={[]}
       selectedTickets={selectedTickets}
@@ -502,7 +503,7 @@ const handlePurchase = async (buyerInfo: {
   {event.eventType === 'SEATED' && (
     <TabsContent value="prices">
       <div className="space-y-2">
-        {event.seatingChart.sections.map((section) => (
+        {event.seatingChart.sections.map((section: { id: Key | null | undefined; name: string | number | bigint | boolean | ReactElement<any, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<AwaitedReactNode> | null | undefined; price: { toLocaleString: (arg0: string) => string | number | bigint | boolean | ReactElement<any, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<AwaitedReactNode> | null | undefined; }; }) => (
           <motion.div 
             key={section.id}
             initial={{ opacity: 0, x: -20 }}

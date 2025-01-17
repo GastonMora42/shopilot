@@ -14,6 +14,7 @@ type EditorAction =
   | { type: 'SET_PAN'; pan: Point }
   | { type: 'SET_SECTIONS'; sections: EditorSection[] };
 
+  
 const editorReducer = (state: EditorState, action: EditorAction): EditorState => {
   switch (action.type) {
     case 'ADD_SEAT':

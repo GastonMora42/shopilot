@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "vercel-build": "next lint --fix && next build"
+    "vercel-build": "next lint --fix && next build",
+    "init-credits": "ts-node src/scripts/initCreditPackages.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.691.0",
@@ -50,7 +51,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/lodash": "^4.17.13",
     "@types/mercadopago": "^1.5.11",
-    "@types/node": "^20",
+    "@types/node": "^20.17.14",
     "@types/nodemailer": "^6.4.16",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18",
@@ -63,6 +64,7 @@
     "eslint-config-next": "14.0.3",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
-    "typescript": "^5.0.0"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
   }
 }

@@ -1,8 +1,6 @@
 // components/admin/EventForm/steps/SeatingStep.tsx
 import React, { useState } from 'react';
 import { SeatingMapEditor } from './SeatingMap/SeatingMapEditor';
-import { TemplateSelector } from './SeatingMap/components/TemplateSelector';
-import { TemplateConfigurator } from './SeatingMap/components/TemplateConfigurator';
 import { SeatingPreview } from './SeatingMap/components/SeatingPreview';
 import { LayoutConfig, LayoutTemplate } from '@/types/editor';
 

@@ -45,7 +45,7 @@ export interface EditorSeat {
   row: number;
   column: number;
   sectionId: string;
-  status: SeatStatus;
+  status: SeatStatus | 'ACTIVE'; 
   label: string;
   position: Point;
   screenPosition: Point;

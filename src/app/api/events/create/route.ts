@@ -136,7 +136,7 @@ async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart
   const { sections } = seatingChart;
 
   sections.forEach(section => {
-    // No restar 1 aquí, mantener los índices originales
+    // No restar 1 aquí, mantener los índices originalessss
     const rowStart = section.rowStart;
     const rowEnd = section.rowEnd;
     const colStart = section.columnStart;

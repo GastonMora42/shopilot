@@ -130,22 +130,22 @@ function validateEvent(data: any): string | null {
 }
 
 // Función para generar los asientos
-// En api/events/create/route.ts
+// Corregir la función generateSeatsForEvent
 async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart): Promise<ISeat[]> {
   const seats: ISeat[] = [];
   const { sections } = seatingChart;
 
-  // Ajustar índices para que empiecen desde 0
   sections.forEach(section => {
-    const rowStart = section.rowStart - 1;
-    const rowEnd = section.rowEnd - 1;
-    const colStart = section.columnStart - 1;
-    const colEnd = section.columnEnd - 1;
+    // No restar 1 aquí, mantener los índices originales
+    const rowStart = section.rowStart;
+    const rowEnd = section.rowEnd;
+    const colStart = section.columnStart;
+    const colEnd = section.columnEnd;
 
     for (let row = rowStart; row <= rowEnd; row++) {
       for (let col = colStart; col <= colEnd; col++) {
-        const rowLetter = String.fromCharCode(65 + row);
-        const seatId = `${rowLetter}${(col + 1).toString().padStart(2, '0')}`;
+        const rowLetter = String.fromCharCode(65 + row); // El mapeo a letras es correcto
+        const seatId = `${rowLetter}${col.toString().padStart(2, '0')}`;
         
         seats.push({
           eventId: new mongoose.Types.ObjectId(eventId),
@@ -268,7 +268,6 @@ export async function POST(req: Request) {
         );
       }
 
-      await mongoSession.commitTransaction();
 
       await mongoSession.commitTransaction();
 

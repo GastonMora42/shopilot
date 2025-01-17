@@ -17,16 +17,9 @@ export async function POST(req: Request) {
     const { eventId, eventType, seats, ticketType, quantity, buyerInfo, sessionId } = await req.json();
     
     console.log('Creating ticket request:', { 
-      eventId, 
-      eventType,
-      seats, 
-      ticketType,
-      quantity, 
-      buyerInfo, 
-      sessionId 
+      eventId, eventType, seats, ticketType, quantity, buyerInfo, sessionId 
     });
 
-    // Validación básica
     if (!isValidObjectId(eventId) || !buyerInfo) {
       return NextResponse.json(
         { error: 'Datos incompletos o inválidos' },
@@ -34,7 +27,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validación específica por tipo de evento
+    // Validación por tipo de evento
     if (eventType === 'SEATED' && (!seats?.length)) {
       return NextResponse.json(
         { error: 'Asientos requeridos para evento con asientos' },
@@ -49,7 +42,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Verificar evento y obtener organizador
     const event = await Event.findById(eventId);
     if (!event || !event.published) {
       return NextResponse.json(
@@ -58,9 +50,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // Obtener el organizador y verificar su cuenta MP
     const organizer = await User.findById(event.organizerId);
-    if (!organizer || !organizer.mercadopago?.accessToken) {
+    if (!organizer?.mercadopago?.accessToken) {
       return NextResponse.json(
         { error: 'El organizador no tiene una cuenta de MercadoPago conectada' },
         { status: 400 }
@@ -70,64 +61,67 @@ export async function POST(req: Request) {
     let total = 0;
 
     if (eventType === 'SEATED') {
-      // Mantener la lógica existente para cálculo de precio en eventos con asientos
-      total = seats.reduce((sum: number, seatId: string) => {
+      // Cálculo de precio para eventos con asientos
+      for (const seatId of seats) {
         try {
-          if (!/^[A-Z]\d{2}$/.test(seatId)) {
+          if (!/^[A-Z]\d+$/.test(seatId)) {
             throw new Error(`Formato de asiento inválido: ${seatId}`);
           }
 
-          const rowLetter = seatId[0];
+          const rowLetter = seatId.match(/[A-Z]/)?.[0];
+          if (!rowLetter) {
+            throw new Error(`Formato de fila inválido en el asiento: ${seatId}`);
+          }
+
           const rowNumber = rowLetter.charCodeAt(0) - 65;
 
-          console.log('Processing seat:', {
+          console.log('Procesando asiento:', {
             seatId,
             rowLetter,
-            calculatedRowNumber: rowNumber,
-            convertedToLetter: String.fromCharCode(rowNumber + 65),
-            sections: event.seatingChart.sections
+            rowNumber,
+            sections: event.seatingChart?.sections
           });
 
+          // Verificar que exista el seatingChart
+          if (!event.seatingChart?.sections) {
+            throw new Error('Configuración de secciones no encontrada');
+          }
+
+          // Buscar sección que contenga la fila
           const section = event.seatingChart.sections.find((s: { rowStart: number; rowEnd: number; name: any; }) => {
             const isInSection = rowNumber >= s.rowStart && rowNumber <= s.rowEnd;
-            
-            console.log(`Checking section ${s.name}:`, {
+            console.log(`Verificando sección ${s.name}:`, {
               rowNumber,
               sectionStart: s.rowStart,
               sectionEnd: s.rowEnd,
-              isInSection,
-              letterEquivalent: {
-                start: String.fromCharCode(s.rowStart + 65),
-                end: String.fromCharCode(s.rowEnd + 65)
-              }
+              isInSection
             });
-            
             return isInSection;
           });
 
           if (!section) {
-            const availableRows = event.seatingChart.sections.map((s: { name: any; rowStart: number; rowEnd: number; }) => ({
-              section: s.name,
+            const availableSections = event.seatingChart.sections.map((s: { name: any; rowStart: number; rowEnd: number; }) => ({
+              name: s.name,
               rows: {
                 start: String.fromCharCode(s.rowStart + 65),
                 end: String.fromCharCode(s.rowEnd + 65)
               }
             }));
 
+            console.log('Secciones disponibles:', availableSections);
             throw new Error(
-              `Sección no encontrada para el asiento ${seatId}. ` +
-              `Fila ${rowLetter} (${rowNumber}) no está en ninguna sección configurada.`
+              `No se encontró sección para el asiento ${seatId} (Fila ${rowLetter}). ` +
+              `Secciones disponibles: ${JSON.stringify(availableSections)}`
             );
           }
 
-          return sum + section.price;
+          total += section.price;
         } catch (error) {
-          console.error(`Error processing seat ${seatId}:`, error);
+          console.error(`Error procesando asiento ${seatId}:`, error);
           throw error;
         }
-      }, 0);
+      }
     } else {
-      // Cálculo de precio para tickets generales
       total = ticketType.price * quantity;
     }
 
@@ -135,27 +129,29 @@ export async function POST(req: Request) {
     session.startTransaction();
 
     if (eventType === 'SEATED') {
-      // Verificar disponibilidad de asientos solo para eventos con asientos
+      // Verificar disponibilidad de asientos
       const seatsStatus = await Seat.find({
         eventId,
         seatId: { $in: seats },
         $or: [
-          { status: { $ne: 'RESERVED' } },
+          { status: 'AVAILABLE' },
           {
             status: 'RESERVED',
-            'temporaryReservation.sessionId': { $ne: sessionId },
-            'temporaryReservation.expiresAt': { $lt: new Date() }
+            'temporaryReservation.sessionId': sessionId,
+            'temporaryReservation.expiresAt': { $gt: new Date() }
           }
         ]
       }).session(session);
 
-      if (seatsStatus.length > 0) {
-        console.log('Unavailable seats:', seatsStatus.map(s => s.seatId));
-        throw new Error('Algunos asientos no están disponibles o no están reservados para esta sesión');
+      if (seatsStatus.length !== seats.length) {
+        const unavailableSeats = seats.filter(
+          (seatId: string) => !seatsStatus.some(s => s.seatId === seatId)
+        );
+        throw new Error(`Asientos no disponibles: ${unavailableSeats.join(', ')}`);
       }
     }
 
-    // Crear ticket con campos según el tipo de evento
+    // Crear ticket
     const ticketData = {
       eventId,
       eventType,
@@ -166,43 +162,100 @@ export async function POST(req: Request) {
         email: buyerInfo.email.toLowerCase().trim()
       },
       price: total,
-      organizerId: event.organizerId
+      organizerId: event.organizerId,
+      ...(eventType === 'SEATED' ? { seats } : { ticketType, quantity })
     };
-
-    if (eventType === 'SEATED') {
-      Object.assign(ticketData, { seats });
-    } else {
-      Object.assign(ticketData, { 
-        ticketType,
-        quantity
-      });
-    }
 
     const [newTicket] = await Ticket.create([ticketData], { session });
 
-    if (eventType === 'SEATED') {
-      // Actualizar estado de asientos solo para eventos con asientos
-      const seatUpdateResult = await Seat.updateMany(
-        {
-          eventId,
-          seatId: { $in: seats },
-          'temporaryReservation.sessionId': sessionId
-        },
-        {
-          $set: {
-            ticketId: newTicket._id,
-            status: 'RESERVED'
-          }
-        },
-        { session }
-      );
-      
-      if (seatUpdateResult.modifiedCount !== seats.length) {
-        throw new Error('No se pudieron actualizar todos los asientos');
+// En la función POST
+if (eventType === 'SEATED') {
+  // Cálculo de precio para eventos con asientos
+  for (const seatId of seats) {
+    try {
+      if (!/^[A-Z]\d+$/.test(seatId)) {
+        throw new Error(`Formato de asiento inválido: ${seatId}`);
       }
-    }
 
-    // Crear preferencia de MercadoPago
+      const rowLetter = seatId.match(/[A-Z]/)?.[0];
+      if (!rowLetter) {
+        throw new Error(`Formato de fila inválido en el asiento: ${seatId}`);
+      }
+
+      const rowNumber = rowLetter.charCodeAt(0) - 65;
+
+      // Verificar que exista el seatingChart
+      if (!event.seatingChart?.sections) {
+        throw new Error('Configuración de secciones no encontrada');
+      }
+
+      // Ordenar secciones por rango de filas
+      const orderedSections = event.seatingChart.sections.sort((a: { rowStart: number; }, b: { rowStart: number; }) => a.rowStart - b.rowStart);
+
+      // Buscar la sección correcta
+      const section = orderedSections.find((s: { rowStart: number; rowEnd: number; name: any; }) => {
+        const isInSection = rowNumber >= s.rowStart && rowNumber <= s.rowEnd;
+        console.log(`Verificando sección ${s.name}:`, {
+          rowNumber,
+          rowLetter,
+          sectionStart: s.rowStart,
+          sectionEnd: s.rowEnd,
+          sectionStartLetter: String.fromCharCode(s.rowStart + 65),
+          sectionEndLetter: String.fromCharCode(s.rowEnd + 65),
+          isInSection
+        });
+        return isInSection;
+      });
+
+      if (!section) {
+        // Crear un mapa visual de las secciones disponibles
+        const sectionMap = orderedSections.map((s: { name: any; rowStart: number; rowEnd: number; }) => ({
+          name: s.name,
+          rows: {
+            start: String.fromCharCode(s.rowStart + 65),
+            end: String.fromCharCode(s.rowEnd + 65)
+          },
+          range: `${String.fromCharCode(s.rowStart + 65)}-${String.fromCharCode(s.rowEnd + 65)}`
+        }));
+
+        const gaps = findSectionGaps(orderedSections);
+        
+        throw new Error(
+          `El asiento ${seatId} (Fila ${rowLetter}) no pertenece a ninguna sección configurada.\n` +
+          `Secciones disponibles:\n${sectionMap.map((s: { name: any; range: any; }) => 
+            `- ${s.name}: Filas ${s.range}`
+          ).join('\n')}\n` +
+          (gaps.length > 0 ? 
+            `Hay espacios sin asignar entre las filas: ${gaps.map(g => 
+              `${String.fromCharCode(g.start + 65)}-${String.fromCharCode(g.end + 65)}`
+            ).join(', ')}` : '')
+        );
+      }
+
+      total += section.price;
+    } catch (error) {
+      console.error(`Error procesando asiento ${seatId}:`, error);
+      throw error;
+    }
+  }
+}
+
+// Función auxiliar para encontrar espacios entre secciones
+function findSectionGaps(sections: Array<{ rowStart: number; rowEnd: number }>) {
+  const gaps = [];
+  for (let i = 0; i < sections.length - 1; i++) {
+    const currentEnd = sections[i].rowEnd;
+    const nextStart = sections[i + 1].rowStart;
+    if (nextStart - currentEnd > 1) {
+      gaps.push({
+        start: currentEnd + 1,
+        end: nextStart - 1
+      });
+    }
+  }
+  return gaps;
+}
+
     const preference = await createPreference({
       _id: newTicket._id.toString(),
       eventName: event.name,
@@ -214,22 +267,6 @@ export async function POST(req: Request) {
     });
 
     await session.commitTransaction();
-
-    console.log('Ticket created successfully:', {
-      id: newTicket._id,
-      eventType,
-      seats: newTicket.seats,
-      ticketType: newTicket.ticketType,
-      quantity: newTicket.quantity,
-      status: newTicket.status,
-      organizerId: event.organizerId
-    });
-
-    console.log('Preference created:', {
-      ticketId: newTicket._id,
-      preferenceId: preference.id,
-      organizerId: event.organizerId
-    });
 
     return NextResponse.json({
       success: true,
@@ -251,9 +288,7 @@ export async function POST(req: Request) {
     }
     console.error('Error creating ticket:', error);
     return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : 'Error al procesar la compra'
-      },
+      { error: error instanceof Error ? error.message : 'Error al procesar la compra' },
       { status: 500 }
     );
   } finally {

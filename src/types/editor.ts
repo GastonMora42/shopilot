@@ -151,6 +151,7 @@ export interface EditorState {
   selectedSeats: string[];
   activeSectionId: string | null;
   tool: EditorTool;
+  emptySpaces?: Point[]; 
   zoom: number;
   pan: Point;
 }

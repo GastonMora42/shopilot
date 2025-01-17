@@ -3,19 +3,20 @@ import mongoose, { Model } from 'mongoose';
 
 export interface ISeat {
   eventId: mongoose.Types.ObjectId;
-  seatId: string;      // Formato: 'A1', 'B2', etc.
-  row: number;         // 0 para A, 1 para B, etc.
-  column: number;      // 0 para 1, 1 para 2, etc.
+  seatId: string;
+  row: number;
+  column: number;
   status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
   type: 'REGULAR' | 'VIP' | 'DISABLED';
   price: number;
   section: string;
+  label: string;
   updatedAt: Date;
   ticketId?: mongoose.Types.ObjectId;
   temporaryReservation?: {
     sessionId: string;
     expiresAt: Date;
-  }
+  };
   lastReservationAttempt?: Date;
 }
 
@@ -59,33 +60,31 @@ const SeatSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  label: {
+    type: String,
+    required: true
+  },
   ticketId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Ticket'
   },
   temporaryReservation: {
-    sessionId: {
-      type: String
-    },
+    sessionId: String,
     expiresAt: {
       type: Date,
-      index: { expires: 600 } // 15 minutos
+      index: { expires: 600 }
     }
   },
-  lastReservationAttempt: {
-    type: Date
-  }
+  lastReservationAttempt: Date
 }, {
   timestamps: true
 });
 
-// Índices optimizados
 SeatSchema.index({ eventId: 1, seatId: 1 }, { unique: true });
 SeatSchema.index({ eventId: 1, status: 1 });
 SeatSchema.index({ ticketId: 1 });
-SeatSchema.index({ 'temporaryReservation.expiresAt': 1 }, { expireAfterSeconds: 600 }); // 10 minutos = 600 segundos
+SeatSchema.index({ 'temporaryReservation.expiresAt': 1 }, { expireAfterSeconds: 600 });
 
-// Método para liberar asientos expirados
 SeatSchema.statics.releaseExpiredSeats = async function(eventId: string) {
   const result = await this.updateMany(
     {
@@ -112,17 +111,18 @@ SeatSchema.statics.releaseExpiredSeats = async function(eventId: string) {
   return result;
 };
 
-// Middleware pre-save para generar seatId si no existe
 SeatSchema.pre('save', function(next) {
   if (!this.seatId) {
     const rowLetter = String.fromCharCode(65 + this.row);
     const colNumber = (this.column + 1).toString().padStart(2, '0');
     this.seatId = `${rowLetter}${colNumber}`;
   }
+  if (!this.label) {
+    this.label = this.seatId;
+  }
   next();
 });
 
-// Exportar modelo
 const Seat = (mongoose.models.Seat || mongoose.model<ISeat, ISeatModel>('Seat', SeatSchema)) as ISeatModel;
 
 export { Seat };

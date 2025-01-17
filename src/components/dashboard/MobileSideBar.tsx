@@ -24,6 +24,11 @@ const navigationItems = [
     icon: 'ticket'
   },
   {
+    title: 'Credits',
+    href: '/admin/credits',
+    icon: 'credits'
+  },
+  {
     title: 'Scanner',
     href: '/admin/scanner',
     icon: 'qr-code'

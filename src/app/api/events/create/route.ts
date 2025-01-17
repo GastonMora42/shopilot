@@ -1,115 +1,107 @@
+// app/api/events/create/route.ts
+
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Event } from '@/app/models/Event';
-import { Seat } from '@/app/models/Seat';
+import { ISeat, Seat } from '@/app/models/Seat';
 import { User } from '@/app/models/User';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/lib/auth';
-import mongoose from 'mongoose'
+import mongoose from 'mongoose';
+import { 
+  GeneralTicket, 
+} from '@/types/event';
+import { SeatingChart } from '@/types';
+import { creditCheck } from '@/app/middlewares/creditCheck';
+import { CreditService } from '@/app/services/creditService';
 
-// Definir tipos para la estrsuctura de seatingChart
-interface Section {
-  name: string;
-  rowStart: number;
-  rowEnd: number;
-  columnStart: number;
-  columnEnd: number;
-  price: number;
-  type: 'REGULAR' | 'VIP' | 'DISABLED';
-}
 
-interface SeatingChart {
-  rows: number;
-  columns: number;
-  sections: Section[];
-}
-
-async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart) {
-  const seats = [];
-  
-  // Validar límites
-  if (seatingChart.rows > 26) {
-    throw new Error('Número de filas excede el límite (máximo 26)');
+function validateGeneralEvent(tickets: GeneralTicket[]): string | null {
+  if (!Array.isArray(tickets) || tickets.length === 0) {
+    return 'Debe definir al menos un tipo de entrada';
   }
 
-  for (let rowIndex = 1; rowIndex <= seatingChart.rows; rowIndex++) {
-    for (let colIndex = 1; colIndex <= seatingChart.columns; colIndex++) {
-      const section = seatingChart.sections.find(s => 
-        rowIndex >= s.rowStart && 
-        rowIndex <= s.rowEnd && 
-        colIndex >= s.columnStart && 
-        colIndex <= s.columnEnd
-      );
-
-      if (section) {
-        const seatId = `${rowIndex}-${colIndex}`;
-
-        seats.push({
-          eventId,
-          seatId,
-          row: rowIndex,
-          column: colIndex,
-          status: 'AVAILABLE',
-          type: section.type,
-          price: section.price,
-          section: section.name,
-          temporaryReservation: null,
-          lastReservationAttempt: null
-        });
-      }
+  for (const ticket of tickets) {
+    // Validar que tenga todas las propiedades requeridas
+    if (!ticket.name || ticket.name.trim() === '') {
+      return 'El nombre del tipo de entrada es requerido';
+    }
+    if (!ticket.price || ticket.price <= 0) {
+      return 'El precio debe ser mayor a 0';
+    }
+    if (!ticket.quantity || ticket.quantity < 1) {
+      return 'La cantidad debe ser mayor a 0';
     }
   }
-  
-  console.log('Generated seats:', {
-    total: seats.length,
-    firstSeat: seats[0],
-    lastSeat: seats[seats.length - 1]
-  });
-  
-  return seats;
+
+  // Verificar nombres duplicados
+  const names = new Set();
+  for (const ticket of tickets) {
+    const lowerName = ticket.name.toLowerCase();
+    if (names.has(lowerName)) {
+      return 'No puede haber tipos de entrada con el mismo nombre';
+    }
+    names.add(lowerName);
+  }
+
+  return null;
 }
 
-// app/api/events/create/route.ts
-
 function validateSeatingChart(seatingChart: SeatingChart): string | null {
+  if (!seatingChart) {
+    return 'La configuración de asientos es requerida';
+  }
+
+  // Validar dimensiones básicas
   if (!seatingChart.rows || seatingChart.rows < 1) {
-    return 'Número de filas inválido';
+    return 'El número de filas debe ser mayor a 0';
   }
 
   if (!seatingChart.columns || seatingChart.columns < 1) {
-    return 'Número de columnas inválido';
+    return 'El número de columnas debe ser mayor a 0';
   }
 
+  // Validar secciones
   if (!Array.isArray(seatingChart.sections) || seatingChart.sections.length === 0) {
     return 'Debe definir al menos una sección';
   }
 
-  // Los índices ahora empiezan en 1
-  for (const section of seatingChart.sections) {
-    // Ajustar la validación para el nuevo formato de índices
-    if (section.rowStart < 1 || section.rowEnd > seatingChart.rows) {
-      return `Límites de fila inválidos en sección ${section.name}. Debe estar entre 1 y ${seatingChart.rows}`;
-    }
-    if (section.columnStart < 1 || section.columnEnd > seatingChart.columns) {
-      return `Límites de columna inválidos en sección ${section.name}. Debe estar entre 1 y ${seatingChart.columns}`;
-    }
-    if (section.price < 0) {
-      return 'Precio inválido en sección';
-    }
-    if (!['REGULAR', 'VIP', 'DISABLED'].includes(section.type)) {
-      return 'Tipo de sección inválido';
-    }
-  }
+  // Crear una matriz para verificar superposición
+  const grid: string[][] = Array(seatingChart.rows).fill(null)
+    .map(() => Array(seatingChart.columns).fill(null));
 
-  // Verificar que las secciones no se superpongan
-  for (let i = 0; i < seatingChart.sections.length; i++) {
-    for (let j = i + 1; j < seatingChart.sections.length; j++) {
-      const secA = seatingChart.sections[i];
-      const secB = seatingChart.sections[j];
-      
-      if (!(secA.rowEnd < secB.rowStart || secA.rowStart > secB.rowEnd ||
-            secA.columnEnd < secB.columnStart || secA.columnStart > secB.columnEnd)) {
-        return `Las secciones ${secA.name} y ${secB.name} se superponen`;
+  for (const section of seatingChart.sections) {
+    // Validar propiedades requeridas
+    if (!section.name || section.name.trim() === '') {
+      return 'El nombre de la sección es requerido';
+    }
+    if (!section.type || !['REGULAR', 'VIP', 'DISABLED'].includes(section.type)) {
+      return `Tipo de sección inválido en ${section.name}`;
+    }
+    if (!section.price || section.price <= 0) {
+      return `Precio inválido en sección ${section.name}`;
+    }
+
+    // Validar límites de la sección
+    const rowStart = section.rowStart - 1;
+    const rowEnd = section.rowEnd - 1;
+    const colStart = section.columnStart - 1;
+    const colEnd = section.columnEnd - 1;
+
+    if (rowStart < 0 || rowStart >= seatingChart.rows ||
+        rowEnd < rowStart || rowEnd >= seatingChart.rows ||
+        colStart < 0 || colStart >= seatingChart.columns ||
+        colEnd < colStart || colEnd >= seatingChart.columns) {
+      return `Límites inválidos en sección ${section.name}`;
+    }
+
+    // Verificar superposición
+    for (let row = rowStart; row <= rowEnd; row++) {
+      for (let col = colStart; col <= colEnd; col++) {
+        if (grid[row][col] !== null) {
+          return `La sección ${section.name} se superpone con ${grid[row][col]}`;
+        }
+        grid[row][col] = section.name;
       }
     }
   }
@@ -117,7 +109,63 @@ function validateSeatingChart(seatingChart: SeatingChart): string | null {
   return null;
 }
 
+// En la función validateEvent
+function validateEvent(data: any): string | null {
+  // Validaciones básicas
+  if (!data.name?.trim()) return 'El nombre del evento es requerido';
+  if (!data.description?.trim()) return 'La descripción es requerida';
+  if (!data.date) return 'La fecha es requerida';
+  if (new Date(data.date) < new Date()) return 'La fecha debe ser futura';
+  if (!data.location?.trim()) return 'La ubicación es requerida';
+  
+  // Validar tipo de evento
+  if (!['SEATED', 'GENERAL'].includes(data.eventType)) {
+    return 'Tipo de evento inválido';
+  }
 
+  // Validaciones específicas por tipo
+  return data.eventType === 'SEATED' 
+    ? validateSeatingChart(data.seatingChart)
+    : validateGeneralEvent(data.generalTickets);
+}
+
+// Función para generar los asientos
+// Corregir la función generateSeatsForEvent
+async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart): Promise<ISeat[]> {
+  const seats: ISeat[] = [];
+  const { sections } = seatingChart;
+
+  sections.forEach(section => {
+    // No restar 1 aquí, mantener los índices originales
+    const rowStart = section.rowStart;
+    const rowEnd = section.rowEnd;
+    const colStart = section.columnStart;
+    const colEnd = section.columnEnd;
+
+    for (let row = rowStart; row <= rowEnd; row++) {
+      for (let col = colStart; col <= colEnd; col++) {
+        const rowLetter = String.fromCharCode(65 + row); // El mapeo a letras es correcto
+        const seatId = `${rowLetter}${col.toString().padStart(2, '0')}`;
+        
+        seats.push({
+          eventId: new mongoose.Types.ObjectId(eventId),
+          seatId,
+          section: section.name,
+          row,
+          column: col,
+          status: 'AVAILABLE',
+          type: section.type,
+          price: section.price,
+          label: seatId
+        } as ISeat);
+      }
+    }
+  });
+
+  return seats;
+}
+
+// Endpoint POST para crear eventos
 export async function POST(req: Request) {
   let mongoSession = null;
 
@@ -129,7 +177,6 @@ export async function POST(req: Request) {
 
     await dbConnect();
     
-    // Obtener usuario y sus credenciales de MP
     const user = await User.findOne({ email: authSession.user.email });
     if (!user?.mercadopago?.accessToken) {
       return NextResponse.json(
@@ -139,63 +186,104 @@ export async function POST(req: Request) {
     }
 
     const data = await req.json();
-    console.log('Received event data:', data); // Debug log
+    console.log('Received event data:', data);
 
-    // Validar seatingChart
-    const validationError = validateSeatingChart(data.seatingChart);
-    if (validationError) {
-      return NextResponse.json(
-        { error: validationError },
-        { status: 400 }
-      );
-    }
-
-    // Iniciar sesión de MongoDB
-    mongoSession = await mongoose.startSession();
-    mongoSession.startTransaction();
+     // Verificar créditos antes de continuar
+     const creditCheckResult = await creditCheck(data, user._id.toString());
+     if (creditCheckResult.error) {
+       return NextResponse.json({ error: creditCheckResult.error }, { status: 400 });
+     }
+ 
+     const validationError = validateEvent(data);
+     if (validationError) {
+       return NextResponse.json({ error: validationError }, { status: 400 });
+     }
+ 
+     mongoSession = await mongoose.startSession();
+     mongoSession.startTransaction();
 
     try {
-      // Crear el evento con imageUrl
-      const [event] = await Event.create([{
-        ...data,
-        imageUrl: data.imageUrl || '', // Aseguramos que imageUrl esté incluido
+      // Preparar datos base del evento
+      const baseEventData = {
+        name: data.name,
+        description: data.description,
+        date: new Date(data.date),
+        location: data.location,
+        imageUrl: data.imageUrl || '',
+        eventType: data.eventType,
         organizerId: user._id,
         mercadopago: {
           accessToken: user.mercadopago.accessToken,
           userId: user.mercadopago.userId
         },
         published: false
-      }], { session: mongoSession });
+      };
 
-      console.log('Created event with image:', {
-        eventId: event._id,
-        imageUrl: event.imageUrl
-      }); // Debug log
+      // Agregar datos específicos según el tipo de evento
+      const eventData = data.eventType === 'SEATED' 
+        ? {
+            ...baseEventData,
+            seatingChart: {
+              rows: data.seatingChart.rows,
+              columns: data.seatingChart.columns,
+              sections: data.seatingChart.sections,
+              customLayout: data.seatingChart.customLayout || false
+            }
+          }
+        : {
+            ...baseEventData,
+            generalTickets: data.generalTickets.map((ticket: { name: any; price: any; quantity: any; description: any; }) => ({
+              name: ticket.name,
+              price: ticket.price,
+              quantity: ticket.quantity,
+              description: ticket.description
+            }))
+          };
 
-      // Generar y crear los asientos
-      const seats = await generateSeatsForEvent(
-        event._id.toString(), 
-        data.seatingChart
-      );
-      
-      await Seat.insertMany(seats, { session: mongoSession });
+      const [event] = await Event.create([eventData], { session: mongoSession });
+
+      // Generar asientos solo si es evento con asientos
+      let seats = [];
+      if (data.eventType === 'SEATED') {
+        const seatsData = await generateSeatsForEvent(event._id.toString(), data.seatingChart);
+        if (seatsData.length > 0) {
+          try {
+            await Seat.insertMany(seatsData, { 
+              session: mongoSession,
+              ordered: true // Para asegurar la inserción ordenada
+            });
+          } catch (error) {
+            console.error('Error al crear los asientos:', error);
+            throw new Error('Error al crear los asientos del evento');
+          }
+        }
+      }
+
+      if (data.status === 'PUBLISHED') {
+        const credits = creditCheckResult.requiredCredits || 0;
+        await CreditService.deductCredits(
+          user._id.toString(), 
+          credits,
+          event._id.toString()
+        );
+      }
+
 
       await mongoSession.commitTransaction();
 
-      // Incluir imageUrl en la respuesta
-      const eventJSON = event.toJSON();
-      console.log('Final event data:', eventJSON); // Debug log
-
       return NextResponse.json({
+        
         success: true,
-        event: eventJSON,
-        totalSeats: seats.length
+        event: {
+          ...event.toJSON(),
+          totalSeats: seats.length,
+          type: data.eventType
+        }
       }, { status: 201 });
 
     } catch (error) {
-      if (mongoSession) {
-        await mongoSession.abortTransaction();
-      }
+      console.error('Transaction error:', error);
+      await mongoSession.abortTransaction();
       throw error;
     }
 

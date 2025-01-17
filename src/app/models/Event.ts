@@ -1,6 +1,6 @@
 // models/Event.ts
+import { IEvent } from '@/types/event';
 import mongoose from 'mongoose';
-import { IEvent } from '@/types';
 import slugify from 'slugify';
 
 const GeneralTicketSchema = new mongoose.Schema({

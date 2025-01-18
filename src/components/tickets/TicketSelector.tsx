@@ -1,13 +1,14 @@
 // components/events/TicketSelector/index.tsx
 import React, { useEffect } from 'react';
-import { Event, SelectedGeneralTicket, GeneralTicket } from '@/types/event';
 import { SeatSelector } from '../events/SeatSelector';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Seat } from '@/types';
 import { GeneralTicketSelector } from './GeneralTicketSelector';
+import { IEvent, SelectedGeneralTicket } from '@/types/event';
+
 
 interface TicketSelectorProps {
-  event: Event;
+  event: IEvent;
   seats: Seat[];
   selectedSeats: Seat[];
   selectedTickets: SelectedGeneralTicket[];

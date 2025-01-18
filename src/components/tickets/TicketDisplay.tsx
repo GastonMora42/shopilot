@@ -1,14 +1,14 @@
 // components/tickets/TicketDisplay.tsx
 import React from 'react';
 import { 
-  Event, 
-  Seat, 
-  SelectedGeneralTicket, 
+  SelectedGeneralTicket,
   GeneralTicket 
 } from '@/types/event';
+import { Seat } from '@/types/seating';
+import type { IEvent, IGeneralEvent } from '@/types/event';
 
 interface TicketDisplayProps {
-  event: Event;
+  event: IEvent;
   seats?: Seat[];
   selectedSeats: Seat[];
   selectedTickets: SelectedGeneralTicket[];
@@ -16,7 +16,13 @@ interface TicketDisplayProps {
   onTicketSelect: (ticketId: string, quantity: number) => void;
   maxTicketsPerPurchase?: number;
   isLoading?: boolean;
+  error?: string;
 }
+
+const isGeneralEvent = (event: IEvent): event is IGeneralEvent => {
+  return event.eventType === 'GENERAL';
+};
+
 
 export const TicketDisplay: React.FC<TicketDisplayProps> = ({
   event,
@@ -46,7 +52,7 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({
 
   // Componente para tickets generales
   const GeneralTicketsDisplay = () => {
-    if (!event.generalTickets) return null;
+    if (!isGeneralEvent(event)) return null;
 
     const getTotalSelectedTickets = (): number => {
       return selectedTickets.reduce((sum, ticket) => sum + ticket.quantity, 0);
@@ -56,6 +62,8 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({
       const selected = selectedTickets.find(t => t.ticketId === ticketId);
       return selected?.quantity ?? 0;
     };
+
+    
 
     return (
       <div className="space-y-4">
@@ -127,7 +135,7 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({
             <h4 className="font-medium text-blue-900">Resumen de selección</h4>
             <div className="mt-2 space-y-2">
               {selectedTickets.map(ticket => {
-                const ticketInfo = event.generalTickets?.find(t => t.id === ticket.ticketId);
+                const ticketInfo = event.generalTickets?.find((t: { id: string; }) => t.id === ticket.ticketId);
                 if (!ticketInfo) return null;
 
                 return (
@@ -141,7 +149,7 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({
                 <span>Total</span>
                 <span>
                   ${selectedTickets.reduce((sum, ticket) => {
-                    const ticketInfo = event.generalTickets?.find(t => t.id === ticket.ticketId);
+                    const ticketInfo = event.generalTickets?.find((t: { id: string; }) => t.id === ticket.ticketId);
                     return sum + (ticketInfo?.price || 0) * ticket.quantity;
                   }, 0).toFixed(2)}
                 </span>

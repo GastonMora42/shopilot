@@ -1,29 +1,38 @@
-// app/middlewares/creditCheck.ts
-import { CreditService } from '@/app/services/creditService';
+// middlewares/creditCheck.ts
+import { Credit } from "../models/Credit";
+import { CreditService } from "../services/creditService";
 
-// app/middlewares/creditCheck.ts
-export async function creditCheck(data: any, userId: string) {
-    try {
-      const requiredCredits = CreditService.calculateRequiredCredits(data);
-      
-      if (data.status === 'PUBLISHED') {
-        const hasEnoughCredits = await CreditService.checkBalance(userId, requiredCredits);
-        
-        if (!hasEnoughCredits) {
-          return {
-            error: 'Insufficient credits',
-            required: requiredCredits,
-            message: 'No tienes suficientes créditos para publicar este evento'
-          };
-        }
-      }
-      
-      return { success: true, requiredCredits: requiredCredits || 0 };
-    } catch (error) {
+interface CreditCheckResult {
+  error?: boolean;
+  message?: string;
+  requiredCredits: number;
+  success?: boolean;
+}
+
+export async function creditCheck(event: any, userId: string): Promise<CreditCheckResult> {
+  try {
+    const requiredCredits = CreditService.calculateRequiredCredits(event);
+    
+    const userCredits = await Credit.findOne({ userId });
+    if (!userCredits || userCredits.balance < requiredCredits) {
       return {
-        error: 'Error checking credits',
-        message: error instanceof Error ? error.message : 'Error al verificar créditos',
-        requiredCredits: 0
+        error: true,
+        message: `No tienes suficientes créditos. Necesitas ${requiredCredits} créditos para publicar este evento.`,
+        requiredCredits
       };
     }
+
+    return {
+      success: true,
+      requiredCredits
+    };
+
+  } catch (error) {
+    console.error('Error en creditCheck:', error);
+    return {
+      error: true,
+      message: 'Error al verificar créditos',
+      requiredCredits: 0
+    };
   }
+}

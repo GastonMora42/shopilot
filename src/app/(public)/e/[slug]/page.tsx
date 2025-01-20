@@ -164,19 +164,40 @@ const fetchEvent = useCallback(async () => {
     });
   }, []);
 
-  // Manejo de selección de tickets generales
-  const handleTicketSelect = useCallback((ticketId: string, quantity: number) => {
+  const isGeneralEvent = (event: IEvent): event is IGeneralEvent => {
+    return event.eventType === 'GENERAL';
+   };
+   
+   const handleTicketSelect = useCallback((ticketId: string, quantity: number) => {
+    if (!event) return;
+  
+    console.log('handleTicketSelect called:', { ticketId, quantity });
+  
     setSelectedTickets(prev => {
-      const updated = prev.filter(t => t.ticketId !== ticketId);
-      
-      if (quantity > 0 && event?.eventType === 'GENERAL') {
-        const ticket = event.generalTickets.find((t: { id: string; }) => t.id === ticketId);
+      // Si cantidad es 0, eliminar el ticket
+      if (quantity === 0) {
+        return prev.filter(t => t.ticketId !== ticketId);
+      }
+  
+      if (isGeneralEvent(event)) {
+        // Buscar el ticket por _id o id
+        const ticket = event.generalTickets.find(t => 
+          (t._id === ticketId) || (t.id === ticketId)
+        );
+        
+        console.log('Found ticket:', ticket);
+  
         if (ticket) {
-          updated.push({ ticketId, quantity, price: ticket.price });
+          // Retornar un array con solo el ticket seleccionado
+          return [{
+            ticketId,
+            quantity,
+            price: ticket.price
+          }];
         }
       }
-      
-      return updated;
+  
+      return prev;
     });
   }, [event]);
 

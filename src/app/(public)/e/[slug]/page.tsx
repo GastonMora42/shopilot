@@ -256,28 +256,28 @@ const handlePurchase = async (buyerInfo: {
     if (!event?._id) throw new Error('Evento no válido');
 
     // Construir los datos del ticket según el tipo de evento
-    const purchaseData = event.eventType === 'SEATED' 
-      ? {
-          eventId: event._id,
-          eventType: 'SEATED',
-          seats: selectedSeats.map(s => s.seatId),
-          buyerInfo,
-          sessionId: controlState.sessionId
-        }
-      : {
-          eventId: event._id,
-          eventType: 'GENERAL',
-          ticketType: {
-            name: selectedTickets[0]?.ticketId, // Asumiendo que solo seleccionas un tipo de ticket
-            price: event.generalTickets.find((t: { id: string; }) => t.id === selectedTickets[0]?.ticketId)?.price || 0
-          },
-          quantity: selectedTickets[0]?.quantity || 0,
-          buyerInfo,
-          price: selectedTickets.reduce((total, ticket) => {
-            const ticketType = event.generalTickets.find((t: { id: string; }) => t.id === ticket.ticketId);
-            return total + ((ticketType?.price || 0) * ticket.quantity);
-          }, 0)
-        };
+// En handlePurchase de tu page.tsx
+const purchaseData = event.eventType === 'SEATED' 
+  ? {
+      eventId: event._id,
+      eventType: 'SEATED',
+      seats: selectedSeats.map(s => s.seatId),
+      buyerInfo,
+      sessionId: controlState.sessionId
+    }
+  : {
+      eventId: event._id,
+      eventType: 'GENERAL',
+      ticketType: {
+        // Encontrar el ticket seleccionado en generalTickets
+        name: event.generalTickets.find(t => t._id === selectedTickets[0]?.ticketId)?.name,
+        price: event.generalTickets.find(t => t._id === selectedTickets[0]?.ticketId)?.price || 0,
+        description: event.generalTickets.find(t => t._id === selectedTickets[0]?.ticketId)?.description
+      },
+      quantity: selectedTickets[0]?.quantity || 0,
+      buyerInfo,
+      sessionId: controlState.sessionId
+    };
 
     console.log('Creating ticket request:', purchaseData);
 

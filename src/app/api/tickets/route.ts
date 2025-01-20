@@ -38,29 +38,63 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validación por tipo de evento
-    if (eventType === 'SEATED' && (!seats?.length)) {
-      return NextResponse.json(
-        { error: 'Asientos requeridos para evento con asientos' },
-        { status: 400 }
-      );
-    }
-
-    if (eventType === 'GENERAL' && (!ticketType || !quantity)) {
-      return NextResponse.json(
-        { error: 'Tipo de ticket y cantidad requeridos para evento general' },
-        { status: 400 }
-      );
-    }
-
-    const event = await Event.findById(eventId);
-    if (!event || !event.published) {
-      return NextResponse.json(
-        { error: 'Evento no encontrado o no publicado' },
-        { status: 404 }
-      );
-    }
-
+// Validación por tipo de evento
+if (eventType === 'SEATED' && (!seats?.length)) {
+  return NextResponse.json(
+    { error: 'Asientos requeridos para evento con asientos' },
+    { status: 400 }
+  );
+ }
+ 
+ // Validación específica para tickets generales
+ if (eventType === 'GENERAL') {
+  if (!ticketType?.name || !ticketType?.price || !quantity) {
+    return NextResponse.json(
+      { error: 'Datos de ticket general incompletos' },
+      { status: 400 }
+    );
+  }
+ }
+ 
+ const event = await Event.findById(eventId);
+ if (!event || !event.published) {
+  return NextResponse.json(
+    { error: 'Evento no encontrado o no publicado' },
+    { status: 404 }
+  );
+ }
+ 
+ // Validaciones adicionales para eventos generales
+ if (eventType === 'GENERAL') {
+  // Verificar que el tipo de ticket exista en el evento
+  const validTicket = event.generalTickets.find((t: { name: any; price: any; }) => 
+    t.name === ticketType.name && t.price === ticketType.price
+  );
+ 
+  if (!validTicket) {
+    return NextResponse.json(
+      { error: 'Tipo de ticket inválido' },
+      { status: 400 }
+    );
+  }
+ 
+  // Verificar disponibilidad
+  if (validTicket.quantity < quantity) {
+    return NextResponse.json(
+      { error: 'No hay suficientes tickets disponibles' },
+      { status: 400 }
+    );
+  }
+ 
+  // Verificar límite de compra si existe
+  if (event.maxTicketsPerPurchase && quantity > event.maxTicketsPerPurchase) {
+    return NextResponse.json(
+      { error: `No puede comprar más de ${event.maxTicketsPerPurchase} tickets por transacción` },
+      { status: 400 }
+    );
+  }
+ }
+ 
     const organizer = await User.findById(event.organizerId);
     if (!organizer?.mercadopago?.accessToken) {
       return NextResponse.json(

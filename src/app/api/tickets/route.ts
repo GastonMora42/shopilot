@@ -8,11 +8,22 @@ import { generateQRCode } from '@/app/lib/utils';
 import { createPreference } from '@/app/lib/mercadopago';
 import { isValidObjectId } from 'mongoose';
 import mongoose from 'mongoose';
+import { authOptions } from '@/app/lib/auth';
+import { getServerSession } from 'next-auth/next';
 
 export async function POST(req: Request) {
   let session = null;
   
   try {
+    // Verificar autenticación
+    const authSession = await getServerSession(authOptions);
+    if (!authSession?.user) {
+      return NextResponse.json(
+        { error: 'Debe iniciar sesión para comprar tickets' },
+        { status: 401 }
+      );
+    }
+
     await dbConnect();
     const { eventId, eventType, seats, ticketType, quantity, buyerInfo, sessionId } = await req.json();
     
@@ -57,6 +68,9 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    session = await mongoose.startSession();
+    session.startTransaction();
 
     let total = 0;
 
@@ -151,11 +165,18 @@ export async function POST(req: Request) {
       }
     }
 
+    const qrData = await generateQRCode({
+      prefix: 'TKT',
+      ticketId: new mongoose.Types.ObjectId().toString()
+    });
+
     // Crear ticket
     const ticketData = {
       eventId,
       eventType,
-      qrCode: await generateQRCode(),
+      qrCode: qrData.qrCode,
+      qrValidation: qrData.validationHash, // Nuevo campo
+      qrMetadata: qrData.metadata, // Nuevo campo
       status: 'PENDING',
       buyerInfo: {
         ...buyerInfo,
@@ -163,6 +184,7 @@ export async function POST(req: Request) {
       },
       price: total,
       organizerId: event.organizerId,
+      userId: authSession.user.id, // Asociar con usuario autenticado
       ...(eventType === 'SEATED' ? { seats } : { ticketType, quantity })
     };
 
@@ -192,6 +214,7 @@ if (eventType === 'SEATED') {
       // Ordenar secciones por rango de filas
       const orderedSections = event.seatingChart.sections.sort((a: { rowStart: number; }, b: { rowStart: number; }) => a.rowStart - b.rowStart);
 
+      
       // Buscar la sección correcta
       const section = orderedSections.find((s: { rowStart: number; rowEnd: number; name: any; }) => {
         const isInSection = rowNumber >= s.rowStart && rowNumber <= s.rowEnd;
@@ -276,7 +299,8 @@ function findSectionGaps(sections: Array<{ rowStart: number; rowEnd: number }>) 
         seats: newTicket.seats,
         ticketType: newTicket.ticketType,
         quantity: newTicket.quantity,
-        total: newTicket.price
+        total: newTicket.price,
+        qrValidation: qrData.validationHash // Incluir para verificaciones
       },
       checkoutUrl: preference.init_point,
       preferenceId: preference.id

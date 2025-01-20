@@ -1,14 +1,15 @@
 // src/app/layout.tsx
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { NextAuthProvider } from '@/components/providers/NextAuthProvider';
 import "./globals.css";
+import { AuthModal } from "@/components/auth/AuthModal";
+import { NextAuthProvider } from "@/components/providers/NextAuthProvider";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
   weight: "100 900",
-  display: 'swap', // Mejora el rendimiento de carga de fuentes
+  display: 'swap',
 });
 
 const geistMono = localFont({
@@ -25,7 +26,6 @@ export const viewport = {
   userScalable: false,
 };
 
-// Mantener el resto de metadata
 export const metadata: Metadata = {
   title: "ShowSpot",
   description: "Venta de tickets Online",
@@ -43,9 +43,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html 
-      lang="es" 
-      translate="no" 
+    <html
+      lang="es"
+      translate="no"
       className={`${geistSans.variable} ${geistMono.variable}`}
     >
       <head>
@@ -58,13 +58,13 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#ffffff" />
       </head>
-      <body 
+      <body
         className="min-h-screen bg-background antialiased"
-        // Prevenir el pull-to-refresh en móviles
         style={{ overscrollBehavior: 'none' }}
       >
         <NextAuthProvider>
           {children}
+          <AuthModal /> {/* Añadimos el modal aquí para que esté disponible globalmente */}
         </NextAuthProvider>
       </body>
     </html>

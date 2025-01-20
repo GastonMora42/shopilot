@@ -3,6 +3,7 @@ import mongoose, { Document } from "mongoose";
 
 export interface ITicket extends Document {
   eventId: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId; // Añadido
   eventType: 'SEATED' | 'GENERAL';
   seats?: string[];
   ticketType?: {
@@ -17,6 +18,11 @@ export interface ITicket extends Document {
     phone?: string;
   };
   qrCode: string;
+  qrValidation: string; // Añadido
+  qrMetadata: { // Añadido
+    timestamp: number;
+    ticketId: string;
+  };
   status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
   price: number;
   paymentId?: string;
@@ -28,6 +34,11 @@ const TicketSchema = new mongoose.Schema({
   eventId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Event',
+    required: true
+  },
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     required: true
   },
   eventType: {
@@ -90,6 +101,15 @@ const TicketSchema = new mongoose.Schema({
     unique: true,
     required: true
   },
+  qrValidation: { // Nuevo campo para validación del QR
+    type: String,
+    unique: true,
+    required: true
+  },
+  qrMetadata: { // Nuevo campo para metadata del QR
+    timestamp: Number,
+    ticketId: String
+  },
   status: {
     type: String,
     enum: ['PENDING', 'PAID', 'USED', 'CANCELLED'],
@@ -109,6 +129,8 @@ const TicketSchema = new mongoose.Schema({
 // Índices
 TicketSchema.index({ eventId: 1, status: 1 });
 TicketSchema.index({ qrCode: 1 }, { unique: true });
+TicketSchema.index({ qrValidation: 1 }, { unique: true }); // Nuevo índice
+TicketSchema.index({ userId: 1 }); // Nuevo índice
 TicketSchema.index({ 'buyerInfo.email': 1 });
 TicketSchema.index({ paymentId: 1 });
 

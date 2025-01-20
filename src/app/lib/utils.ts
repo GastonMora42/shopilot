@@ -3,6 +3,56 @@ import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import crypto from 'crypto';
 
+interface QROptions {
+  prefix?: string;
+  length?: number;
+  ticketId?: string;
+}
+
+interface QRCodeResult {
+  qrCode: string;
+  validationHash: string;
+  metadata: {
+    timestamp: number;
+    ticketId: string;
+  };
+}
+
+export async function generateQRCode(options: QROptions = {}): Promise<QRCodeResult> {
+  const {
+    prefix = '',
+    length = 64,
+    ticketId = ''
+  } = options;
+
+  // Generar componentes únicos
+  const randomString = crypto.randomBytes(32).toString('hex');
+  const timestamp = Date.now();
+  
+  // Generar código QR principal
+  const mainHash = crypto
+    .createHash('sha256')
+    .update(prefix + randomString + timestamp + ticketId)
+    .digest('hex')
+    .slice(0, length);
+
+  // Generar hash de validación separado
+  const validationHash = crypto
+    .createHash('sha256')
+    .update(mainHash + timestamp + ticketId)
+    .digest('hex')
+    .slice(0, 32);
+
+  return {
+    qrCode: mainHash,
+    validationHash,
+    metadata: {
+      timestamp,
+      ticketId
+    }
+  };
+}
+
 // Tipos para las opciones de formateo de fecha
 interface DateFormatOptions {
   weekday?: 'long' | 'short' | 'narrow';
@@ -13,6 +63,13 @@ interface DateFormatOptions {
   minute?: 'numeric' | '2-digit';
   second?: 'numeric' | '2-digit';
   timeZone?: string;
+}
+
+
+interface QROptions {
+  prefix?: string;
+  length?: number;
+  ticketId?: string;  // Añadimos esta propiedad
 }
 
 // Para combinar clases de Tailwind
@@ -60,23 +117,6 @@ export function formatDateOnly(date: string | Date | number): string {
 interface QROptions {
   prefix?: string;
   length?: number;
-}
-
-export async function generateQRCode(options: QROptions = {}): Promise<string> {
-  const {
-    prefix = '',
-    length = 64
-  } = options;
-
-  const randomString = crypto.randomBytes(32).toString('hex');
-  const timestamp = Date.now().toString();
-  
-  const hash = crypto
-    .createHash('sha256')
-    .update(prefix + randomString + timestamp)
-    .digest('hex');
-
-  return hash.slice(0, length);
 }
 
 // Para generar un slug único con opciones

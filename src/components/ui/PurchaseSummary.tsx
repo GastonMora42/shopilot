@@ -5,6 +5,8 @@ import { BuyerForm } from "../events/BuyerForm";
 import { Button } from "./Button";
 import { Card, CardContent, CardHeader, CardTitle } from "./Card";
 import { SelectedGeneralTicket } from "@/types/event";
+import { useAuthModal } from "@/contexts/AuthModalContext";
+import { useSession } from "next-auth/react";
 
 interface PurchaseSummaryProps {
   selectedSeats: Seat[];
@@ -29,24 +31,36 @@ export const PurchaseSummary = memo(function PurchaseSummary({
   onSubmit,
   onStartPurchase
 }: PurchaseSummaryProps) {
-  // Cálculo del total para tickets con asientos
+  const { data: session, status } = useSession();
+  const { openAuthModal } = useAuthModal();
+  const isLoading = status === 'loading';
+
+  // Cálculos existentes
   const seatedTotal = useMemo(() => 
     selectedSeats.reduce((sum, seat) => sum + seat.price, 0)
   , [selectedSeats]);
 
-  // Cálculo del total para tickets generales
   const generalTotal = useMemo(() => 
     selectedTickets.reduce((sum, ticket) => sum + (ticket.price * ticket.quantity), 0)
   , [selectedTickets]);
 
-  // Formateado de asientos seleccionados
   const formattedSelectedSeats = useMemo(() => {
     if (eventType !== 'SEATED') return '';
-
-    return selectedSeats
-      .map(seat => seat.label)
-      .join(', ');
+    return selectedSeats.map(seat => seat.label).join(', ');
   }, [selectedSeats, eventType]);
+
+  // Manejador de compra con autenticación
+  const handlePurchase = async () => {
+    if (!session) {
+      openAuthModal();
+      return;
+    }
+    await onStartPurchase();
+  };
+
+  const isDisabled = 
+    isLoading || 
+    (eventType === 'SEATED' ? selectedSeats.length === 0 : selectedTickets.length === 0);
 
   return (
     <Card className="backdrop-blur-sm bg-white/90">
@@ -90,25 +104,36 @@ export const PurchaseSummary = memo(function PurchaseSummary({
           <div className="space-y-3">
             <Button
               className="w-full"
-              disabled={
-                eventType === 'SEATED' 
-                  ? selectedSeats.length === 0 
-                  : selectedTickets.length === 0
-              }
-              onClick={onStartPurchase}
+              disabled={isDisabled}
+              onClick={handlePurchase}
               variant="default"
             >
-              Continuar con la compra
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Cargando...
+                </div>
+              ) : !session ? (
+                'Iniciar sesión para comprar'
+              ) : (
+                'Continuar con la compra'
+              )}
             </Button>
-            {eventType === 'SEATED' && selectedSeats.length === 0 && (
-              <p className="text-sm text-gray-500 text-center">
-                Selecciona al menos un asiento para continuar
-              </p>
-            )}
-            {eventType === 'GENERAL' && selectedTickets.length === 0 && (
-              <p className="text-sm text-gray-500 text-center">
-                Selecciona al menos un ticket para continuar
-              </p>
+            
+            {/* Mensajes de validación */}
+            {!isLoading && (
+              <>
+                {eventType === 'SEATED' && selectedSeats.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center">
+                    Selecciona al menos un asiento para continuar
+                  </p>
+                )}
+                {eventType === 'GENERAL' && selectedTickets.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center">
+                    Selecciona al menos un ticket para continuar
+                  </p>
+                )}
+              </>
             )}
           </div>
         )}
@@ -135,5 +160,4 @@ export const PurchaseSummary = memo(function PurchaseSummary({
   );
 });
 
-// Asegurarnos de que el componente tenga un nombre para debugging
 PurchaseSummary.displayName = 'PurchaseSummary';

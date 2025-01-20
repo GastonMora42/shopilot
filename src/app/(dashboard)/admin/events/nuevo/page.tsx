@@ -449,9 +449,12 @@ export default function NewEventPage() {
             </div>
           ) : (
             <GeneralTicketsStep
-              tickets={formData.generalTickets ?? []}
-              onChange={handleGeneralTicketsChange}
-            />
+            tickets={formData.generalTickets?.map(ticket => ({
+              ...ticket,
+              id: ticket.id || String(Date.now()) // Proporciona un id por defecto si es undefined
+            })) ?? []}
+            onChange={handleGeneralTicketsChange}
+          />
           );
           
         case 'review':

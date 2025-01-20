@@ -78,7 +78,7 @@ if (eventType === 'SEATED' && (!seats?.length)) {
     );
   }
  
-  // Verificar disponibilidad
+  // Verificar disponibilidades
   if (validTicket.quantity < quantity) {
     return NextResponse.json(
       { error: 'No hay suficientes tickets disponibles' },

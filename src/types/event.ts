@@ -16,7 +16,7 @@ export interface Point {
 // Interfaces para tickets
 export interface GeneralTicket {
   _id?: string;
-  id?: string;
+  id: string;
   name: string;
   price: number;
   quantity: number;

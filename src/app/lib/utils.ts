@@ -39,7 +39,7 @@ interface QRMetadata {
 }
 
 
-export async function generateQRCode(options: QROptions = {}): Promise<QRCodeResult> {
+export async function generateQRCode(options: QROptions = { type: "SEATED" }): Promise<QRCodeResult> {
   const {
     prefix = '',
     length = 64,
@@ -48,7 +48,7 @@ export async function generateQRCode(options: QROptions = {}): Promise<QRCodeRes
     seatInfo,
     generalInfo
   } = options;
-
+  
   const metadata: QRMetadata = {
     ticketId,
     timestamp: Date.now(),

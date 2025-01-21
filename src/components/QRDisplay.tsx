@@ -20,6 +20,8 @@ type QRDisplayProps = {
     quantity?: number;
   };
 };
+  
+
 
 // components/QRDisplay.tsx
 const QRDisplay: React.FC<QRDisplayProps> = ({ ticket }) => {

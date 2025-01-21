@@ -4,12 +4,12 @@ import { Event } from '@/app/models/Event';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import { User } from '@/app/models/User'; // Añadido: importar modelo User
-import { generateQRCode } from '@/app/lib/utils';
 import { createPreference } from '@/app/lib/mercadopago';
 import { isValidObjectId } from 'mongoose';
 import mongoose from 'mongoose';
 import { authOptions } from '@/app/lib/auth';
 import { getServerSession } from 'next-auth/next';
+import { generateTicketQR } from '@/app/lib/qrGenerator';
 
 export async function POST(req: Request) {
   let session = null;
@@ -199,19 +199,37 @@ if (eventType === 'SEATED' && (!seats?.length)) {
       }
     }
 
-    const qrData = await generateQRCode({
-      prefix: 'TKT',
+    const { qrData, qrString, validationHash } = generateTicketQR({
       ticketId: new mongoose.Types.ObjectId().toString(),
-      type: 'SEATED'
+      eventType,
+      seats,
+      ticketType,
+      quantity
     });
-
+    
     // Crear ticket
     const ticketData = {
       eventId,
       eventType,
-      qrCode: qrData.qrCode,
-      qrValidation: qrData.validationHash, // Nuevo campo
-      qrMetadata: qrData.metadata, // Nuevo campo
+      qrCode: qrString,
+      qrValidation: validationHash,
+      qrMetadata: {
+        timestamp: qrData.timestamp,
+        ticketId: qrData.ticketId,
+        type: eventType,
+        ...(eventType === 'SEATED' 
+          ? {
+              seatInfo: {
+                seats: seats || []
+              }
+            }
+          : {
+              generalInfo: {
+                ticketType: ticketType?.name || '',
+                index: 0
+              }
+            })
+      },
       status: 'PENDING',
       buyerInfo: {
         ...buyerInfo,
@@ -219,8 +237,13 @@ if (eventType === 'SEATED' && (!seats?.length)) {
       },
       price: total,
       organizerId: event.organizerId,
-      userId: authSession.user.id, // Asociar con usuario autenticado
-      ...(eventType === 'SEATED' ? { seats } : { ticketType, quantity })
+      userId: authSession.user.id,
+      ...(eventType === 'SEATED' 
+        ? { seats } 
+        : { 
+            ticketType, 
+            quantity 
+          })
     };
 
     const [newTicket] = await Ticket.create([ticketData], { session });

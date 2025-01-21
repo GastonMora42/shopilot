@@ -13,6 +13,7 @@ interface BaseTicketInfo {
   date: string;
   location: string;
   qrCode: string;
+  qrValidation: string;
   status: string;
   buyerInfo: {
     name: string;
@@ -24,7 +25,15 @@ interface BaseTicketInfo {
 
 interface SeatedTicketInfo extends BaseTicketInfo {
   eventType: 'SEATED';
-  seat: string; // Para un asiento individual
+  seat: string;
+  qrMetadata: {
+    timestamp: number;
+    ticketId: string;
+    type: 'SEATED';
+    seatInfo: {
+      seats: string[];
+    };
+  };
 }
 
 interface GeneralTicketInfo extends BaseTicketInfo {
@@ -34,6 +43,15 @@ interface GeneralTicketInfo extends BaseTicketInfo {
     price: number;
   };
   quantity: number;
+  qrMetadata: {
+    timestamp: number;
+    ticketId: string;
+    type: 'GENERAL';
+    generalInfo: {
+      ticketType: string;
+      index: number;
+    };
+  };
 }
 
 export type TicketInfo = SeatedTicketInfo | GeneralTicketInfo;

@@ -5,22 +5,52 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Check, X } from 'lucide-react';
 
+// components/QRScanner.tsx
+interface QRMetadata {
+  timestamp: number;
+  ticketId: string;
+  type: 'SEATED' | 'GENERAL';
+  seatInfo?: {
+    seats: string[];
+  };
+  generalInfo?: {
+    ticketType: string;
+    index: number;
+  };
+}
+
 interface BaseTicketInfo {
   eventName: string;
   buyerName: string;
   status: string;
   eventType: 'SEATED' | 'GENERAL';
+  qrValidation: string;
+  qrMetadata: QRMetadata;
 }
 
 interface SeatedTicketInfo extends BaseTicketInfo {
   eventType: 'SEATED';
   seat: string;
+  qrMetadata: QRMetadata & {
+    type: 'SEATED';
+    seatInfo: {
+      seats: string[];
+    };
+  };
 }
 
 interface GeneralTicketInfo extends BaseTicketInfo {
   eventType: 'GENERAL';
   ticketType: {
     name: string;
+  };
+  quantity: number;
+  qrMetadata: QRMetadata & {
+    type: 'GENERAL';
+    generalInfo: {
+      ticketType: string;
+      index: number;
+    };
   };
 }
 
@@ -76,37 +106,36 @@ export function QrScanner() {
     }
   };
 
-  const handleScanSuccess = async (decodedText: string) => {
-    try {
-      // Detener el scanner inmediatamente después de leer un código
-      await stopScanning();
+// En handleScanSuccess:
+const handleScanSuccess = async (decodedText: string) => {
+  try {
+    await stopScanning();
 
-      const response = await fetch('/api/tickets/validate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ qrCode: decodedText })
-      });
+    const response = await fetch('/api/tickets/validate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ qrString: decodedText }) // Cambiado de qrCode a qrString
+    });
 
-      const data = await response.json();
+    const data = await response.json();
 
-      setResult({
-        success: data.success,
-        message: data.message,
-        ticket: data.ticket
-      });
+    setResult({
+      success: data.success,
+      message: data.message,
+      ticket: data.ticket
+    });
 
-      setShowModal(true);
-
-    } catch (error) {
-      setResult({
-        success: false,
-        message: 'Error al validar el ticket'
-      });
-      setShowModal(true);
-    }
-  };
+    setShowModal(true);
+  } catch (error) {
+    setResult({
+      success: false,
+      message: 'Error al validar el ticket'
+    });
+    setShowModal(true);
+  }
+};
 
   const handleScanError = (error: string) => {
     if (!error.includes('No QR code found')) {

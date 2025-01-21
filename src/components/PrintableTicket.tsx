@@ -1,22 +1,27 @@
 // components/PrintableTicket.tsx
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { QRCodeSVG } from "qrcode.react";
 import { type ITicket } from '@/app/models/Ticket';
-import type { Event } from '@/app/models/Event';
 import { Types } from "mongoose";
 import QRDisplay from "./QRDisplay";
 
 interface PrintableTicketProps {
-    ticket: Omit<ITicket, '_id'> & {
-      _id: Types.ObjectId | string;
-      eventId: {
-        name: string;
-        date: string;
-        location: string;
-      };
+  ticket: Omit<ITicket, '_id'> & {
+    _id: Types.ObjectId | string;
+    eventId: {
+      name: string;
+      date: string;
+      location: string;
     };
+    seats?: string[];
+    quantity?: number;
+    ticketType?: {
+      name: string;
+      price: number;
+    };
+    qrCode?: string;
   }
+}
   
   const PrintableTicket: React.FC<PrintableTicketProps> = ({ ticket }) => {
     return (
@@ -78,18 +83,19 @@ interface PrintableTicketProps {
           <div className="qr-container mt-6 text-center">
   {/* QR Display */}
   <div className="mt-6 flex justify-center">
-          <QRDisplay 
-            ticket={{
-              _id: ticket._id,
-              eventType: ticket.eventType,
-              status: ticket.status,
-              qrValidation: ticket.qrValidation,
-              qrMetadata: ticket.qrMetadata,
-              seats: ticket.seats,
-              ticketType: ticket.ticketType,
-              quantity: ticket.quantity
-            }} 
-          />
+  <QRDisplay 
+  ticket={{
+    _id: ticket._id,
+    eventType: ticket.eventType,
+    status: ticket.status,
+    qrCode: '', // Add an empty string or generate the QR code value
+    qrValidation: ticket.qrValidation,
+    qrMetadata: ticket.qrMetadata,
+    seats: ticket.seats,
+    ticketType: ticket.ticketType,
+    quantity: ticket.quantity
+  }} 
+/>
         </div>
 
             <p className="mt-2 text-sm text-gray-500">

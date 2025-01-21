@@ -188,12 +188,6 @@ export async function POST(req: Request) {
     const data = await req.json();
     console.log('Received event data:', data);
 
-     // Verificar créditos antes de continuar
-     const creditCheckResult = await creditCheck(data, user._id.toString());
-     if (creditCheckResult.error) {
-       return NextResponse.json({ error: creditCheckResult.error }, { status: 400 });
-     }
- 
      const validationError = validateEvent(data);
      if (validationError) {
        return NextResponse.json({ error: validationError }, { status: 400 });
@@ -258,16 +252,6 @@ export async function POST(req: Request) {
           }
         }
       }
-
-      if (data.status === 'PUBLISHED') {
-        const credits = creditCheckResult.requiredCredits || 0;
-        await CreditService.deductCredits(
-          user._id.toString(), 
-          credits,
-          event._id.toString()
-        );
-      }
-
 
       await mongoSession.commitTransaction();
 

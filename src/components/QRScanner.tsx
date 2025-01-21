@@ -1,20 +1,35 @@
 // components/QrScanner.tsx
-
 import { useState, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Check, X } from 'lucide-react';
 
+interface BaseTicketInfo {
+  eventName: string;
+  buyerName: string;
+  status: string;
+  eventType: 'SEATED' | 'GENERAL';
+}
+
+interface SeatedTicketInfo extends BaseTicketInfo {
+  eventType: 'SEATED';
+  seat: string;
+}
+
+interface GeneralTicketInfo extends BaseTicketInfo {
+  eventType: 'GENERAL';
+  ticketType: {
+    name: string;
+  };
+}
+
+type TicketInfo = SeatedTicketInfo | GeneralTicketInfo;
+
 interface ScanResult {
   success: boolean;
   message: string;
-  ticket?: {
-    eventName: string;
-    buyerName: string;
-    seatNumber: string;
-    status: string;
-  };
+  ticket?: TicketInfo;
 }
 
 export function QrScanner() {
@@ -33,6 +48,7 @@ export function QrScanner() {
       }
     };
   }, []);
+
 
   const startScanning = async () => {
     if (!scanner) return;
@@ -121,8 +137,8 @@ export function QrScanner() {
         </div>
       </Card>
 
-      {/* Modal de Resultado */}
-      {showModal && result && (
+   {/* Modal de Resultado */}
+   {showModal && result && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <Card className={`w-full max-w-md p-6 ${
             result.success ? 'bg-green-50' : 'bg-red-50'
@@ -148,13 +164,18 @@ export function QrScanner() {
                 {result.success ? '¡ACCESO PERMITIDO!' : 'NO PUEDE PASAR'}
               </h2>
 
-              {/* Detalles del Ticket */}
+             {/* Detalles del Ticket */}
               {result.success && result.ticket && (
                 <div className="mb-6 text-left">
                   <div className="bg-white rounded-lg p-4 space-y-2">
                     <p><strong>Evento:</strong> {result.ticket.eventName}</p>
                     <p><strong>Comprador:</strong> {result.ticket.buyerName}</p>
-                    <p><strong>Asientos:</strong> {result.ticket.seatNumber}</p>
+                    {result.ticket.eventType === 'SEATED' ? (
+                      <p><strong>Asiento:</strong> {result.ticket.seat}</p>
+                    ) : (
+                      <p><strong>Tipo de entrada:</strong> {result.ticket.ticketType.name}</p>
+                    )}
+                    <p><strong>Estado:</strong> {result.ticket.status}</p>
                   </div>
                 </div>
               )}
@@ -164,8 +185,8 @@ export function QrScanner() {
                 <p className="text-red-600 mb-6">{result.message}</p>
               )}
 
-              {/* Botón de Cierre */}
-              <Button 
+             {/* Botón de Cierre */}
+             <Button 
                 onClick={handleCloseResult}
                 className="w-full text-lg py-6"
                 variant={result.success ? "default" : "destructive"}
@@ -183,7 +204,7 @@ export function QrScanner() {
           variant={scanning ? "destructive" : "default"}
           onClick={scanning ? stopScanning : startScanning}
           className="w-full max-w-sm"
-          disabled={showModal} // Deshabilitar mientras se muestra el resultado
+          disabled={showModal}
         >
           {scanning ? 'Detener Scanner' : 'Iniciar Scanner'}
         </Button>

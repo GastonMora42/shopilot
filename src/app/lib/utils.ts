@@ -6,7 +6,14 @@ import crypto from 'crypto';
 interface QROptions {
   prefix?: string;
   length?: number;
-  ticketId?: string;
+  type: 'SEATED' | 'GENERAL';
+  seatInfo?: {
+    seat: string;
+  };
+  generalInfo?: {
+    ticketType: string;
+    index: number;
+  };
 }
 
 interface QRCodeResult {
@@ -18,38 +25,53 @@ interface QRCodeResult {
   };
 }
 
+interface QRMetadata {
+  ticketId: string;
+  timestamp: number;
+  type: 'SEATED' | 'GENERAL';
+  seatInfo?: {
+    seat: string;
+  };
+  generalInfo?: {
+    ticketType: string;
+    index: number;
+  };
+}
+
+
 export async function generateQRCode(options: QROptions = {}): Promise<QRCodeResult> {
   const {
     prefix = '',
     length = 64,
-    ticketId = ''
+    ticketId = '',
+    type,
+    seatInfo,
+    generalInfo
   } = options;
 
-  // Generar componentes únicos
-  const randomString = crypto.randomBytes(32).toString('hex');
-  const timestamp = Date.now();
-  
-  // Generar código QR principal
+  const metadata: QRMetadata = {
+    ticketId,
+    timestamp: Date.now(),
+    type,
+    ...(type === 'SEATED' ? { seatInfo } : { generalInfo })
+  };
+
   const mainHash = crypto
     .createHash('sha256')
-    .update(prefix + randomString + timestamp + ticketId)
+    .update(prefix + JSON.stringify(metadata))
     .digest('hex')
     .slice(0, length);
 
-  // Generar hash de validación separado
   const validationHash = crypto
     .createHash('sha256')
-    .update(mainHash + timestamp + ticketId)
+    .update(mainHash + JSON.stringify(metadata))
     .digest('hex')
     .slice(0, 32);
 
   return {
     qrCode: mainHash,
     validationHash,
-    metadata: {
-      timestamp,
-      ticketId
-    }
+    metadata
   };
 }
 

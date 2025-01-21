@@ -4,10 +4,9 @@ import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import mongoose from 'mongoose';
-import { sendTicketEmail } from '@/app/lib/email';
+import { sendTicketEmail, TicketInfo } from '@/app/lib/email';
 import crypto from 'crypto';
 
-// Definir interfaces necesarias
 interface EventDocument {
   _id: mongoose.Types.ObjectId;
   name: string;
@@ -18,7 +17,13 @@ interface EventDocument {
 interface TicketDocument {
   _id: mongoose.Types.ObjectId;
   eventId: EventDocument;
-  seats: string[];
+  eventType: 'SEATED' | 'GENERAL';
+  seats?: string[];
+  ticketType?: {
+    name: string;
+    price: number;
+  };
+  quantity?: number;
   buyerInfo: {
     name: string;
     email: string;
@@ -28,10 +33,34 @@ interface TicketDocument {
   paymentId?: string;
 }
 
-interface IndividualTicketQR {
-  seat: string;
-  qrCode: string;
-}
+// Función auxiliar para generar QRs según tipo de ticket
+const generateTicketsWithQRs = (ticket: TicketDocument): TicketInfo[] => {
+  if (ticket.eventType === 'SEATED') {
+    return ticket.seats?.map(seat => ({
+      eventName: ticket.eventId.name,
+      date: ticket.eventId.date,
+      location: ticket.eventId.location,
+      eventType: 'SEATED' as const,
+      seat,
+      qrCode: crypto
+        .createHash('sha256')
+        .update(`${ticket._id}-${seat}-${Date.now()}`)
+        .digest('hex')
+    })) || [];
+  } else {
+    return Array(ticket.quantity || 0).fill(null).map((_, index) => ({
+      eventName: ticket.eventId.name,
+      date: ticket.eventId.date,
+      location: ticket.eventId.location,
+      eventType: 'GENERAL' as const,
+      ticketType: ticket.ticketType!,
+      qrCode: crypto
+        .createHash('sha256')
+        .update(`${ticket._id}-${ticket.ticketType?.name}-${index}-${Date.now()}`)
+        .digest('hex')
+    }));
+  }
+};
 
 export async function POST(req: Request) {
   let session: mongoose.ClientSession | null = null;
@@ -52,7 +81,6 @@ export async function POST(req: Request) {
     session = await mongoose.startSession();
     session.startTransaction();
 
-    // Buscar y actualizar el ticket
     const ticket = await Ticket.findByIdAndUpdate(
       ticketId,
       {
@@ -78,85 +106,59 @@ export async function POST(req: Request) {
     console.log('Ticket actualizado:', {
       id: ticket._id,
       status: ticket.status,
-      seats: ticket.seats
+      eventType: ticket.eventType
     });
 
-    // Actualizar los asientos a OCCUPIED
-    const seatResult = await Seat.updateMany(
-      {
-        eventId: ticket.eventId._id,
-        seatId: { $in: ticket.seats },
-        status: 'RESERVED'
-      },
-      {
-        $set: { 
-          status: 'OCCUPIED',
-          ticketId: ticket._id
+    if (ticket.eventType === 'SEATED') {
+      const seatResult = await Seat.updateMany(
+        {
+          eventId: ticket.eventId._id,
+          seatId: { $in: ticket.seats },
+          status: 'RESERVED'
         },
-        $unset: {
-          temporaryReservation: 1,
-          lastReservationAttempt: 1
-        }
-      },
-      { session }
-    );
+        {
+          $set: { 
+            status: 'OCCUPIED',
+            ticketId: ticket._id
+          },
+          $unset: {
+            temporaryReservation: 1,
+            lastReservationAttempt: 1
+          }
+        },
+        { session }
+      );
 
-    if (seatResult.modifiedCount !== ticket.seats.length) {
-      await session.abortTransaction();
-      console.error('Error en actualización de asientos:', {
-        expected: ticket.seats.length,
-        updated: seatResult.modifiedCount
-      });
-      return NextResponse.json({
-        error: 'Error al actualizar el estado de los asientos'
-      }, { status: 500 });
+      if (seatResult.modifiedCount !== (ticket.seats?.length || 0)) {
+        await session.abortTransaction();
+        console.error('Error en actualización de asientos:', {
+          expected: ticket.seats?.length,
+          updated: seatResult.modifiedCount
+        });
+        return NextResponse.json({
+          error: 'Error al actualizar el estado de los asientos'
+        }, { status: 500 });
+      }
     }
 
     await session.commitTransaction();
-    console.log('Transacción completada exitosamente');
 
-// Generar QRs individuales para cada asiento
-const ticketsWithQRs = ticket.seats.map((seat: string) => {
-  const individualQR = crypto
-    .createHash('sha256')
-    .update(`${ticket._id}-${seat}-${Date.now()}`)
-    .digest('hex');
+    // Generar QRs y enviar email
+    const ticketsWithQRs = generateTicketsWithQRs(ticket);
 
-  return {
-    eventName: ticket.eventId.name,
-    date: ticket.eventId.date,
-    location: ticket.eventId.location,
-    seat, // Un solo asiento por ticket
-    qrCode: individualQR
-  };
-});
+    try {
+      await sendTicketEmail({
+        tickets: ticketsWithQRs,
+        email: ticket.buyerInfo.email
+      });
+      console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
+    } catch (emailError) {
+      console.error('Error al enviar email:', emailError);
+    }
 
-// Enviar email con todos los QRs
-try {
-  await sendTicketEmail({
-    tickets: ticketsWithQRs,
-    email: ticket.buyerInfo.email
-  });
-  console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
-} catch (emailError) {
-  console.error('Error al enviar email:', emailError);
-}
-
-    // Devolver los tickets individuales
     return NextResponse.json({
       success: true,
-      tickets: ticketsWithQRs.map(({ seat, qrCode }) => ({
-        id: ticket._id,
-        status: ticket.status,
-        eventName: ticket.eventId.name,
-        date: ticket.eventId.date,
-        location: ticket.eventId.location,
-        seats: [seat],
-        qrCode,
-        buyerInfo: ticket.buyerInfo,
-        price: ticket.price / ticket.seats.length,
-        paymentId: ticket.paymentId
-      }))
+      tickets: ticketsWithQRs
     });
 
   } catch (error) {

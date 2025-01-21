@@ -6,16 +6,24 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
 
 interface TicketData {
+  id: string;
   eventName: string;
   date: string;
   location: string;
-  seat: string;  // Cambiado de seats a seat
+  eventType: 'SEATED' | 'GENERAL';
+  seat?: string;
+  ticketType?: {
+    name: string;
+    price: number;
+  };
   qrCode: string;
+  status: string;
   buyerInfo: {
     name: string;
     email: string;
   };
   price: number;
+  paymentId: string;
 }
 
 export function usePDFDownload() {
@@ -25,7 +33,6 @@ export function usePDFDownload() {
     try {
       setLoading(true);
 
-      // Crear el documento PDF
       const pdfDoc = await PDFDocument.create();
       const page = pdfDoc.addPage([600, 800]);
       const { width, height } = page.getSize();
@@ -58,7 +65,7 @@ export function usePDFDownload() {
         color: rgb(0, 0, 0),
       });
 
-      // Preparar contenido con valores seguros
+      // Preparar contenido basado en el tipo de ticket
       const textContent = [
         { label: 'Evento:', value: ticket.eventName || 'N/A' },
         { 
@@ -69,14 +76,17 @@ export function usePDFDownload() {
           }) : 'N/A'
         },
         { label: 'Ubicación:', value: ticket.location || 'N/A' },
-        { label: 'Asiento:', value: ticket.seat || 'N/A' },
+        // Información condicional según el tipo de ticket
+        ...(ticket.eventType === 'SEATED' 
+          ? [{ label: 'Asiento:', value: ticket.seat || 'N/A' }]
+          : [{ label: 'Tipo de entrada:', value: ticket.ticketType?.name || 'N/A' }]
+        ),
         { label: 'Comprador:', value: ticket.buyerInfo?.name || 'N/A' },
         { label: 'Total:', value: `$${ticket.price || 0}` },
       ];
 
       let yPosition = height - 100;
       textContent.forEach(({ label, value }) => {
-        // Label
         page.drawText(label, {
           x: 50,
           y: yPosition,
@@ -85,7 +95,6 @@ export function usePDFDownload() {
           color: rgb(0.4, 0.4, 0.4),
         });
 
-        // Value
         page.drawText(String(value), {
           x: 150,
           y: yPosition,
@@ -114,13 +123,18 @@ export function usePDFDownload() {
         color: rgb(0.4, 0.4, 0.4),
       });
 
+      // Generar nombre de archivo según tipo de ticket
+      const fileName = ticket.eventType === 'SEATED'
+        ? `ticket-${ticket.eventName?.toLowerCase().replace(/\s+/g, '-')}-${ticket.seat}.pdf`
+        : `ticket-${ticket.eventName?.toLowerCase().replace(/\s+/g, '-')}-${ticket.ticketType?.name?.toLowerCase()}.pdf`;
+
       // Generar y descargar el PDF
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `ticket-${ticket.eventName?.toLowerCase().replace(/\s+/g, '-') || 'entrada'}-${ticket.seat}.pdf`;
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

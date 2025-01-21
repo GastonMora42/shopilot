@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
+import { Event } from '@/app/models/Event';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { sendTicketEmail } from '@/app/lib/email';
 import mongoose from 'mongoose';
@@ -18,6 +19,47 @@ type PaymentInfo = {
   id: string | number;
   status: string;
   external_reference: string;
+};
+
+// Función auxiliar para generar QRs según tipo de ticket
+const generateTicketsWithQRs = (ticket: any) => {
+  if (ticket.eventType === 'SEATED') {
+    return ticket.seats.map((seat: string) => {
+      const individualQR = crypto
+        .createHash('sha256')
+        .update(`${ticket._id}-${seat}-${Date.now()}`)
+        .digest('hex');
+
+      return {
+        eventName: ticket.eventId.name,
+        date: ticket.eventId.date,
+        location: ticket.eventId.location,
+        seat,
+        eventType: 'SEATED',
+        qrCode: individualQR,
+        price: ticket.price / ticket.seats.length,
+        buyerInfo: ticket.buyerInfo
+      };
+    });
+  } else {
+    return Array(ticket.quantity).fill(null).map((_, index) => {
+      const individualQR = crypto
+        .createHash('sha256')
+        .update(`${ticket._id}-${ticket.ticketType.name}-${index}-${Date.now()}`)
+        .digest('hex');
+
+      return {
+        eventName: ticket.eventId.name,
+        date: ticket.eventId.date,
+        location: ticket.eventId.location,
+        eventType: 'GENERAL',
+        ticketType: ticket.ticketType,
+        qrCode: individualQR,
+        price: ticket.ticketType.price,
+        buyerInfo: ticket.buyerInfo
+      };
+    });
+  }
 };
 
 export async function POST(req: Request) {
@@ -49,7 +91,6 @@ export async function POST(req: Request) {
     session = await mongoose.startSession();
     session.startTransaction();
 
-    // Buscar el ticket independientemente del estado del pago
     const ticket = await Ticket.findById(paymentInfo.external_reference)
       .session(session)
       .populate('eventId');
@@ -62,88 +103,12 @@ export async function POST(req: Request) {
     console.log('Ticket encontrado:', {
       ticketId: ticket._id,
       currentStatus: ticket.status,
-      seats: ticket.seats
+      eventType: ticket.eventType,
+      seats: ticket.seats,
+      ticketType: ticket.ticketType
     });
 
-
-// Cuando el pago es aprobado:
-if (paymentInfo.status === "approved") {
-  if (ticket.status !== 'PENDING') {
-    await session.abortTransaction();
-    return NextResponse.json({ 
-      message: 'Ticket ya procesado', 
-      currentStatus: ticket.status 
-    }, { status: 200 });
-  }
-
-  // Actualizar ticket
-  ticket.status = 'PAID';
-  ticket.paymentId = String(paymentInfo.id);
-  await ticket.save({ session });
-
-  // Marcar asientos como ocupados
-  const seatResult = await Seat.updateMany(
-    {
-      eventId: ticket.eventId,
-      seatId: { $in: ticket.seats },
-      status: 'RESERVED'
-    },
-    {
-      $set: { 
-        status: 'OCCUPIED',
-        ticketId: ticket._id
-      },
-      $unset: {
-        temporaryReservation: 1,
-        lastReservationAttempt: 1
-      }
-    },
-    { session }
-  );
-
-  if (seatResult.modifiedCount !== ticket.seats.length) {
-    await session.abortTransaction();
-    console.error('Error actualizando asientos:', {
-      expected: ticket.seats.length,
-      updated: seatResult.modifiedCount
-    });
-    return NextResponse.json({ 
-      error: 'Error en la actualización de asientos' 
-    }, { status: 200 });
-  }
-
-  await session.commitTransaction();
-
-
-  // Generar QRs individuales para cada asiento
-  const ticketsWithQRs = ticket.seats.map((seat: string) => {
-    const individualQR = crypto
-      .createHash('sha256')
-      .update(`${ticket._id}-${seat}-${Date.now()}`)
-      .digest('hex');
-
-    return {
-      eventName: ticket.eventId.name,
-      date: ticket.eventId.date,
-      location: ticket.eventId.location,
-      seat, // Un solo asiento por ticket
-      qrCode: individualQR
-    };
-  });
-
-  // Enviar email con todos los QRs
-  try {
-    await sendTicketEmail({
-      tickets: ticketsWithQRs,
-      email: ticket.buyerInfo.email
-    });
-    console.log('Email enviado a:', ticket.buyerInfo.email);
-  } catch (emailError) {
-    console.error('Error enviando email:', emailError);
-  }
-}
-    // Manejar pago rechazado o cancelado
-    else if (['rejected', 'cancelled', 'refunded'].includes(paymentInfo.status)) {
+    if (paymentInfo.status === "approved") {
       if (ticket.status !== 'PENDING') {
         await session.abortTransaction();
         return NextResponse.json({ 
@@ -152,59 +117,131 @@ if (paymentInfo.status === "approved") {
         }, { status: 200 });
       }
 
-      // Actualizar ticket
+      ticket.status = 'PAID';
+      ticket.paymentId = String(paymentInfo.id);
+      await ticket.save({ session });
+
+      if (ticket.eventType === 'SEATED') {
+        const seatResult = await Seat.updateMany(
+          {
+            eventId: ticket.eventId,
+            seatId: { $in: ticket.seats },
+            status: 'RESERVED'
+          },
+          {
+            $set: { 
+              status: 'OCCUPIED',
+              ticketId: ticket._id
+            },
+            $unset: {
+              temporaryReservation: 1,
+              lastReservationAttempt: 1
+            }
+          },
+          { session }
+        );
+
+        if (seatResult.modifiedCount !== ticket.seats.length) {
+          await session.abortTransaction();
+          console.error('Error actualizando asientos:', {
+            expected: ticket.seats.length,
+            updated: seatResult.modifiedCount
+          });
+          return NextResponse.json({ 
+            error: 'Error en la actualización de asientos' 
+          }, { status: 200 });
+        }
+      } else {
+        await Event.findByIdAndUpdate(
+          ticket.eventId._id,
+          {
+            $inc: {
+              'generalTickets.$[elem].quantity': -ticket.quantity
+            }
+          },
+          {
+            arrayFilters: [{ 'elem.name': ticket.ticketType.name }],
+            session
+          }
+        );
+      }
+
+      await session.commitTransaction();
+
+      const ticketsWithQRs = generateTicketsWithQRs(ticket);
+
+      try {
+        await sendTicketEmail({
+          tickets: ticketsWithQRs,
+          email: ticket.buyerInfo.email
+        });
+        console.log('Email enviado a:', ticket.buyerInfo.email);
+      } catch (emailError) {
+        console.error('Error enviando email:', emailError);
+      }
+
+    } else if (['rejected', 'cancelled', 'refunded'].includes(paymentInfo.status)) {
+      if (ticket.status !== 'PENDING') {
+        await session.abortTransaction();
+        return NextResponse.json({ 
+          message: 'Ticket ya procesado', 
+          currentStatus: ticket.status 
+        }, { status: 200 });
+      }
+
       ticket.status = 'CANCELLED';
       ticket.paymentId = String(paymentInfo.id);
       await ticket.save({ session });
 
-      // Liberar asientos reservados
-      const seatResult = await Seat.updateMany(
-        {
-          eventId: ticket.eventId,
-          seatId: { $in: ticket.seats },
-          status: 'RESERVED'
-        },
-        {
-          $set: { status: 'AVAILABLE' },
-          $unset: {
-            ticketId: 1,
-            temporaryReservation: 1
+      if (ticket.eventType === 'SEATED') {
+        await Seat.updateMany(
+          {
+            eventId: ticket.eventId,
+            seatId: { $in: ticket.seats },
+            status: 'RESERVED'
+          },
+          {
+            $set: { status: 'AVAILABLE' },
+            $unset: {
+              ticketId: 1,
+              temporaryReservation: 1
+            }
+          },
+          { session }
+        );
+      } else {
+        await Event.findByIdAndUpdate(
+          ticket.eventId._id,
+          {
+            $inc: {
+              'generalTickets.$[elem].quantity': ticket.quantity
+            }
+          },
+          {
+            arrayFilters: [{ 'elem.name': ticket.ticketType.name }],
+            session
           }
-        },
-        { session }
-      );
-
-      console.log('Resultado de liberación de asientos:', {
-        ticketId: ticket._id,
-        seats: ticket.seats,
-        updated: seatResult.modifiedCount
-      });
+        );
+      }
 
       await session.commitTransaction();
-    }
-    // Estados pendientes o en proceso
-    else if (['pending', 'in_process', 'authorized'].includes(paymentInfo.status)) {
-      // Mantener los asientos como RESERVED
-      console.log('Pago pendiente, manteniendo reserva:', {
-        ticketId: ticket._id,
-        paymentStatus: paymentInfo.status
-      });
+    } else if (['pending', 'in_process', 'authorized'].includes(paymentInfo.status)) {
+      if (ticket.eventType === 'SEATED') {
+        await Seat.updateMany(
+          {
+            eventId: ticket.eventId,
+            seatId: { $in: ticket.seats },
+            status: 'RESERVED'
+          },
+          {
+            $set: {
+              'temporaryReservation.expiresAt': new Date(Date.now() + 15 * 60 * 1000)
+            }
+          },
+          { session }
+        );
+      }
       
-      // Extender el tiempo de reserva si es necesario
-      await Seat.updateMany(
-        {
-          eventId: ticket.eventId,
-          seatId: { $in: ticket.seats },
-          status: 'RESERVED'
-        },
-        {
-          $set: {
-            'temporaryReservation.expiresAt': new Date(Date.now() + 15 * 60 * 1000)
-          }
-        },
-        { session }
-      );
-
       await session.commitTransaction();
     }
 
@@ -215,7 +252,8 @@ if (paymentInfo.status === "approved") {
         ticketId: ticket._id,
         paymentId: String(paymentInfo.id),
         status: paymentInfo.status,
-        ticketStatus: ticket.status
+        ticketStatus: ticket.status,
+        eventType: ticket.eventType
       }
     }, { status: 200 });
 

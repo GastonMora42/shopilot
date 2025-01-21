@@ -12,7 +12,13 @@ interface TicketData {
   eventName: string;
   date: string;
   location: string;
-  seat: string; 
+  eventType: 'SEATED' | 'GENERAL';
+  seat?: string;
+  ticketType?: {
+    name: string;
+    price: number;
+  };
+  quantity?: number;
   qrCode: string;
   status: string;
   buyerInfo: {
@@ -23,10 +29,11 @@ interface TicketData {
   paymentId: string;
 }
 
+
 export default function PaymentSuccessPage() {
   const searchParams = useSearchParams();
   const [tickets, setTickets] = useState<TicketData[]>([]);
-  const [isValidating, setIsValidating] = useState(true); // Nuevo estado para validación
+  const [isValidating, setIsValidating] = useState(true); // Nuevo estado para validaciónes
   const [error, setError] = useState<string | null>(null);
   const [verificationAttempts, setVerificationAttempts] = useState(0);
   const { downloadPDF, loading: pdfLoading } = usePDFDownload();
@@ -150,10 +157,6 @@ export default function PaymentSuccessPage() {
     );
   }
 
-  // Calcular el total de la compra
-const totalPurchase = tickets.reduce((sum, ticket) => sum + ticket.price, 0);
-
-
 return (
   <div className="min-h-screen bg-gray-50 py-12 px-4">
     <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
@@ -184,12 +187,16 @@ return (
               Entrada {index + 1}
             </h3>
             <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-2 text-sm">
-                <p><span className="font-medium">Fecha:</span> {new Date(ticket.date).toLocaleString()}</p>
-                <p><span className="font-medium">Ubicación:</span> {ticket.location}</p>
-                <p><span className="font-medium">Asiento:</span> {ticket.seat}</p>
-                <p><span className="font-medium">Precio:</span> ${ticket.price}</p>
-              </div>
+            <div className="space-y-2 text-sm">
+  <p><span className="font-medium">Fecha:</span> {new Date(ticket.date).toLocaleString()}</p>
+  <p><span className="font-medium">Ubicación:</span> {ticket.location}</p>
+  {ticket.seat ? (
+    <p><span className="font-medium">Asiento:</span> {ticket.seat}</p>
+  ) : (
+    <p><span className="font-medium">Tipo de entrada:</span> {ticket.ticketType?.name}</p>
+  )}
+  <p><span className="font-medium">Precio:</span> ${ticket.price}</p>
+</div>
               <div className="flex flex-col items-center">
                 <div className="p-4 bg-white border rounded-lg">
                   <QRCodeSVG value={ticket.qrCode} size={150} />

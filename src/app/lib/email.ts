@@ -7,27 +7,40 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 const sendinblue = new SibApiV3Sdk.TransactionalEmailsApi();
 sendinblue.setApiKey(SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY!);
 
-interface TicketInfo {
+interface BaseTicketInfo {
   eventName: string;
   date: string;
   location: string;
-  seat: string;
   qrCode: string;
+  eventType: 'SEATED' | 'GENERAL';
 }
+
+interface SeatedTicketInfo extends BaseTicketInfo {
+  eventType: 'SEATED';
+  seat: string;
+}
+
+interface GeneralTicketInfo extends BaseTicketInfo {
+  eventType: 'GENERAL';
+  ticketType: {
+    name: string;
+    price: number;
+  };
+}
+
+type TicketInfo = SeatedTicketInfo | GeneralTicketInfo;
 
 interface SendTicketEmailParams {
   tickets: TicketInfo[];
   email: string;
 }
 
+
 async function generateTicketPDF(tickets: TicketInfo[]): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
-
   for (const ticket of tickets) {
     const page = pdfDoc.addPage([600, 800]);
     const { width, height } = page.getSize();
-
-    // Cargar fuentes
     const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
@@ -57,12 +70,19 @@ async function generateTicketPDF(tickets: TicketInfo[]): Promise<Buffer> {
 
     const textContent = [
       { label: 'Evento:', value: ticket.eventName },
-      { label: 'Fecha:', value: new Date(ticket.date).toLocaleString('es-ES', {
-        dateStyle: 'full',
-        timeStyle: 'short'
-      })},
+      { 
+        label: 'Fecha:', 
+        value: new Date(ticket.date).toLocaleString('es-ES', {
+          dateStyle: 'full',
+          timeStyle: 'short'
+        })
+      },
       { label: 'Ubicación:', value: ticket.location },
-      { label: 'Asiento:', value: ticket.seat }
+      // Información condicional según el tipo de ticket
+      ...(ticket.eventType === 'SEATED' 
+        ? [{ label: 'Asiento:', value: ticket.seat }]
+        : [{ label: 'Tipo de entrada:', value: ticket.ticketType.name }]
+      )
     ];
 
     let yPosition = height - 100;

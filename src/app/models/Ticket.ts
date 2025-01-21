@@ -3,7 +3,7 @@ import mongoose, { Document } from "mongoose";
 
 export interface ITicket extends Document {
   eventId: mongoose.Types.ObjectId;
-  userId: mongoose.Types.ObjectId; // Añadido
+  userId: mongoose.Types.ObjectId;
   eventType: 'SEATED' | 'GENERAL';
   seats?: string[];
   ticketType?: {
@@ -18,10 +18,18 @@ export interface ITicket extends Document {
     phone?: string;
   };
   qrCode: string;
-  qrValidation: string; // Añadido
-  qrMetadata: { // Añadido
+  qrValidation: string;
+  qrMetadata: {
     timestamp: number;
     ticketId: string;
+    type: 'SEATED' | 'GENERAL';
+    seatInfo?: {
+      seat: string;
+    };
+    generalInfo?: {
+      ticketType: string;
+      index: number;
+    };
   };
   status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
   price: number;
@@ -46,7 +54,6 @@ const TicketSchema = new mongoose.Schema({
     enum: ['SEATED', 'GENERAL'],
     required: true
   },
-  // Para eventos con asientos
   seats: {
     type: [{
       type: String,
@@ -59,7 +66,6 @@ const TicketSchema = new mongoose.Schema({
       message: 'Los asientos son requeridos para eventos con asientos'
     }
   },
-  // Para eventos generales
   ticketType: {
     type: {
       name: String,
@@ -88,7 +94,9 @@ const TicketSchema = new mongoose.Schema({
     },
     email: {
       type: String,
-      required: true
+      required: true,
+      lowercase: true,
+      trim: true
     },
     dni: {
       type: String,
@@ -101,14 +109,32 @@ const TicketSchema = new mongoose.Schema({
     unique: true,
     required: true
   },
-  qrValidation: { // Nuevo campo para validación del QR
+  qrValidation: {
     type: String,
     unique: true,
     required: true
   },
-  qrMetadata: { // Nuevo campo para metadata del QR
-    timestamp: Number,
-    ticketId: String
+  qrMetadata: {
+    timestamp: {
+      type: Number,
+      required: true
+    },
+    ticketId: {
+      type: String,
+      required: true
+    },
+    type: {
+      type: String,
+      enum: ['SEATED', 'GENERAL'],
+      required: true
+    },
+    seatInfo: {
+      seat: String
+    },
+    generalInfo: {
+      ticketType: String,
+      index: Number
+    }
   },
   status: {
     type: String,
@@ -129,20 +155,59 @@ const TicketSchema = new mongoose.Schema({
 // Índices
 TicketSchema.index({ eventId: 1, status: 1 });
 TicketSchema.index({ qrCode: 1 }, { unique: true });
-TicketSchema.index({ qrValidation: 1 }, { unique: true }); // Nuevo índice
-TicketSchema.index({ userId: 1 }); // Nuevo índice
+TicketSchema.index({ qrValidation: 1 }, { unique: true });
+TicketSchema.index({ userId: 1 });
 TicketSchema.index({ 'buyerInfo.email': 1 });
 TicketSchema.index({ paymentId: 1 });
+TicketSchema.index({ 'qrMetadata.ticketId': 1 });
 
 // Middleware de validación
 TicketSchema.pre('validate', function(next) {
-  if (this.eventType === 'SEATED' && (!this.seats || this.seats.length === 0)) {
-    next(new Error('Los asientos son requeridos para eventos con asientos'));
-  } else if (this.eventType === 'GENERAL' && (!this.ticketType || !this.quantity)) {
-    next(new Error('El tipo de ticket y cantidad son requeridos para eventos generales'));
-  } else {
-    next();
+  // Inicializar qrMetadata si no existe
+  if (!this.qrMetadata) {
+    this.qrMetadata = {
+      timestamp: Date.now(),
+      ticketId: this._id.toString(),
+      type: this.eventType,
+      seatInfo: undefined,
+      generalInfo: undefined
+    };
   }
+
+  // Validación del tipo de evento y sus requisitos
+  if (this.eventType === 'SEATED') {
+    if (!this.seats || this.seats.length === 0) {
+      next(new Error('Los asientos son requeridos para eventos con asientos'));
+    }
+
+    // Configurar qrMetadata para tickets con asientos
+    this.qrMetadata = {
+      ...this.qrMetadata,
+      type: 'SEATED',
+      seatInfo: { 
+        seat: this.seats[0] // O puedes manejar múltiples asientos si es necesario
+      },
+      generalInfo: undefined // Limpiar info general si existía
+    };
+
+  } else if (this.eventType === 'GENERAL') {
+    if (!this.ticketType || !this.quantity) {
+      next(new Error('El tipo de ticket y cantidad son requeridos para eventos generales'));
+    }
+
+    // Configurar qrMetadata para tickets generales
+    this.qrMetadata = {
+      ...this.qrMetadata,
+      type: 'GENERAL',
+      seatInfo: undefined, // Limpiar info de asientos si existía
+      generalInfo: {
+        ticketType: this.ticketType?.name || '',
+        index: 0 // Este índice podría ser útil si necesitas diferenciar múltiples tickets del mismo tipo
+      }
+    };
+  }
+
+  next();
 });
 
 // Virtuals
@@ -152,5 +217,23 @@ TicketSchema.virtual('totalPrice').get(function() {
   }
   return this.price;
 });
+
+TicketSchema.virtual('isValid').get(function() {
+  return this.status === 'PAID' && !['USED', 'CANCELLED'].includes(this.status);
+});
+
+// Método para validar QR
+TicketSchema.methods.validateQR = function(qrCode: string): boolean {
+  return this.qrCode === qrCode && this.status === 'PAID';
+};
+
+// Método para marcar como usado
+TicketSchema.methods.markAsUsed = async function() {
+  if (this.status !== 'PAID') {
+    throw new Error('Solo tickets pagados pueden ser marcados como usados');
+  }
+  this.status = 'USED';
+  await this.save();
+};
 
 export const Ticket = mongoose.models.Ticket || mongoose.model<ITicket>('Ticket', TicketSchema);

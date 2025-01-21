@@ -201,7 +201,8 @@ if (eventType === 'SEATED' && (!seats?.length)) {
 
     const qrData = await generateQRCode({
       prefix: 'TKT',
-      ticketId: new mongoose.Types.ObjectId().toString()
+      ticketId: new mongoose.Types.ObjectId().toString(),
+      type: 'SEATED'
     });
 
     // Crear ticket

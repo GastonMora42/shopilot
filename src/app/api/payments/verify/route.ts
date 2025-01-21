@@ -4,7 +4,7 @@ import dbConnect from '@/app/lib/mongodb';
 import { Ticket, ITicket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import mongoose from 'mongoose';
-import { sendTicketEmail } from '@/app/lib/email';
+import { sendTicketEmail, TicketInfo } from '@/app/lib/email';
 import { generateTicketQR } from '@/app/lib/utils';
 
 interface EventDocument {
@@ -154,7 +154,8 @@ function formatTicketForEmail(ticket: ITicket & { eventId: EventDocument }) {
 
 // Y luego al enviar el email:
 try {
-  const formattedTickets = formatTicketForEmail(ticket);
+  const formattedTickets = formatTicketForEmail(ticket) as unknown as TicketInfo[];
+
   await sendTicketEmail({
     tickets: formattedTickets,
     email: ticket.buyerInfo.email

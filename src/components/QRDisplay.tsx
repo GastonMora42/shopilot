@@ -6,6 +6,7 @@ import { CheckCircleIcon, ClockIcon, XCircleIcon } from "lucide-react";
 
 type QRDisplayProps = {
   ticket: {
+    qrCode: string | string[];
     _id: Types.ObjectId | string;
     eventType: ITicket['eventType'];
     status: ITicket['status'];
@@ -22,10 +23,7 @@ type QRDisplayProps = {
 
 // components/QRDisplay.tsx
 const QRDisplay: React.FC<QRDisplayProps> = ({ ticket }) => {
-    const ticketId = typeof ticket._id === 'string' ? ticket._id : ticket._id.toString();
-  
-    // Si el ticket no está pagado, mostramos un mensaje en lugar del QR
-    if (ticket.status !== 'PAID') {
+  if (ticket.status !== 'PAID') {
       return (
         <div className="flex flex-col items-center p-6 bg-gray-50 rounded-lg">
           {ticket.status === 'PENDING' ? (
@@ -58,23 +56,11 @@ const QRDisplay: React.FC<QRDisplayProps> = ({ ticket }) => {
     }
   
     // Si el ticket está pagado, mostramos el QR
-    const qrData = {
-      ticketId,
-      eventType: ticket.eventType,
-      validation: ticket.qrValidation,
-      metadata: ticket.qrMetadata,
-      ...(ticket.eventType === 'SEATED' 
-        ? { seatInfo: ticket.seats } 
-        : { 
-            ticketType: ticket.ticketType?.name,
-            quantity: ticket.quantity 
-          })
-    };
   
     return (
       <div className="flex flex-col items-center">
         <QRCodeSVG 
-          value={JSON.stringify(qrData)}
+          value={ticket.qrCode} // Usar directamente el QR almacenado
           size={200}
           level="H"
           includeMargin={true}
@@ -82,9 +68,6 @@ const QRDisplay: React.FC<QRDisplayProps> = ({ ticket }) => {
         <p className="mt-2 text-sm text-gray-500">
           Escanea para validar el ticket
         </p>
-        <div className="mt-2 px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm font-medium">
-          Pagado
-        </div>
       </div>
     );
   };

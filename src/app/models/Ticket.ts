@@ -1,22 +1,14 @@
 // models/Ticket.ts
 import mongoose, { Document } from "mongoose";
 
-export interface ITicket extends Document {
-  eventId: mongoose.Types.ObjectId;
+// Interfaces base para documentos
+interface BaseTicketDocument extends Document {
+  eventId: {
+    name: string;
+    date: string;
+    location: string;
+  };
   userId: mongoose.Types.ObjectId;
-  eventType: 'SEATED' | 'GENERAL';
-  seats?: string[];
-  ticketType?: {
-    name: string;
-    price: number;
-  };
-  quantity?: number;
-  buyerInfo: {
-    name: string;
-    email: string;
-    dni: string;
-    phone?: string;
-  };
   qrCode: string;
   qrValidation: string;
   qrMetadata: {
@@ -32,11 +24,33 @@ export interface ITicket extends Document {
     };
   };
   status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
+  buyerInfo: {
+    name: string;
+    email: string;
+    dni: string;
+    phone?: string;
+  };
   price: number;
   paymentId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
+
+interface SeatedTicketDocument extends BaseTicketDocument {
+  eventType: 'SEATED';
+  seats: string[];
+}
+
+interface GeneralTicketDocument extends BaseTicketDocument {
+  eventType: 'GENERAL';
+  ticketType: {
+    name: string;
+    price: number;
+  };
+  quantity: number;
+}
+
+export type ITicket = SeatedTicketDocument | GeneralTicketDocument;
 
 const TicketSchema = new mongoose.Schema({
   eventId: {

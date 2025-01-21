@@ -7,17 +7,24 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 const sendinblue = new SibApiV3Sdk.TransactionalEmailsApi();
 sendinblue.setApiKey(SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY!);
 
+// lib/email.ts
 interface BaseTicketInfo {
   eventName: string;
   date: string;
   location: string;
   qrCode: string;
-  eventType: 'SEATED' | 'GENERAL';
+  status: string;
+  buyerInfo: {
+    name: string;
+    email: string;
+    dni: string;
+    phone?: string;
+  };
 }
 
 interface SeatedTicketInfo extends BaseTicketInfo {
   eventType: 'SEATED';
-  seat: string;
+  seat: string; // Para un asiento individual
 }
 
 interface GeneralTicketInfo extends BaseTicketInfo {
@@ -26,11 +33,12 @@ interface GeneralTicketInfo extends BaseTicketInfo {
     name: string;
     price: number;
   };
+  quantity: number;
 }
 
-type TicketInfo = SeatedTicketInfo | GeneralTicketInfo;
+export type TicketInfo = SeatedTicketInfo | GeneralTicketInfo;
 
-interface SendTicketEmailParams {
+export interface SendTicketEmailParams {
   tickets: TicketInfo[];
   email: string;
 }
@@ -182,5 +190,3 @@ export async function sendTicketEmail({ tickets, email }: SendTicketEmailParams)
     throw error;
   }
 }
-
-export type { SendTicketEmailParams, TicketInfo };

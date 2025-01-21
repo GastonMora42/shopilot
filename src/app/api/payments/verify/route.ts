@@ -1,11 +1,11 @@
 // api/payments/verify/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
-import { Ticket } from '@/app/models/Ticket';
+import { Ticket, ITicket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import mongoose from 'mongoose';
-import { sendTicketEmail, TicketInfo } from '@/app/lib/email';
-import crypto from 'crypto';
+import { sendTicketEmail } from '@/app/lib/email';
+import { generateTicketQR } from '@/app/lib/utils';
 
 interface EventDocument {
   _id: mongoose.Types.ObjectId;
@@ -14,60 +14,40 @@ interface EventDocument {
   location: string;
 }
 
-interface TicketDocument {
-  _id: mongoose.Types.ObjectId;
-  eventId: EventDocument;
-  eventType: 'SEATED' | 'GENERAL';
-  seats?: string[];
-  ticketType?: {
-    name: string;
-    price: number;
+// Función auxiliar para formatear el ticket para el email
+function formatTicketForEmail(ticket: ITicket & { eventId: EventDocument }) {
+  const baseTicket = {
+    eventName: ticket.eventId.name,
+    date: ticket.eventId.date,
+    location: ticket.eventId.location,
+    eventType: ticket.eventType,
+    qrCode: ticket.qrCode,
+    qrValidation: ticket.qrValidation,
+    status: ticket.status,
+    buyerInfo: ticket.buyerInfo
   };
-  quantity?: number;
-  buyerInfo: {
-    name: string;
-    email: string;
-  };
-  status: string;
-  price: number;
-  paymentId?: string;
-}
 
-// Función auxiliar para generar QRs según tipo de ticket
-const generateTicketsWithQRs = (ticket: TicketDocument): TicketInfo[] => {
   if (ticket.eventType === 'SEATED') {
-    return ticket.seats?.map(seat => ({
-      eventName: ticket.eventId.name,
-      date: ticket.eventId.date,
-      location: ticket.eventId.location,
+    return {
+      ...baseTicket,
       eventType: 'SEATED' as const,
-      seat,
-      qrCode: crypto
-        .createHash('sha256')
-        .update(`${ticket._id}-${seat}-${Date.now()}`)
-        .digest('hex')
-    })) || [];
+      seats: ticket.seats
+    };
   } else {
-    return Array(ticket.quantity || 0).fill(null).map((_, index) => ({
-      eventName: ticket.eventId.name,
-      date: ticket.eventId.date,
-      location: ticket.eventId.location,
+    return {
+      ...baseTicket,
       eventType: 'GENERAL' as const,
-      ticketType: ticket.ticketType!,
-      qrCode: crypto
-        .createHash('sha256')
-        .update(`${ticket._id}-${ticket.ticketType?.name}-${index}-${Date.now()}`)
-        .digest('hex')
-    }));
+      ticketType: ticket.ticketType,
+      quantity: ticket.quantity
+    };
   }
-};
+}
 
 export async function POST(req: Request) {
   let session: mongoose.ClientSession | null = null;
 
   try {
     const { ticketId, paymentId } = await req.json();
-    
     console.log('Iniciando verificación de pago:', { ticketId, paymentId });
 
     if (!ticketId || !paymentId) {
@@ -79,37 +59,43 @@ export async function POST(req: Request) {
 
     await dbConnect();
     session = await mongoose.startSession();
-    session.startTransaction();
+    await session.startTransaction();
 
-    const ticket = await Ticket.findByIdAndUpdate(
-      ticketId,
-      {
-        status: 'PAID',
-        paymentId
-      },
-      {
-        new: true,
-        populate: 'eventId',
-        session
-      }
-    ).lean() as unknown as TicketDocument;
+    // Buscar ticket y verificar estado
+    const ticket = await Ticket.findById(ticketId)
+      .populate('eventId')
+      .session(session);
 
     if (!ticket) {
-      await session.abortTransaction();
-      console.log('Ticket no encontrado:', ticketId);
-      return NextResponse.json(
-        { error: 'Ticket no encontrado' },
-        { status: 404 }
-      );
+      throw new Error('Ticket no encontrado');
     }
 
-    console.log('Ticket actualizado:', {
-      id: ticket._id,
-      status: ticket.status,
-      eventType: ticket.eventType
-    });
+    if (ticket.status !== 'PENDING') {
+      throw new Error(`Ticket en estado inválido: ${ticket.status}`);
+    }
 
-    if (ticket.eventType === 'SEATED') {
+    // Generar o recuperar QR
+    if (!ticket.qrCode) {
+      const { qrCode, qrValidation, qrMetadata } = await generateTicketQR({
+        ticketId: ticket._id.toString(),
+        eventType: ticket.eventType,
+        seats: ticket.seats,
+        ticketType: ticket.ticketType,
+        quantity: ticket.quantity
+      });
+
+      // Actualizar ticket
+      ticket.status = 'PAID';
+      ticket.paymentId = paymentId;
+      ticket.qrCode = qrCode;
+      ticket.qrValidation = qrValidation;
+      ticket.qrMetadata = qrMetadata;
+
+      await ticket.save({ session });
+    }
+
+    // Actualizar asientos si es necesario
+    if (ticket.eventType === 'SEATED' && ticket.seats?.length) {
       const seatResult = await Seat.updateMany(
         {
           eventId: ticket.eventId._id,
@@ -129,50 +115,89 @@ export async function POST(req: Request) {
         { session }
       );
 
-      if (seatResult.modifiedCount !== (ticket.seats?.length || 0)) {
-        await session.abortTransaction();
-        console.error('Error en actualización de asientos:', {
-          expected: ticket.seats?.length,
-          updated: seatResult.modifiedCount
-        });
-        return NextResponse.json({
-          error: 'Error al actualizar el estado de los asientos'
-        }, { status: 500 });
+      if (seatResult.modifiedCount !== ticket.seats.length) {
+        throw new Error('Error al actualizar el estado de los asientos');
       }
     }
 
     await session.commitTransaction();
 
-    // Generar QRs y enviar email
-    const ticketsWithQRs = generateTicketsWithQRs(ticket);
+// api/payments/verify/route.ts
 
-    try {
-      await sendTicketEmail({
-        tickets: ticketsWithQRs,
-        email: ticket.buyerInfo.email
-      });
-      console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
-    } catch (emailError) {
-      console.error('Error al enviar email:', emailError);
-    }
+function formatTicketForEmail(ticket: ITicket & { eventId: EventDocument }) {
+  const baseTicket = {
+    eventName: ticket.eventId.name,
+    date: ticket.eventId.date,
+    location: ticket.eventId.location,
+    qrCode: ticket.qrCode,
+    status: ticket.status,
+    buyerInfo: ticket.buyerInfo
+  };
 
+  if (ticket.eventType === 'SEATED') {
+    // Para tickets con asientos, creamos un ticket por cada asiento
+    return ticket.seats.map(seat => ({
+      ...baseTicket,
+      eventType: 'SEATED' as const,
+      seat // Un ticket por asiento individual
+    }));
+  } else {
+    // Para tickets generales
+    return [{
+      ...baseTicket,
+      eventType: 'GENERAL' as const,
+      ticketType: ticket.ticketType,
+      quantity: ticket.quantity
+    }];
+  }
+}
+
+// Y luego al enviar el email:
+try {
+  const formattedTickets = formatTicketForEmail(ticket);
+  await sendTicketEmail({
+    tickets: formattedTickets,
+    email: ticket.buyerInfo.email
+  });
+  console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
+} catch (emailError) {
+  console.error('Error al enviar email:', emailError);
+  // Continuamos incluso si falla el email
+}
+    // Preparar respuesta
     return NextResponse.json({
       success: true,
-      tickets: ticketsWithQRs
+      ticket: {
+        id: ticket._id,
+        eventName: ticket.eventId.name,
+        date: ticket.eventId.date,
+        location: ticket.eventId.location,
+        status: ticket.status,
+        eventType: ticket.eventType,
+        qrCode: ticket.qrCode,
+        qrValidation: ticket.qrValidation,
+        buyerInfo: {
+          name: ticket.buyerInfo.name,
+          email: ticket.buyerInfo.email
+        },
+        ...(ticket.eventType === 'SEATED'
+          ? { seats: ticket.seats }
+          : {
+              ticketType: ticket.ticketType,
+              quantity: ticket.quantity
+            }),
+        price: ticket.price
+      }
     });
 
   } catch (error) {
-    if (session) {
-      await session.abortTransaction();
-    }
+    if (session) await session.abortTransaction();
     console.error('Error en verificación:', error);
     return NextResponse.json({
       success: false,
-      error: 'Error al verificar el pago'
+      error: error instanceof Error ? error.message : 'Error al verificar el pago'
     }, { status: 500 });
   } finally {
-    if (session) {
-      await session.endSession();
-    }
+    if (session) await session.endSession();
   }
 }

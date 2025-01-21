@@ -39,40 +39,39 @@ interface QRMetadata {
 }
 
 
-export async function generateQRCode(options: QROptions = { type: "SEATED" }): Promise<QRCodeResult> {
-  const {
-    prefix = '',
-    length = 64,
-    ticketId = '',
-    type,
-    seatInfo,
-    generalInfo
-  } = options;
-  
-  const metadata: QRMetadata = {
-    ticketId,
+// lib/utils.ts - Función para generar QR unificada
+export async function generateTicketQR(ticketData: {
+  ticketId: string;
+  eventType: 'SEATED' | 'GENERAL';
+  seats?: string[];
+  ticketType?: { name: string; price: number };
+  quantity?: number;
+}) {
+  const qrCode = crypto
+    .createHash('sha256')
+    .update(`${ticketData.ticketId}-${Date.now()}`)
+    .digest('hex');
+
+  const qrValidation = crypto
+    .createHash('sha256')
+    .update(`${qrCode}-${Date.now()}`)
+    .digest('hex');
+
+  const qrMetadata = {
     timestamp: Date.now(),
-    type,
-    ...(type === 'SEATED' ? { seatInfo } : { generalInfo })
+    ticketId: ticketData.ticketId,
+    type: ticketData.eventType,
+    ...(ticketData.eventType === 'SEATED' 
+      ? { seatInfo: { seats: ticketData.seats } }
+      : { 
+          generalInfo: {
+            ticketType: ticketData.ticketType?.name,
+            quantity: ticketData.quantity
+          }
+        })
   };
 
-  const mainHash = crypto
-    .createHash('sha256')
-    .update(prefix + JSON.stringify(metadata))
-    .digest('hex')
-    .slice(0, length);
-
-  const validationHash = crypto
-    .createHash('sha256')
-    .update(mainHash + JSON.stringify(metadata))
-    .digest('hex')
-    .slice(0, 32);
-
-  return {
-    qrCode: mainHash,
-    validationHash,
-    metadata
-  };
+  return { qrCode, qrValidation, qrMetadata };
 }
 
 // Tipos para las opciones de formateo de fecha

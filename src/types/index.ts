@@ -52,6 +52,8 @@ export interface ISection extends Document {
 }
 
 export interface ITicket extends Document {
+ qrValidation: any;
+ qrMetadata: any;
  _id: string;
  eventId: ObjectId;
  eventType: EventType;

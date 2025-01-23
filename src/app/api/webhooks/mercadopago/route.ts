@@ -7,7 +7,6 @@ import { Event } from '@/app/models/Event';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { sendTicketEmail } from '@/app/lib/email';
 import mongoose from 'mongoose';
-import crypto from 'crypto';
 import { generateTicketQR } from '@/app/lib/qrGenerator';
 
 const client = new MercadoPagoConfig({
@@ -22,58 +21,44 @@ type PaymentInfo = {
   external_reference: string;
 };
 
-const generateTicketsWithQRs = (ticket: any) => {
+function formatTicketsForEmail(ticket: any) {
+  const baseTicket = {
+    eventName: ticket.eventId.name,
+    date: ticket.eventId.date,
+    location: ticket.eventId.location,
+    status: ticket.status,
+    buyerInfo: ticket.buyerInfo,
+    qrCode: ticket.qrCode,
+    qrValidation: ticket.qrValidation,
+    qrMetadata: ticket.qrMetadata
+  };
+
   if (ticket.eventType === 'SEATED') {
-    return ticket.seats.map((seat: string) => {
-      const { qrString, validationHash, qrData } = generateTicketQR({
-        ticketId: ticket._id.toString(),
-        eventType: 'SEATED',
-        seats: [seat]
-      });
-
-      return {
-        eventName: ticket.eventId.name,
-        date: ticket.eventId.date,
-        location: ticket.eventId.location,
-        eventType: 'SEATED',
-        seat,
-        qrCode: qrString,
-        qrValidation: validationHash,
-        qrMetadata: qrData,
-        price: ticket.price / ticket.seats.length,
-        buyerInfo: ticket.buyerInfo
-      };
-    });
+    return ticket.seats.map((seat: string) => ({
+      ...baseTicket,
+      eventType: 'SEATED' as const,
+      seat,
+      price: ticket.price / ticket.seats.length
+    }));
   } else {
-    return Array(ticket.quantity).fill(null).map((_, index) => {
-      const { qrString, validationHash, qrData } = generateTicketQR({
-        ticketId: ticket._id.toString(),
-        eventType: 'GENERAL',
-        ticketType: ticket.ticketType,
-        quantity: 1,
-        index
-      });
-
-      return {
-        eventName: ticket.eventId.name,
-        date: ticket.eventId.date,
-        location: ticket.eventId.location,
-        eventType: 'GENERAL',
-        ticketType: ticket.ticketType,
-        qrCode: qrString,
-        qrValidation: validationHash,
-        qrMetadata: qrData,
-        price: ticket.ticketType.price,
-        buyerInfo: ticket.buyerInfo
-      };
-    });
+    return Array(ticket.quantity).fill(null).map(() => ({
+      ...baseTicket,
+      eventType: 'GENERAL' as const,
+      ticketType: ticket.ticketType,
+      quantity: 1,
+      price: ticket.ticketType.price
+    }));
   }
-};
+}
 
 export async function POST(req: Request) {
-  let session = null;
+  let session: mongoose.ClientSession | null = null;
 
   try {
+    if (!process.env.MP_ACCESS_TOKEN) {
+      throw new Error('MP_ACCESS_TOKEN no configurado');
+    }
+
     const body: { data: { id: string } } = await req.json();
     console.log('Webhook recibido:', body);
 
@@ -97,49 +82,50 @@ export async function POST(req: Request) {
 
     await dbConnect();
     session = await mongoose.startSession();
-    session.startTransaction();
+    await session.startTransaction();
 
     const ticket = await Ticket.findById(paymentInfo.external_reference)
       .session(session)
       .populate('eventId');
 
     if (!ticket) {
-      if (session) await session.abortTransaction();
-      return NextResponse.json({ message: 'Ticket no encontrado' }, { status: 200 });
+      throw new Error('Ticket no encontrado');
     }
 
     console.log('Ticket encontrado:', {
       ticketId: ticket._id,
       currentStatus: ticket.status,
-      eventType: ticket.eventType,
-      seats: ticket.seats,
-      ticketType: ticket.ticketType
+      eventType: ticket.eventType
     });
 
     if (paymentInfo.status === "approved") {
       if (ticket.status !== 'PENDING') {
-        await session.abortTransaction();
-        return NextResponse.json({ 
-          message: 'Ticket ya procesado', 
-          currentStatus: ticket.status 
-        }, { status: 200 });
+        throw new Error('Ticket ya procesado');
       }
-    
-      // Generar QRs y actualizar ticket
-      const ticketsWithQRs = generateTicketsWithQRs(ticket);
-      
+
+      // Generar QR una sola vez
+      const { qrString: qrCode, validationHash: qrValidation, qrData } = await generateTicketQR({
+        ticketId: ticket._id.toString(),
+        eventType: ticket.eventType,
+        seats: ticket.seats,
+        ticketType: ticket.ticketType,
+        quantity: ticket.quantity
+      });
+
+      // Actualizar ticket
       ticket.status = 'PAID';
       ticket.paymentId = String(paymentInfo.id);
-      ticket.qrCode = ticketsWithQRs[0].qrCode;
-      ticket.qrValidation = ticketsWithQRs[0].qrValidation;
-      ticket.qrMetadata = ticketsWithQRs[0].qrMetadata;
-      
+      ticket.qrCode = qrCode;
+      ticket.qrValidation = qrValidation;
+      ticket.qrMetadata = qrData;
+
       await ticket.save({ session });
 
+      // Actualizar según tipo de ticket
       if (ticket.eventType === 'SEATED') {
         const seatResult = await Seat.updateMany(
           {
-            eventId: ticket.eventId,
+            eventId: ticket.eventId._id,
             seatId: { $in: ticket.seats },
             status: 'RESERVED'
           },
@@ -157,14 +143,7 @@ export async function POST(req: Request) {
         );
 
         if (seatResult.modifiedCount !== ticket.seats.length) {
-          await session.abortTransaction();
-          console.error('Error actualizando asientos:', {
-            expected: ticket.seats.length,
-            updated: seatResult.modifiedCount
-          });
-          return NextResponse.json({ 
-            error: 'Error en la actualización de asientos' 
-          }, { status: 200 });
+          throw new Error('Error al actualizar asientos');
         }
       } else {
         await Event.findByIdAndUpdate(
@@ -183,25 +162,35 @@ export async function POST(req: Request) {
 
       await session.commitTransaction();
 
+      // Formatear tickets y enviar email
+      const formattedTickets = formatTicketsForEmail(ticket);
+      
       try {
         await sendTicketEmail({
-          tickets: ticketsWithQRs,
+          tickets: formattedTickets,
           email: ticket.buyerInfo.email
         });
-        console.log('Email enviado a:', ticket.buyerInfo.email);
+        console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
       } catch (emailError) {
-        console.error('Error enviando email:', emailError);
+        console.error('Error al enviar email:', {
+          error: emailError,
+          ticketId: ticket._id,
+          email: ticket.buyerInfo.email
+        });
       }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Pago procesado exitosamente',
+        data: {
+          ticketId: ticket._id,
+          status: 'PAID',
+          qrCode,
+          qrValidation
+        }
+      });
 
     } else if (['rejected', 'cancelled', 'refunded'].includes(paymentInfo.status)) {
-      if (ticket.status !== 'PENDING') {
-        await session.abortTransaction();
-        return NextResponse.json({ 
-          message: 'Ticket ya procesado', 
-          currentStatus: ticket.status 
-        }, { status: 200 });
-      }
-
       ticket.status = 'CANCELLED';
       ticket.paymentId = String(paymentInfo.id);
       await ticket.save({ session });
@@ -209,7 +198,7 @@ export async function POST(req: Request) {
       if (ticket.eventType === 'SEATED') {
         await Seat.updateMany(
           {
-            eventId: ticket.eventId,
+            eventId: ticket.eventId._id,
             seatId: { $in: ticket.seats },
             status: 'RESERVED'
           },
@@ -238,45 +227,33 @@ export async function POST(req: Request) {
       }
 
       await session.commitTransaction();
-    } else if (['pending', 'in_process', 'authorized'].includes(paymentInfo.status)) {
-      if (ticket.eventType === 'SEATED') {
-        await Seat.updateMany(
-          {
-            eventId: ticket.eventId,
-            seatId: { $in: ticket.seats },
-            status: 'RESERVED'
-          },
-          {
-            $set: {
-              'temporaryReservation.expiresAt': new Date(Date.now() + 15 * 60 * 1000)
-            }
-          },
-          { session }
-        );
-      }
-      
-      await session.commitTransaction();
+      return NextResponse.json({
+        success: true,
+        message: 'Pago cancelado/rechazado',
+        data: { 
+          ticketId: ticket._id,
+          status: 'CANCELLED'
+        }
+      });
     }
 
+    await session.commitTransaction();
     return NextResponse.json({
       success: true,
-      message: 'Webhook procesado exitosamente',
+      message: 'Webhook procesado',
       data: {
         ticketId: ticket._id,
-        paymentId: String(paymentInfo.id),
-        status: paymentInfo.status,
-        ticketStatus: ticket.status,
-        eventType: ticket.eventType
+        status: ticket.status
       }
-    }, { status: 200 });
+    });
 
   } catch (error) {
     if (session) await session.abortTransaction();
-    console.error('Error procesando webhook:', error);
-    return NextResponse.json(
-      { error: 'Error al procesar el webhook' },
-      { status: 200 }
-    );
+    console.error('Error en webhook:', error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Error procesando webhook'
+    }, { status: 200 }); // Mantener 200 para MP
   } finally {
     if (session) await session.endSession();
   }

@@ -8,6 +8,7 @@ import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { sendTicketEmail } from '@/app/lib/email';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
+import { generateTicketQR } from '@/app/lib/qrGenerator';
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
@@ -21,32 +22,37 @@ type PaymentInfo = {
   external_reference: string;
 };
 
-// Función auxiliar para generar QRs según tipo de ticket
 const generateTicketsWithQRs = (ticket: any) => {
   if (ticket.eventType === 'SEATED') {
     return ticket.seats.map((seat: string) => {
-      const individualQR = crypto
-        .createHash('sha256')
-        .update(`${ticket._id}-${seat}-${Date.now()}`)
-        .digest('hex');
+      const { qrString, validationHash, qrData } = generateTicketQR({
+        ticketId: ticket._id.toString(),
+        eventType: 'SEATED',
+        seats: [seat]
+      });
 
       return {
         eventName: ticket.eventId.name,
         date: ticket.eventId.date,
         location: ticket.eventId.location,
-        seat,
         eventType: 'SEATED',
-        qrCode: individualQR,
+        seat,
+        qrCode: qrString,
+        qrValidation: validationHash,
+        qrMetadata: qrData,
         price: ticket.price / ticket.seats.length,
         buyerInfo: ticket.buyerInfo
       };
     });
   } else {
     return Array(ticket.quantity).fill(null).map((_, index) => {
-      const individualQR = crypto
-        .createHash('sha256')
-        .update(`${ticket._id}-${ticket.ticketType.name}-${index}-${Date.now()}`)
-        .digest('hex');
+      const { qrString, validationHash, qrData } = generateTicketQR({
+        ticketId: ticket._id.toString(),
+        eventType: 'GENERAL',
+        ticketType: ticket.ticketType,
+        quantity: 1,
+        index
+      });
 
       return {
         eventName: ticket.eventId.name,
@@ -54,7 +60,9 @@ const generateTicketsWithQRs = (ticket: any) => {
         location: ticket.eventId.location,
         eventType: 'GENERAL',
         ticketType: ticket.ticketType,
-        qrCode: individualQR,
+        qrCode: qrString,
+        qrValidation: validationHash,
+        qrMetadata: qrData,
         price: ticket.ticketType.price,
         buyerInfo: ticket.buyerInfo
       };
@@ -116,9 +124,16 @@ export async function POST(req: Request) {
           currentStatus: ticket.status 
         }, { status: 200 });
       }
-
+    
+      // Generar QRs y actualizar ticket
+      const ticketsWithQRs = generateTicketsWithQRs(ticket);
+      
       ticket.status = 'PAID';
       ticket.paymentId = String(paymentInfo.id);
+      ticket.qrCode = ticketsWithQRs[0].qrCode;
+      ticket.qrValidation = ticketsWithQRs[0].qrValidation;
+      ticket.qrMetadata = ticketsWithQRs[0].qrMetadata;
+      
       await ticket.save({ session });
 
       if (ticket.eventType === 'SEATED') {
@@ -167,8 +182,6 @@ export async function POST(req: Request) {
       }
 
       await session.commitTransaction();
-
-      const ticketsWithQRs = generateTicketsWithQRs(ticket);
 
       try {
         await sendTicketEmail({

@@ -1,11 +1,15 @@
-// api/payments/verify/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket, ITicket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
 import mongoose from 'mongoose';
-import { sendTicketEmail, TicketInfo } from '@/app/lib/email';
-import { generateTicketQR } from '@/app/lib/utils';
+import { sendTicketEmail } from '@/app/lib/email';
+import { generateTicketQR } from '@/app/lib/qrGenerator';
+import { 
+  TicketInfo, 
+  SeatedTicketInfo, 
+  GeneralTicketInfo 
+} from '@/app/lib/email';
 
 interface EventDocument {
   _id: mongoose.Types.ObjectId;
@@ -14,32 +18,35 @@ interface EventDocument {
   location: string;
 }
 
-// Función auxiliar para formatear el ticket para el email
-function formatTicketForEmail(ticket: ITicket & { eventId: EventDocument }) {
+// Función para formatear tickets para email y respuesta
+// api/payments/verify/route.ts
+function formatTicketForEmail(ticket: ITicket & { eventId: EventDocument }): TicketInfo[] {
   const baseTicket = {
     eventName: ticket.eventId.name,
     date: ticket.eventId.date,
     location: ticket.eventId.location,
-    eventType: ticket.eventType,
-    qrCode: ticket.qrCode,
-    qrValidation: ticket.qrValidation,
     status: ticket.status,
-    buyerInfo: ticket.buyerInfo
+    buyerInfo: ticket.buyerInfo,
+    price: ticket.price
   };
 
   if (ticket.eventType === 'SEATED') {
-    return {
+    return ticket.seats.map(seat => ({
       ...baseTicket,
       eventType: 'SEATED' as const,
-      seats: ticket.seats
-    };
+      seat,
+      qrCode: ticket.qrCode,
+      qrValidation: ticket.qrValidation
+    }));
   } else {
-    return {
+    return [{
       ...baseTicket,
       eventType: 'GENERAL' as const,
-      ticketType: ticket.ticketType,
-      quantity: ticket.quantity
-    };
+      ticketType: ticket.ticketType!,
+      quantity: ticket.quantity!,
+      qrCode: ticket.qrCode,
+      qrValidation: ticket.qrValidation
+    }];
   }
 }
 
@@ -70,29 +77,35 @@ export async function POST(req: Request) {
       throw new Error('Ticket no encontrado');
     }
 
+    if (ticket.status === 'PAID') {
+      // Si ya está pagado, retornamos los datos sin error
+      const formattedTickets = formatTicketForEmail(ticket);
+      return NextResponse.json({
+        success: true,
+        tickets: formattedTickets
+      });
+    }
+
     if (ticket.status !== 'PENDING') {
       throw new Error(`Ticket en estado inválido: ${ticket.status}`);
     }
 
-    // Generar o recuperar QR
-    if (!ticket.qrCode) {
-      const { qrCode, qrValidation, qrMetadata } = await generateTicketQR({
-        ticketId: ticket._id.toString(),
-        eventType: ticket.eventType,
-        seats: ticket.seats,
-        ticketType: ticket.ticketType,
-        quantity: ticket.quantity
-      });
+    const { qrString: qrCode, validationHash: qrValidation, qrData } = await generateTicketQR({
+      ticketId: ticket._id.toString(),
+      eventType: ticket.eventType,
+      seats: ticket.seats,
+      ticketType: ticket.ticketType,
+      quantity: ticket.quantity
+    });
+    
+    // Actualizar ticket
+    ticket.status = 'PAID';
+    ticket.paymentId = paymentId;
+    ticket.qrCode = qrCode;
+    ticket.qrValidation = qrValidation;
+    ticket.qrMetadata = qrData;
 
-      // Actualizar ticket
-      ticket.status = 'PAID';
-      ticket.paymentId = paymentId;
-      ticket.qrCode = qrCode;
-      ticket.qrValidation = qrValidation;
-      ticket.qrMetadata = qrMetadata;
-
-      await ticket.save({ session });
-    }
+    await ticket.save({ session });
 
     // Actualizar asientos si es necesario
     if (ticket.eventType === 'SEATED' && ticket.seats?.length) {
@@ -122,73 +135,45 @@ export async function POST(req: Request) {
 
     await session.commitTransaction();
 
-// api/payments/verify/route.ts
+    // Formatear tickets para email y respuesta
+    const formattedTickets = formatTicketForEmail(ticket);
 
-function formatTicketForEmail(ticket: ITicket & { eventId: EventDocument }) {
-  const baseTicket = {
-    eventName: ticket.eventId.name,
-    date: ticket.eventId.date,
-    location: ticket.eventId.location,
-    qrCode: ticket.qrCode,
-    status: ticket.status,
-    buyerInfo: ticket.buyerInfo
-  };
+    // Enviar email
+    try {
+      await sendTicketEmail({
+        tickets: formattedTickets,
+        email: ticket.buyerInfo.email
+      });
+      console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
+    } catch (emailError) {
+      console.error('Error al enviar email:', {
+        error: emailError,
+        ticketId: ticket._id,
+        email: ticket.buyerInfo.email
+      });
+    }
 
-  if (ticket.eventType === 'SEATED') {
-    // Para tickets con asientos, creamos un ticket por cada asiento
-    return ticket.seats.map(seat => ({
-      ...baseTicket,
-      eventType: 'SEATED' as const,
-      seat // Un ticket por asiento individual
-    }));
-  } else {
-    // Para tickets generales
-    return [{
-      ...baseTicket,
-      eventType: 'GENERAL' as const,
-      ticketType: ticket.ticketType,
-      quantity: ticket.quantity
-    }];
-  }
-}
-
-// Y luego al enviar el email:
-try {
-  const formattedTickets = formatTicketForEmail(ticket) as unknown as TicketInfo[];
-
-  await sendTicketEmail({
-    tickets: formattedTickets,
-    email: ticket.buyerInfo.email
-  });
-  console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
-} catch (emailError) {
-  console.error('Error al enviar email:', emailError);
-  // Continuamos incluso si falla el email
-}
-    // Preparar respuesta
+    // Retornar respuesta exitosa
     return NextResponse.json({
       success: true,
-      ticket: {
+      tickets: formattedTickets.map(formattedTicket => ({
         id: ticket._id,
         eventName: ticket.eventId.name,
         date: ticket.eventId.date,
         location: ticket.eventId.location,
-        status: ticket.status,
+        status: 'PAID',
         eventType: ticket.eventType,
-        qrCode: ticket.qrCode,
-        qrValidation: ticket.qrValidation,
-        buyerInfo: {
-          name: ticket.buyerInfo.name,
-          email: ticket.buyerInfo.email
-        },
+        qrCode: formattedTicket.qrCode,
+        qrValidation: formattedTicket.qrValidation,
+        buyerInfo: ticket.buyerInfo,
+        price: formattedTicket.price,
         ...(ticket.eventType === 'SEATED'
-          ? { seats: ticket.seats }
+          ? { seat: (formattedTicket as SeatedTicketInfo).seat }
           : {
-              ticketType: ticket.ticketType,
-              quantity: ticket.quantity
-            }),
-        price: ticket.price
-      }
+              ticketType: (formattedTicket as GeneralTicketInfo).ticketType,
+              quantity: (formattedTicket as GeneralTicketInfo).quantity
+            })
+      }))
     });
 
   } catch (error) {

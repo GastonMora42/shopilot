@@ -70,21 +70,24 @@ export default function PaymentSuccessPage() {
       }
 
       const data = await response.json();
-      setTickets(data.tickets); // Ahora guardamos el array de tickets
-      
-      // Si todos los tickets están pagados, detener las verificaciones
-      if (data.tickets.every((ticket: TicketData) => ticket.status === 'PAID')) {
-        return true;
+    
+      if (!data.success) {
+        throw new Error(data.error || 'Error en la verificación');
       }
-      
+  
+      if (data.tickets && Array.isArray(data.tickets)) {
+        setTickets(data.tickets);
+        
+        // Verificar si todos los tickets están pagados
+        const allPaid = data.tickets.every((ticket: { status: string; }) => ticket.status === 'PAID');
+        return allPaid;
+      }
+  
       return false;
-
     } catch (error) {
       console.error('Error en verificación:', error);
       setError(error instanceof Error ? error.message : 'Error al procesar el pago');
       return false;
-    } finally {
-      setVerificationAttempts(prev => prev + 1);
     }
   };
 
@@ -198,6 +201,7 @@ return (
   )}
   <p><span className="font-medium">Precio:</span> ${ticket.price}</p>
 </div>
+
               <div className="flex flex-col items-center">
                 <div className="p-4 bg-white border rounded-lg">
                   <QRCodeSVG value={ticket.qrCode} size={150} />

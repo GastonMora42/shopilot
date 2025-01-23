@@ -10,6 +10,7 @@ interface QRGeneratorOptions {
     price: number;
   };
   quantity?: number;
+  index?: number; // Añadimos esta propiedad
 }
 
 // Esta será la única estructura de QR que usaremos en toda la app

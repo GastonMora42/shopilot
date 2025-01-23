@@ -38,6 +38,12 @@ interface BaseTicket {
   eventType: 'SEATED' | 'GENERAL';
   status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
   qrCode: string;
+  qrValidation: string;
+  qrMetadata: {
+    timestamp: number;
+    ticketId: string;
+    type: 'SEATED' | 'GENERAL';
+  };
   price: number;
   buyerInfo: {
     name: string;
@@ -186,20 +192,12 @@ export default function MyTicketsPage() {
 
   const handlePrint = async (ticket: Ticket) => {
     try {
-      // Generar QR como Data URL
-      const qrDataUrl = ticket.status === 'PAID' ? await generateQRDataUrl(
-        JSON.stringify({
-          ticketId: ticket.id,
-          eventType: ticket.eventType,
-          validation: ticket.qrCode,
-          ...(ticket.eventType === 'SEATED' 
-            ? { seat: ticket.seats?.join(', ') } 
-            : { 
-                ticketType: ticket.ticketType?.name,
-                quantity: ticket.quantity 
-              })
-        })
-      ) : '';
+      const qrDataUrl = ticket.status === 'PAID' ? 
+        await QRCode.toDataURL(ticket.qrCode, {
+          width: 200,
+          margin: 1,
+          errorCorrectionLevel: 'H'
+        }) : '';
   
       // Crear una nueva ventana para imprimir
       const printWindow = window.open('', '_blank');
@@ -420,17 +418,7 @@ export default function MyTicketsPage() {
 {ticket.status === 'PAID' && (
   <div className="flex flex-col items-center mb-4 p-4 bg-white rounded-lg border">
     <QRCodeSVG 
-      value={JSON.stringify({
-        ticketId: ticket.id,
-        eventType: ticket.eventType,
-        validation: ticket.qrCode,
-        ...(ticket.eventType === 'SEATED' 
-          ? { seat: ticket.seats?.join(', ') || '' }
-          : { 
-              ticketType: ticket.ticketType?.name || 'N/A',
-              quantity: ticket.quantity || 0
-            })
-      })}
+      value={ticket.qrCode} // Usar directamente el QR almacenado
       size={200}
       level="H"
       includeMargin={true}

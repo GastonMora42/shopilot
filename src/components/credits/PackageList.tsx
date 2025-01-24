@@ -1,7 +1,8 @@
-// src/components/credits/PackageList.tsx
 'use client'
 
 import { useState, useEffect } from 'react';
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 
 function PackageList() {
   const [packages, setPackages] = useState<any[]>([]);
@@ -42,24 +43,43 @@ function PackageList() {
     }
   };
 
-  if (isLoading) return <div>Cargando paquetes...</div>;
-  if (error) return <div className="text-red-500">{error}</div>;
+  if (isLoading) return <div className="text-center text-gray-600">Cargando paquetes...</div>;
+  if (error) return <div className="text-center text-red-500">{error}</div>;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {packages.map((pkg) => (
-        <div key={pkg._id} className="border p-4 rounded-lg">
-          <h3 className="text-xl font-bold">{pkg.name}</h3>
-          <p className="text-lg">{pkg.credits} créditos</p>
-          <p className="text-xl font-bold">${pkg.price}</p>
-          <button
-            onClick={() => handlePurchase(pkg._id)}
-            className="w-full mt-4 bg-blue-500 text-white py-2 rounded hover:bg-blue-600 transition-colors"
+    <div className="container mx-auto px-4 py-10">
+      <h2 className="text-3xl font-bold text-center mb-8 text-gray-900">Paquetes de Créditos</h2>
+      <div className="flex flex-wrap justify-center gap-8">
+        {packages.map((pkg) => (
+          <Card
+            key={pkg._id}
+            className="group bg-white border-gray-100 shadow-lg hover:shadow-xl transition-all duration-300 w-full sm:w-[300px] lg:w-[350px]"
           >
-            Comprar
-          </button>
-        </div>
-      ))}
+            <CardHeader className="p-0">
+              <div className="relative aspect-w-4 aspect-h-4">
+                <img
+                  src={pkg.imageUrl || "/off-creditos.png"} // Imagen individual o predeterminada
+                  alt={pkg.name}
+                  className="object-cover w-full h-full rounded-t-lg"
+                />
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              <CardTitle className="text-xl font-semibold text-gray-900">{pkg.name}</CardTitle>
+              <CardDescription className="text-lg font-medium text-[#FF5F1F]">{pkg.credits} créditos</CardDescription>
+              <p className="text-2xl font-bold text-gray-900">${pkg.price}</p>
+            </CardContent>
+            <CardFooter>
+              <Button
+                onClick={() => handlePurchase(pkg._id)}
+                className="w-full bg-[#FF5F1F] text-white hover:bg-[#FF5F1F]/90 shadow-lg transition-colors"
+              >
+                Comprar
+              </Button>
+            </CardFooter>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

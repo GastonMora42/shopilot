@@ -12,6 +12,7 @@ import {
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Ticket, Calendar, Shield } from 'lucide-react'
+import Link from 'next/link'
 
 interface Event {
   title: string;
@@ -57,12 +58,23 @@ export default function LandingPage() {
                 className="h-18 w-auto object-contain max-w-[180px]" /* Ajustes principales aquí */
               />
             </div>
-            <nav className="hidden md:flex items-center space-x-8"> {/* Aumentado space-x-8 */}
-              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Inicio</Button>
-              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Eventos</Button>
-              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Precios</Button>
-              <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Contacto</Button>
-            </nav>
+            <nav className="hidden md:flex items-center space-x-8">
+      <Link href="/">
+        <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Inicio</Button>
+      </Link>
+      <Link href="/">
+        <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Eventos</Button>
+      </Link>
+      <Link href="/">
+        <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Precios</Button>
+      </Link>
+      <Link href="/">
+        <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Guía de uso</Button>
+      </Link>
+      <Link href="/blog">
+        <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Blog</Button>
+      </Link>
+    </nav>
             <Button 
               onClick={() => setIsLoginOpen(true)}
               className="bg-[#FF5F1F] text-white hover:bg-[#FF5F1F]/90 shadow-lg shadow-orange-500/20 px-6 py-2.5 text-base"
@@ -202,12 +214,12 @@ export default function LandingPage() {
               <h4 className="font-semibold mb-4 text-gray-900">Contacto</h4>
               <ul className="space-y-2 text-sm text-gray-600">
                 <li>support@showspot.xyz</li>
-                <li>+1 234 567 890</li>
+                <li>+54 9 2995 88-2072</li>
               </ul>
             </div>
           </div>
           <div className="mt-8 pt-8 border-t border-gray-100 text-center text-sm text-gray-600">
-            <p>&copy; 2024 ShowSpot. Todos los derechos reservados.</p>
+            <p>&copy; 2025 ShowSpot. Todos los derechos reservados.</p>
           </div>
         </div>
       </footer>

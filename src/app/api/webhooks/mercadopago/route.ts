@@ -102,65 +102,64 @@ export async function POST(req: Request) {
       if (ticket.status !== 'PENDING') {
         throw new Error('Ticket ya procesado');
       }
-
-      // Generar QR una sola vez
-      const { qrString: qrCode, validationHash: qrValidation, qrData } = await generateTicketQR({
-        ticketId: ticket._id.toString(),
-        eventType: ticket.eventType,
-        seats: ticket.seats,
-        ticketType: ticket.ticketType,
-        quantity: ticket.quantity
-      });
-
-      // Actualizar ticket
+    
+      // Generar QRs según el tipo de ticket
+      let qrCodes;
+      if (ticket.eventType === 'SEATED') {
+        qrCodes = await Promise.all(ticket.seats.map(async (seat: string, index: any) => {
+          const { qrString, validationHash, qrData } = await generateTicketQR({
+            ticketId: ticket._id.toString(),
+            eventType: 'SEATED',
+            seats: [seat],
+            index
+          });
+          
+          return {
+            qrCode: qrString,
+            qrValidation: validationHash,
+            qrMetadata: {
+              timestamp: Date.now(),
+              ticketId: ticket._id.toString(),
+              type: 'SEATED',
+              index,
+              seatInfo: { seat }
+            },
+            used: false
+          };
+        }));
+      } else {
+        qrCodes = await Promise.all(Array(ticket.quantity).fill(null).map(async (_, index) => {
+          const { qrString, validationHash, qrData } = await generateTicketQR({
+            ticketId: ticket._id.toString(),
+            eventType: 'GENERAL',
+            ticketType: ticket.ticketType,
+            quantity: 1,
+            index
+          });
+          
+          return {
+            qrCode: qrString,
+            qrValidation: validationHash,
+            qrMetadata: {
+              timestamp: Date.now(),
+              ticketId: ticket._id.toString(),
+              type: 'GENERAL',
+              index,
+              generalInfo: {
+                ticketType: ticket.ticketType.name
+              }
+            },
+            used: false
+          };
+        }));
+      }
+    
+      // Actualizar ticket con los QRs generados
       ticket.status = 'PAID';
       ticket.paymentId = String(paymentInfo.id);
-      ticket.qrCode = qrCode;
-      ticket.qrValidation = qrValidation;
-      ticket.qrMetadata = qrData;
-
+      ticket.qrCodes = qrCodes; // Guardar en el array qrCodes
+      
       await ticket.save({ session });
-
-      // Actualizar según tipo de ticket
-      if (ticket.eventType === 'SEATED') {
-        const seatResult = await Seat.updateMany(
-          {
-            eventId: ticket.eventId._id,
-            seatId: { $in: ticket.seats },
-            status: 'RESERVED'
-          },
-          {
-            $set: { 
-              status: 'OCCUPIED',
-              ticketId: ticket._id
-            },
-            $unset: {
-              temporaryReservation: 1,
-              lastReservationAttempt: 1
-            }
-          },
-          { session }
-        );
-
-        if (seatResult.modifiedCount !== ticket.seats.length) {
-          throw new Error('Error al actualizar asientos');
-        }
-      } else {
-        await Event.findByIdAndUpdate(
-          ticket.eventId._id,
-          {
-            $inc: {
-              'generalTickets.$[elem].quantity': -ticket.quantity
-            }
-          },
-          {
-            arrayFilters: [{ 'elem.name': ticket.ticketType.name }],
-            session
-          }
-        );
-      }
-
-      await session.commitTransaction();
 
       // Formatear tickets y enviar email
       const formattedTickets = formatTicketsForEmail(ticket);
@@ -178,15 +177,15 @@ export async function POST(req: Request) {
           email: ticket.buyerInfo.email
         });
       }
-
       return NextResponse.json({
         success: true,
         message: 'Pago procesado exitosamente',
         data: {
           ticketId: ticket._id,
           status: 'PAID',
-          qrCode,
-          qrValidation
+          qrCodes,
+          qrCode: qrCodes[0]?.qrCode || '', // Primer QR como referencia
+          qrValidation: qrCodes[0]?.qrValidation || '' // Primera validación como referencia
         }
       });
 

@@ -1,8 +1,9 @@
 // models/Event.ts
 import { IEvent } from '@/types/event';
-import mongoose from 'mongoose';
+import mongoose, { Model } from 'mongoose';
 import slugify from 'slugify';
 
+// Definición de Schemas
 const GeneralTicketSchema = new mongoose.Schema({
   name: { type: String, required: true },
   price: { type: Number, required: true },
@@ -151,4 +152,20 @@ EventSchema.virtual('isGeneral').get(function() {
   return this.eventType === 'GENERAL';
 });
 
-export const Event = mongoose.models.Event || mongoose.model<IEvent>('Event', EventSchema);
+let EventModel: Model<IEvent>;
+
+try {
+  // Intentar obtener el modelo existente
+  EventModel = mongoose.model<IEvent>('Event');
+} catch {
+  // Si no existe, crear nuevo modelo
+  EventModel = mongoose.model<IEvent>('Event', EventSchema);
+}
+
+export const Event = EventModel;
+
+// Asegurar que el modelo esté disponible globalmente
+if (mongoose.models.Event) {
+  delete mongoose.models.Event;
+}
+mongoose.model<IEvent>('Event', EventSchema);

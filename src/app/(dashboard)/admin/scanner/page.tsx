@@ -18,6 +18,7 @@ type ScanResult = {
   error?: string;
 };
 
+
 export default function ScannerPage() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [scanning, setScanning] = useState(true);

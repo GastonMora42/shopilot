@@ -256,7 +256,7 @@ export default function MyTicketsPage() {
                   ${ticket.eventType === 'SEATED' 
                     ? `<p>Asiento: ${qrTicket.seatInfo?.seat}</p>`
                     : `<p>Tipo: ${ticket.ticketType.name}</p>
-                       <p>Entrada ${qrTicket.generalInfo?.index! + 1} de ${ticket.quantity}</p>`
+                       <p>Entrada ${(qrTicket.generalInfo?.index ?? 0) + 1} de ${ticket.quantity}`
                   }
                 </div>
                 ${qrTicket.status === 'PAID' ? `

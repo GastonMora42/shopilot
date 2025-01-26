@@ -99,9 +99,9 @@ const QRDisplay: React.FC<QRDisplayProps> = ({ qrTicket, eventType, ticketQuanti
         </p>
       ) : (
         <p className="mt-2 text-sm text-gray-600">
-          Entrada {(qrTicket.generalInfo?.index || 0) + 1} de {ticketQuantity}
-        </p>
-      )}
+        Entrada {(qrTicket.generalInfo?.index ?? 0) + 1} de {ticketQuantity ?? 1}
+      </p>
+    )}
       <p className="mt-1 text-xs text-gray-400">
         ID: {qrTicket.subTicketId.slice(-8)}
       </p>

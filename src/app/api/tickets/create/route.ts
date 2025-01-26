@@ -1,208 +1,254 @@
-// app/api/tickets/create/route.ts
+// api/tickets/create/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Event } from '@/app/models/Event';
 import { Ticket } from '@/app/models/Ticket';
+import { Seat } from '@/app/models/Seat';
 import { User } from '@/app/models/User';
 import { createPreference } from '@/app/lib/mercadopago';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/lib/auth';
-import { generateTicketQR } from '@/app/lib/qrGenerator';
+import { isValidObjectId } from 'mongoose';
 import mongoose from 'mongoose';
+import { authOptions } from '@/app/lib/auth';
+import { getServerSession } from 'next-auth/next';
+import { generateTicketQRs } from '@/app/lib/qrGenerator';
 
 export async function POST(req: Request) {
- let session = null;
+  let session = null;
+  
+  try {
+    // Verificar autenticación
+    const authSession = await getServerSession(authOptions);
+    if (!authSession?.user) {
+      return NextResponse.json(
+        { error: 'Debe iniciar sesión para comprar tickets' },
+        { status: 401 }
+      );
+    }
 
- try {
-   const authSession = await getServerSession(authOptions);
-   await dbConnect();
-   
-   const { eventId, seats, buyerInfo, eventType, ticketType, quantity } = await req.json();
+    await dbConnect();
+    const { eventId, eventType, seats, ticketType, quantity, buyerInfo, sessionId } = await req.json();
+    
+    console.log('Creating ticket request:', { 
+      eventId, eventType, seats, ticketType, quantity, buyerInfo, sessionId 
+    });
 
-   // Validaciones según tipo de evento
-   if (eventType === 'SEATED' && (!eventId || !seats?.length || !buyerInfo)) {
-     return NextResponse.json(
-       { error: 'Datos incompletos para ticket con asientos' },
-       { status: 400 }
-     );
-   }
+    if (!isValidObjectId(eventId) || !buyerInfo) {
+      return NextResponse.json(
+        { error: 'Datos incompletos o inválidos' },
+        { status: 400 }
+      );
+    }
 
-   if (eventType === 'GENERAL' && (!eventId || !ticketType || !quantity || !buyerInfo)) {
-     return NextResponse.json(
-       { error: 'Datos incompletos para ticket general' },
-       { status: 400 }
-     );
-   }
+    // Validación por tipo de evento
+    if (eventType === 'SEATED' && (!seats?.length)) {
+      return NextResponse.json(
+        { error: 'Asientos requeridos para evento con asientos' },
+        { status: 400 }
+      );
+    }
+    
+    if (eventType === 'GENERAL') {
+      if (!ticketType?.name || !ticketType?.price || !quantity) {
+        return NextResponse.json(
+          { error: 'Datos de ticket general incompletos' },
+          { status: 400 }
+        );
+      }
+    }
+    
+    const event = await Event.findById(eventId);
+    if (!event || !event.published) {
+      return NextResponse.json(
+        { error: 'Evento no encontrado o no publicado' },
+        { status: 404 }
+      );
+    }
 
-   // Verificar evento y disponibilidad
-   const event = await Event.findById(eventId).populate('organizerId');
-   if (!event || !event.published) {
-     return NextResponse.json(
-       { error: 'Evento no encontrado o no publicado' },
-       { status: 404 }
-     );
-   }
+    // Validaciones para eventos generales
+    if (eventType === 'GENERAL') {
+      const validTicket = event.generalTickets.find((t: { name: any; price: any; }) => 
+        t.name === ticketType.name && t.price === ticketType.price
+      );
 
-   // Verificar que el organizador tenga MP conectado
-   const organizer = await User.findById(event.organizerId);
-   if (!organizer?.mercadopago?.accessToken) {
-     return NextResponse.json(
-       { error: 'El organizador no tiene una cuenta de MercadoPago conectada' },
-       { status: 400 }
-     );
-   }
+      if (!validTicket) {
+        return NextResponse.json(
+          { error: 'Tipo de ticket inválido' },
+          { status: 400 }
+        );
+      }
 
-   session = await mongoose.startSession();
-   session.startTransaction();
+      if (validTicket.quantity < quantity) {
+        return NextResponse.json(
+          { error: 'No hay suficientes tickets disponibles' },
+          { status: 400 }
+        );
+      }
 
-   let total = 0;
-   let ticketData;
+      if (event.maxTicketsPerPurchase && quantity > event.maxTicketsPerPurchase) {
+        return NextResponse.json(
+          { error: `No puede comprar más de ${event.maxTicketsPerPurchase} tickets por transacción` },
+          { status: 400 }
+        );
+      }
+    }
 
-   if (eventType === 'SEATED') {
-     // Verificar disponibilidad de asientos
-     const existingTickets = await Ticket.find({
-       eventId,
-       'seats': { $in: seats },
-       status: { $in: ['PAID', 'PENDING'] }
-     }).session(session);
+    const organizer = await User.findById(event.organizerId);
+    if (!organizer?.mercadopago?.accessToken) {
+      return NextResponse.json(
+        { error: 'El organizador no tiene una cuenta de MercadoPago conectada' },
+        { status: 400 }
+      );
+    }
 
-     if (existingTickets.length > 0) {
-       await session.abortTransaction();
-       return NextResponse.json(
-         { error: 'Algunos asientos ya no están disponibles' },
-         { status: 400 }
-       );
-     }
+    session = await mongoose.startSession();
+    await session.startTransaction();
 
-     // Calcular precio total para asientos
-     total = seats.reduce((sum: number, seat: string) => {
-       const [sectionName] = seat.split('-');
-       const section = event.seatingChart.sections.find((s: { name: string; }) => s.name === sectionName);
-       return sum + (section?.price || 0);
-     }, 0);
+    let total = 0;
 
-     // Generar QR para tickets con asientos
-     const { qrData, qrString, validationHash } = generateTicketQR({
-       ticketId: new mongoose.Types.ObjectId().toString(),
-       eventType: 'SEATED',
-       seats
-     });
+    // Cálculo de precios
+    if (eventType === 'SEATED') {
+      total = seats.reduce((sum: number, seatId: string) => {
+        const [sectionName] = seatId.split('-');
+        const section = event.seatingChart.sections.find(
+          (s: { name: string; price: number }) => s.name === sectionName
+        );
+        return sum + (section?.price || 0);
+      }, 0);
+    } else {
+      total = ticketType.price * quantity;
+    }
 
-     ticketData = {
-       eventId,
-       eventType: 'SEATED',
-       seats,
-       qrCode: qrString,
-       qrValidation: validationHash,
-       qrMetadata: {
-         timestamp: qrData.timestamp,
-         ticketId: qrData.ticketId,
-         type: 'SEATED',
-         seatInfo: {
-           seats: seats
-         }
-       }
-     };
-   } else {
-     // Verificar disponibilidad de tickets generales
-     if (!event.generalTickets || !event.generalTickets.length) {
-       await session.abortTransaction();
-       return NextResponse.json(
-         { error: 'Este evento no tiene entradas generales' },
-         { status: 400 }
-       );
-     }
+    // Generar QRs individuales
+    const ticketId = new mongoose.Types.ObjectId().toString();
+    const qrTickets = await generateTicketQRs({
+      ticketId,
+      eventType,
+      seats,
+      ticketType,
+      quantity
+    });
 
-     const selectedTicketType = event.generalTickets.find((t: { name: any; }) => t.name === ticketType.name);
-     if (!selectedTicketType || selectedTicketType.quantity < quantity) {
-       await session.abortTransaction();
-       return NextResponse.json(
-         { error: 'No hay suficientes entradas disponibles' },
-         { status: 400 }
-       );
-     }
+    // Verificar disponibilidad y reservar recursos
+    if (eventType === 'SEATED') {
+      const seatsStatus = await Seat.find({
+        eventId,
+        seatId: { $in: seats },
+        $or: [
+          { status: 'AVAILABLE' },
+          {
+            status: 'RESERVED',
+            'temporaryReservation.sessionId': sessionId,
+            'temporaryReservation.expiresAt': { $gt: new Date() }
+          }
+        ]
+      }).session(session);
 
-     total = ticketType.price * quantity;
+      if (seatsStatus.length !== seats.length) {
+        throw new Error('Algunos asientos ya no están disponibles');
+      }
 
-     // Generar QR para tickets generales
-     const { qrData, qrString, validationHash } = generateTicketQR({
-       ticketId: new mongoose.Types.ObjectId().toString(),
-       eventType: 'GENERAL',
-       ticketType,
-       quantity
-     });
+      // Actualizar estado de asientos a reservado
+      await Seat.updateMany(
+        {
+          eventId,
+          seatId: { $in: seats },
+          $or: [
+            { status: 'AVAILABLE' },
+            {
+              status: 'RESERVED',
+              'temporaryReservation.sessionId': sessionId
+            }
+          ]
+        },
+        {
+          $set: {
+            status: 'RESERVED',
+            temporaryReservation: {
+              sessionId,
+              expiresAt: new Date(Date.now() + 15 * 60 * 1000) // 15 minutos
+            }
+          }
+        },
+        { session }
+      );
+    }
 
-     ticketData = {
-       eventId,
-       eventType: 'GENERAL',
-       ticketType,
-       quantity,
-       qrCode: qrString,
-       qrValidation: validationHash,
-       qrMetadata: {
-         timestamp: qrData.timestamp,
-         ticketId: qrData.ticketId,
-         type: 'GENERAL',
-         generalInfo: {
-           ticketType: ticketType.name,
-           index: 0
-         }
-       }
-     };
-   }
+    // Crear ticket con QRs individuales
+    const [newTicket] = await Ticket.create([{
+      _id: ticketId,
+      eventId,
+      userId: authSession.user.id,
+      eventType,
+      ...(eventType === 'SEATED' 
+        ? { seats } 
+        : { ticketType, quantity }
+      ),
+      status: 'PENDING',
+      buyerInfo: {
+        ...buyerInfo,
+        email: buyerInfo.email.toLowerCase().trim()
+      },
+      price: total,
+      qrTickets,
+      organizerId: event.organizerId
+    }], { session });
 
-   // Crear ticket
-   const ticket = await Ticket.create([{
-     ...ticketData,
-     status: 'PENDING',
-     price: total,
-     buyerInfo: {
-       ...buyerInfo,
-       email: authSession?.user?.email?.toLowerCase() || buyerInfo.email.toLowerCase()
-     },
-     organizerId: event.organizerId,
-     userId: authSession?.user?.id
-   }], { session });
+    // Crear preferencia de pago
+    const preference = await createPreference({
+      _id: newTicket._id.toString(),
+      eventName: event.name,
+      price: total,
+      description: eventType === 'SEATED' 
+        ? `${seats.length} entrada(s) para ${event.name}`
+        : `${quantity} entrada(s) para ${event.name}`,
+      organizerAccessToken: organizer.mercadopago.accessToken
+    });
 
-   // Crear preferencia de MP
-   const preference = await createPreference({
-     _id: ticket[0]._id.toString(),
-     eventName: event.name,
-     price: total,
-     description: eventType === 'SEATED' 
-       ? `${seats.length} entrada(s) para ${event.name}`
-       : `${quantity} entrada(s) para ${event.name}`,
-     organizerAccessToken: organizer.mercadopago.accessToken
-   });
+    await newTicket.updateOne(
+      { paymentId: preference.id },
+      { session }
+    );
 
-   // Actualizar ticket con ID de preferencia
-   await Ticket.findByIdAndUpdate(
-     ticket[0]._id,
-     { paymentId: preference.id },
-     { session }
-   );
+    await session.commitTransaction();
 
-   await session.commitTransaction();
+    return NextResponse.json({
+      success: true,
+      ticket: {
+        id: newTicket._id,
+        eventType,
+        seats: newTicket.seats,
+        ticketType: newTicket.ticketType,
+        quantity: newTicket.quantity,
+        total: newTicket.price,
+        qrTickets: newTicket.qrTickets.map((qr: { qrMetadata: { subTicketId: any; type: any; seatInfo: { seat: any; }; generalInfo: { ticketType: any; index: any; }; status: any; }; }) => ({
+          subTicketId: qr.qrMetadata.subTicketId,
+          type: qr.qrMetadata.type,
+          ...(eventType === 'SEATED' 
+            ? { seat: qr.qrMetadata.seatInfo?.seat }
+            : { 
+                ticketType: qr.qrMetadata.generalInfo?.ticketType,
+                index: qr.qrMetadata.generalInfo?.index 
+              }
+          ),
+          status: qr.qrMetadata.status
+        }))
+      },
+      checkoutUrl: preference.init_point,
+      preferenceId: preference.id
+    });
 
-   return NextResponse.json({
-     success: true,
-     ticket: ticket[0],
-     preferenceId: preference.id,
-     checkoutUrl: preference.init_point
-   }, { status: 201 });
-
- } catch (error) {
-   if (session) {
-     await session.abortTransaction();
-   }
-   console.error('Error creating ticket:', error);
-   return NextResponse.json(
-     { error: error instanceof Error ? error.message : 'Error al procesar la compra' },
-     { status: 500 }
-   );
- } finally {
-   if (session) {
-     await session.endSession();
-   }
- }
+  } catch (error) {
+    if (session) {
+      await session.abortTransaction();
+    }
+    console.error('Error creating ticket:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Error al procesar la compra' },
+      { status: 500 }
+    );
+  } finally {
+    if (session) {
+      await session.endSession();
+    }
+  }
 }

@@ -1,3 +1,4 @@
+// app/payment/success/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -6,21 +7,31 @@ import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 import { usePDFDownload } from '@/app/hooks/usePDFDownload';
+import { Loader2Icon } from 'lucide-react';
 
-interface TicketData {
+interface QRTicket {
+  subTicketId: string;
+  qrCode: string;
+  qrValidation: string;
+  status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
+  type: 'SEATED' | 'GENERAL';
+  seatInfo?: {
+    seat: string;
+  };
+  generalInfo?: {
+    ticketType: string;
+    index: number;
+  };
+}
+
+interface BaseTicketData {
   id: string;
   eventName: string;
   date: string;
   location: string;
   eventType: 'SEATED' | 'GENERAL';
-  seat?: string;
-  ticketType?: {
-    name: string;
-    price: number;
-  };
-  quantity?: number;
-  qrCode: string;
   status: string;
+  qrTickets: QRTicket[];
   buyerInfo: {
     name: string;
     email: string;
@@ -29,11 +40,26 @@ interface TicketData {
   paymentId: string;
 }
 
+interface SeatedTicketData extends BaseTicketData {
+  eventType: 'SEATED';
+  seats: string[];
+}
+
+interface GeneralTicketData extends BaseTicketData {
+  eventType: 'GENERAL';
+  ticketType: {
+    name: string;
+    price: number;
+  };
+  quantity: number;
+}
+
+type TicketData = SeatedTicketData | GeneralTicketData;
 
 export default function PaymentSuccessPage() {
   const searchParams = useSearchParams();
-  const [tickets, setTickets] = useState<TicketData[]>([]);
-  const [isValidating, setIsValidating] = useState(true); // Nuevo estado para validaciónes
+  const [ticket, setTicket] = useState<TicketData | null>(null);
+  const [isValidating, setIsValidating] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [verificationAttempts, setVerificationAttempts] = useState(0);
   const { downloadPDF, loading: pdfLoading } = usePDFDownload();
@@ -70,19 +96,16 @@ export default function PaymentSuccessPage() {
       }
 
       const data = await response.json();
-    
+
       if (!data.success) {
         throw new Error(data.error || 'Error en la verificación');
       }
-  
-      if (data.tickets && Array.isArray(data.tickets)) {
-        setTickets(data.tickets);
-        
-        // Verificar si todos los tickets están pagados
-        const allPaid = data.tickets.every((ticket: { status: string; }) => ticket.status === 'PAID');
-        return allPaid;
+
+      if (data.ticket) {
+        setTicket(data.ticket);
+        return data.ticket.status === 'PAID';
       }
-  
+
       return false;
     } catch (error) {
       console.error('Error en verificación:', error);
@@ -96,26 +119,25 @@ export default function PaymentSuccessPage() {
     
     const startVerification = async () => {
       const isComplete = await verifyPayment();
+      setVerificationAttempts(prev => prev + 1);
       
       if (!isComplete && verificationAttempts < 12) {
         timeoutId = setTimeout(startVerification, 5000);
       } else {
-        setIsValidating(false); // Finalizar validación
-        if (!tickets.length && verificationAttempts >= 12) {
+        setIsValidating(false);
+        if (!ticket && verificationAttempts >= 12) {
           setError('No se pudo confirmar el pago después de varios intentos');
         }
       }
     };
-
 
     startVerification();
 
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [searchParams]);
+  }, [verificationAttempts]);
 
-  // Estado de validación
   if (isValidating) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
@@ -131,8 +153,7 @@ export default function PaymentSuccessPage() {
     );
   }
 
-  // Error solo después de validación
-  if (error || (!isValidating && tickets.length === 0)) {
+  if (error || (!isValidating && !ticket)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
         <div className="text-red-600 mb-4">
@@ -161,69 +182,98 @@ export default function PaymentSuccessPage() {
     );
   }
 
-return (
-  <div className="min-h-screen bg-gray-50 py-12 px-4">
-    <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
-      <div className="text-center mb-8">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="text-2xl text-green-600">✓</span>
+  if (!ticket) return null;
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-12 px-4">
+      <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-2xl text-green-600">✓</span>
+          </div>
+          <h1 className="text-2xl font-bold mb-2">¡Compra exitosa!</h1>
+          <p className="text-gray-600">Tus entradas están listas</p>
         </div>
-        <h1 className="text-2xl font-bold mb-2">¡Compra exitosa!</h1>
-        <p className="text-gray-600">Tus entradas están listas</p>
-      </div>
 
-      {/* Resumen de compra */}
-      <div className="mb-6 border-b pb-4">
-        <h2 className="text-lg font-semibold mb-2">Resumen de compra</h2>
-        <p className="text-sm text-gray-600">
-          Evento: {tickets[0].eventName}
-        </p>
-        <p className="text-sm text-gray-600">
-          Total de entradas: {tickets.length} | Monto total: ${tickets.reduce((sum, t) => sum + t.price, 0)}
-        </p>
-      </div>
+        {/* Resumen de compra */}
+        <div className="mb-6 border-b pb-4">
+          <h2 className="text-lg font-semibold mb-2">Resumen de compra</h2>
+          <p className="text-sm text-gray-600">
+            Evento: {ticket.eventName}
+          </p>
+          <p className="text-sm text-gray-600">
+            {ticket.eventType === 'SEATED' 
+              ? `Asientos: ${ticket.seats.join(', ')}`
+              : `${ticket.quantity} entrada(s) - ${ticket.ticketType.name}`
+            }
+          </p>
+          <p className="text-sm text-gray-600">
+            Total: ${ticket.price}
+          </p>
+        </div>
 
-      {/* Lista de tickets */}
-      <div className="space-y-6">
-        {tickets.map((ticket, index) => (
-          <div key={ticket.id} className="border rounded-lg p-4">
-            <h3 className="font-semibold mb-4">
-              Entrada {index + 1}
-            </h3>
-            <div className="grid md:grid-cols-2 gap-6">
-            <div className="space-y-2 text-sm">
-  <p><span className="font-medium">Fecha:</span> {new Date(ticket.date).toLocaleString()}</p>
-  <p><span className="font-medium">Ubicación:</span> {ticket.location}</p>
-  {ticket.seat ? (
-    <p><span className="font-medium">Asiento:</span> {ticket.seat}</p>
-  ) : (
-    <p><span className="font-medium">Tipo de entrada:</span> {ticket.ticketType?.name}</p>
-  )}
-  <p><span className="font-medium">Precio:</span> ${ticket.price}</p>
-</div>
+        {/* Lista de QRs individuales */}
+        <div className="space-y-6">
+          {ticket.qrTickets.map((qrTicket, index) => (
+            <div key={qrTicket.subTicketId} className="border rounded-lg p-4">
+              <h3 className="font-semibold mb-4">
+                {ticket.eventType === 'SEATED'
+                  ? `Asiento: ${qrTicket.seatInfo?.seat}`
+                  : `Entrada ${index + 1} de ${(ticket as GeneralTicketData).quantity}`
+                }
+              </h3>
 
-              <div className="flex flex-col items-center">
-                <div className="p-4 bg-white border rounded-lg">
-                  <QRCodeSVG value={ticket.qrCode} size={150} />
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="space-y-2 text-sm">
+                  <p>Fecha: {new Date(ticket.date).toLocaleString()}</p>
+                  <p>Ubicación: {ticket.location}</p>
+                  {ticket.eventType === 'GENERAL' && (
+                    <p>Tipo: {(ticket as GeneralTicketData).ticketType.name}</p>
+                  )}
+                  <p>ID: {qrTicket.subTicketId.slice(-8)}</p>
                 </div>
-                <p className="text-sm text-gray-500 mt-2">
-                  Código QR de entrada
-                </p>
+
+                {qrTicket.status === 'PAID' && (
+                  <div className="flex flex-col items-center">
+                    <QRCodeSVG 
+                      value={qrTicket.qrCode}
+                      size={150}
+                      level="H"
+                      includeMargin={true}
+                    />
+                    <p className="text-sm text-gray-500 mt-2">
+                      Código QR de entrada
+                    </p>
+                  </div>
+                )}
               </div>
-            </div>
-            <div className="mt-4">
+
               <Button
-                onClick={() => downloadPDF(ticket)}
+                onClick={() => downloadPDF(ticket, qrTicket.subTicketId)}
                 disabled={pdfLoading}
-                className="w-full"
+                className="w-full mt-4"
               >
-                {pdfLoading ? 'Generando PDF...' : `Descargar PDF - Entrada ${index + 1}`}
+                {pdfLoading ? (
+                  <span className="flex items-center justify-center">
+                    <Loader2Icon className="animate-spin -ml-1 mr-3 h-5 w-5" />
+                    Generando PDF...
+                  </span>
+                ) : (
+                  'Descargar PDF'
+                )}
               </Button>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+
+        <div className="mt-8 text-center">
+          <Button asChild variant="outline">
+            <Link href="/my-tickets">
+              Ver todos mis tickets
+            </Link>
+          </Button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
 }

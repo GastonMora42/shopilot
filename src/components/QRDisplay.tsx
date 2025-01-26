@@ -1,60 +1,48 @@
 // components/QRDisplay.tsx
 import { QRCodeSVG } from "qrcode.react";
-import { type ITicket } from '@/app/models/Ticket';
-import { Types } from 'mongoose';
 import { CheckCircleIcon, ClockIcon, XCircleIcon } from "lucide-react";
-import { QRData } from '@/app/lib/qrGenerator';
 
-interface QRDisplayProps {
-  ticket: {
-    _id: Types.ObjectId | string;
-    eventType: ITicket['eventType'];
-    status: ITicket['status'];
-    qrCode: string;
-    qrValidation: string;
-    qrMetadata: ITicket['qrMetadata'];
-    seats?: string[];
-    ticketType?: {
-      name: string;
-      price: number;
+export interface QRTicket {
+  subTicketId: string;
+  qrCode: string;
+  qrValidation: string;
+  qrMetadata: {
+    timestamp: number;
+    ticketId: string;
+    subTicketId: string;
+    type: 'SEATED' | 'GENERAL';
+    status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
+    seatInfo?: {
+      seat: string;
     };
-    quantity?: number;
+    generalInfo?: {
+      ticketType: string;
+      index: number;
+    };
+  };
+  status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
+  type: 'SEATED' | 'GENERAL';
+  seatInfo?: {
+    seat: string;
+  };
+  generalInfo?: {
+    ticketType: string;
+    index: number;
   };
 }
 
-const QRDisplay: React.FC<QRDisplayProps> = ({ ticket }) => {
-  // Función para generar los datos del QR
-  const generateQRValue = () => {
-    const qrData: QRData = {
-      ticketId: ticket._id.toString(),
-      validationHash: ticket.qrValidation,
-      timestamp: ticket.qrMetadata.timestamp,
-      type: ticket.eventType,
-      metadata: {
-        eventType: ticket.eventType,
-        ...(ticket.eventType === 'SEATED' 
-          ? {
-              seatInfo: {
-                seats: ticket.seats || []
-              }
-            }
-          : {
-              generalInfo: {
-                ticketType: ticket.ticketType?.name || '',
-                quantity: ticket.quantity || 0
-              }
-            })
-      }
-    };
+interface QRDisplayProps {
+  qrTicket: QRTicket;
+  eventType: 'SEATED' | 'GENERAL';
+  ticketQuantity?: number;
+}
 
-    return JSON.stringify(qrData);
-  };
-
+const QRDisplay: React.FC<QRDisplayProps> = ({ qrTicket, eventType, ticketQuantity }) => {
   // Renderizar estados diferentes al pagado
-  if (ticket.status !== 'PAID') {
+  if (qrTicket.status !== 'PAID') {
     return (
       <div className="flex flex-col items-center p-6 bg-gray-50 rounded-lg">
-        {ticket.status === 'PENDING' ? (
+        {qrTicket.status === 'PENDING' ? (
           <>
             <div className="text-amber-500 mb-2">
               <ClockIcon className="w-12 h-12" />
@@ -64,7 +52,7 @@ const QRDisplay: React.FC<QRDisplayProps> = ({ ticket }) => {
               El código QR estará disponible una vez confirmado el pago
             </p>
           </>
-        ) : ticket.status === 'USED' ? (
+        ) : qrTicket.status === 'USED' ? (
           <>
             <div className="text-gray-400 mb-2">
               <CheckCircleIcon className="w-12 h-12" />
@@ -72,7 +60,7 @@ const QRDisplay: React.FC<QRDisplayProps> = ({ ticket }) => {
             <p className="text-lg font-medium">Ticket Usado</p>
             <p className="text-sm text-gray-500">Este ticket ya ha sido utilizado</p>
             <p className="text-xs text-gray-400 mt-2">
-              {new Date(ticket.qrMetadata.timestamp).toLocaleString()}
+              {new Date(qrTicket.qrMetadata.timestamp).toLocaleString()}
             </p>
           </>
         ) : (
@@ -93,7 +81,7 @@ const QRDisplay: React.FC<QRDisplayProps> = ({ ticket }) => {
     <div className="flex flex-col items-center">
       <div className="bg-white p-4 rounded-lg shadow-sm">
         <QRCodeSVG 
-          value={generateQRValue()}
+          value={qrTicket.qrCode}
           size={200}
           level="H"
           includeMargin={true}
@@ -105,15 +93,18 @@ const QRDisplay: React.FC<QRDisplayProps> = ({ ticket }) => {
       <div className="mt-2 px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm font-medium">
         Ticket Válido
       </div>
-      {ticket.eventType === 'SEATED' ? (
+      {eventType === 'SEATED' ? (
         <p className="mt-2 text-sm text-gray-600">
-          Asiento{ticket.seats!.length > 1 ? 's' : ''}: {ticket.seats?.join(', ')}
+          Asiento: {qrTicket.seatInfo?.seat}
         </p>
       ) : (
         <p className="mt-2 text-sm text-gray-600">
-          {ticket.quantity}x {ticket.ticketType?.name}
+          Entrada {(qrTicket.generalInfo?.index || 0) + 1} de {ticketQuantity}
         </p>
       )}
+      <p className="mt-1 text-xs text-gray-400">
+        ID: {qrTicket.subTicketId.slice(-8)}
+      </p>
     </div>
   );
 };

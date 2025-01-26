@@ -1,20 +1,15 @@
 // models/Ticket.ts
 import mongoose, { Document } from "mongoose";
 
-// Interfaces base para documentos
-interface BaseTicketDocument extends Document {
-  eventId: {
-    name: string;
-    date: string;
-    location: string;
-  };
-  userId: mongoose.Types.ObjectId;
+interface QRTicket {
   qrCode: string;
   qrValidation: string;
   qrMetadata: {
     timestamp: number;
     ticketId: string;
+    subTicketId: string;
     type: 'SEATED' | 'GENERAL';
+    status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
     seatInfo?: {
       seat: string;
     };
@@ -23,6 +18,16 @@ interface BaseTicketDocument extends Document {
       index: number;
     };
   };
+}
+
+interface BaseTicketDocument extends Document {
+  eventId: {
+    name: string;
+    date: string;
+    location: string;
+  };
+  userId: mongoose.Types.ObjectId;
+  qrTickets: QRTicket[];
   status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
   buyerInfo: {
     name: string;
@@ -118,38 +123,48 @@ const TicketSchema = new mongoose.Schema({
     },
     phone: String
   },
-  qrCode: {
-    type: String,
-    unique: true,
-    required: true
-  },
-  qrValidation: {
-    type: String,
-    unique: true,
-    required: true
-  },
-  qrMetadata: {
-    timestamp: {
-      type: Number,
-      required: true
-    },
-    ticketId: {
+  qrTickets: [{
+    qrCode: {
       type: String,
       required: true
     },
-    type: {
+    qrValidation: {
       type: String,
-      enum: ['SEATED', 'GENERAL'],
       required: true
     },
-    seatInfo: {
-      seat: String
-    },
-    generalInfo: {
-      ticketType: String,
-      index: Number
+    qrMetadata: {
+      timestamp: {
+        type: Number,
+        required: true
+      },
+      ticketId: {
+        type: String,
+        required: true
+      },
+      subTicketId: {
+        type: String,
+        required: true,
+        unique: true
+      },
+      type: {
+        type: String,
+        enum: ['SEATED', 'GENERAL'],
+        required: true
+      },
+      status: {
+        type: String,
+        enum: ['PENDING', 'PAID', 'USED', 'CANCELLED'],
+        default: 'PENDING'
+      },
+      seatInfo: {
+        seat: String
+      },
+      generalInfo: {
+        ticketType: String,
+        index: Number
+      }
     }
-  },
+  }],
   status: {
     type: String,
     enum: ['PENDING', 'PAID', 'USED', 'CANCELLED'],
@@ -168,57 +183,21 @@ const TicketSchema = new mongoose.Schema({
 
 // Índices
 TicketSchema.index({ eventId: 1, status: 1 });
-TicketSchema.index({ qrCode: 1 }, { unique: true });
-TicketSchema.index({ qrValidation: 1 }, { unique: true });
 TicketSchema.index({ userId: 1 });
 TicketSchema.index({ 'buyerInfo.email': 1 });
 TicketSchema.index({ paymentId: 1 });
-TicketSchema.index({ 'qrMetadata.ticketId': 1 });
+TicketSchema.index({ 'qrTickets.qrMetadata.subTicketId': 1 }, { unique: true });
+TicketSchema.index({ 'qrTickets.qrCode': 1 }, { unique: true });
+TicketSchema.index({ 'qrTickets.qrValidation': 1 }, { unique: true });
 
 // Middleware de validación
 TicketSchema.pre('validate', function(next) {
-  // Inicializar qrMetadata si no existe
-  if (!this.qrMetadata) {
-    this.qrMetadata = {
-      timestamp: Date.now(),
-      ticketId: this._id.toString(),
-      type: this.eventType,
-      seatInfo: undefined,
-      generalInfo: undefined
-    };
+  if (this.eventType === 'SEATED' && (!this.seats || this.seats.length === 0)) {
+    next(new Error('Los asientos son requeridos para eventos con asientos'));
   }
 
-  // Validación del tipo de evento y sus requisitos
-  if (this.eventType === 'SEATED') {
-    if (!this.seats || this.seats.length === 0) {
-      next(new Error('Los asientos son requeridos para eventos con asientos'));
-    }
-
-    // Configurar qrMetadata para tickets con asientos
-    this.qrMetadata = {
-      ...this.qrMetadata,
-      type: 'SEATED',
-      seatInfo: { 
-        seat: this.seats[0] // O puedes manejar múltiples asientos si es necesario
-      },
-      generalInfo: undefined // Limpiar info general si existía
-    };
-
-  } else if (this.eventType === 'GENERAL') {
-    if (!this.ticketType || !this.quantity) {
-      next(new Error('El tipo de ticket y cantidad son requeridos para eventos generales'));
-    }
-
-    // Configurar qrMetadata para tickets generales
-    this.qrMetadata = {
-      ...this.qrMetadata,
-      type: 'GENERAL',
-      seatInfo: undefined, // Limpiar info de asientos si existía
-      generalInfo: {
-        ticketType: this.ticketType?.name || '',
-        index: 0 // Este índice podría ser útil si necesitas diferenciar múltiples tickets del mismo tipo
-      }
-    };
+  if (this.eventType === 'GENERAL' && (!this.ticketType || !this.quantity)) {
+    next(new Error('El tipo de ticket y cantidad son requeridos para eventos generales'));
   }
 
   next();

@@ -1,4 +1,4 @@
-//api/webhooks/mercadopago/route.ts
+// api/webhooks/mercadopago/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
@@ -7,7 +7,7 @@ import { Event } from '@/app/models/Event';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { sendTicketEmail } from '@/app/lib/email';
 import mongoose from 'mongoose';
-import { generateTicketQR } from '@/app/lib/qrGenerator';
+import { generateTicketQRs } from '@/app/lib/qrGenerator';
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
@@ -22,33 +22,26 @@ type PaymentInfo = {
 };
 
 function formatTicketsForEmail(ticket: any) {
-  const baseTicket = {
+  // Usar los QRs existentes para formatear el ticket
+  return {
     eventName: ticket.eventId.name,
     date: ticket.eventId.date,
     location: ticket.eventId.location,
     status: ticket.status,
     buyerInfo: ticket.buyerInfo,
-    qrCode: ticket.qrCode,
-    qrValidation: ticket.qrValidation,
-    qrMetadata: ticket.qrMetadata
+    eventType: ticket.eventType,
+    qrTickets: ticket.qrTickets,
+    ...(ticket.eventType === 'SEATED'
+      ? {
+          seats: ticket.seats,
+          price: ticket.price
+        }
+      : {
+          ticketType: ticket.ticketType,
+          quantity: ticket.quantity
+        }
+    )
   };
-
-  if (ticket.eventType === 'SEATED') {
-    return ticket.seats.map((seat: string) => ({
-      ...baseTicket,
-      eventType: 'SEATED' as const,
-      seat,
-      price: ticket.price / ticket.seats.length
-    }));
-  } else {
-    return Array(ticket.quantity).fill(null).map(() => ({
-      ...baseTicket,
-      eventType: 'GENERAL' as const,
-      ticketType: ticket.ticketType,
-      quantity: 1,
-      price: ticket.ticketType.price
-    }));
-  }
 }
 
 export async function POST(req: Request) {
@@ -98,28 +91,21 @@ export async function POST(req: Request) {
       eventType: ticket.eventType
     });
 
-    if (paymentInfo.status === "approved") {
-      if (ticket.status !== 'PENDING') {
-        throw new Error('Ticket ya procesado');
-      }
+// En la parte del procesamiento del pago...
+if (paymentInfo.status === "approved") {
+  if (ticket.status !== 'PENDING') {
+    throw new Error('Ticket ya procesado');
+  }
 
-      // Generar QR una sola vez
-      const { qrString: qrCode, validationHash: qrValidation, qrData } = await generateTicketQR({
-        ticketId: ticket._id.toString(),
-        eventType: ticket.eventType,
-        seats: ticket.seats,
-        ticketType: ticket.ticketType,
-        quantity: ticket.quantity
-      });
+  // Actualizar estado de todos los QRs existentes
+  ticket.qrTickets.forEach((qrTicket: { qrMetadata: { status: string; }; }) => {
+    qrTicket.qrMetadata.status = 'PAID';
+  });
 
-      // Actualizar ticket
-      ticket.status = 'PAID';
-      ticket.paymentId = String(paymentInfo.id);
-      ticket.qrCode = qrCode;
-      ticket.qrValidation = qrValidation;
-      ticket.qrMetadata = qrData;
+  ticket.status = 'PAID';
+  ticket.paymentId = String(paymentInfo.id);
+  await ticket.save({ session });
 
-      await ticket.save({ session });
 
       // Actualizar según tipo de ticket
       if (ticket.eventType === 'SEATED') {
@@ -163,11 +149,11 @@ export async function POST(req: Request) {
       await session.commitTransaction();
 
       // Formatear tickets y enviar email
-      const formattedTickets = formatTicketsForEmail(ticket);
-      
+      const formattedTicket = formatTicketsForEmail(ticket);
+  
       try {
         await sendTicketEmail({
-          tickets: formattedTickets,
+          ticket: formattedTicket, // Ahora pasamos un solo ticket con sus QRs
           email: ticket.buyerInfo.email
         });
         console.log('Email enviado exitosamente a:', ticket.buyerInfo.email);
@@ -185,12 +171,21 @@ export async function POST(req: Request) {
         data: {
           ticketId: ticket._id,
           status: 'PAID',
-          qrCode,
-          qrValidation
+          qrTickets: ticket.qrTickets.map((qt: { qrMetadata: { subTicketId: any; status: any; }; qrCode: any; qrValidation: any; }) => ({
+            subTicketId: qt.qrMetadata.subTicketId,
+            qrCode: qt.qrCode,
+            qrValidation: qt.qrValidation,
+            status: qt.qrMetadata.status
+          }))
         }
       });
 
     } else if (['rejected', 'cancelled', 'refunded'].includes(paymentInfo.status)) {
+      // Actualizar estado de todos los QRs a CANCELLED
+      ticket.qrTickets.forEach((qrTicket: { qrMetadata: { status: string; }; }) => {
+        qrTicket.qrMetadata.status = 'CANCELLED';
+      });
+
       ticket.status = 'CANCELLED';
       ticket.paymentId = String(paymentInfo.id);
       await ticket.save({ session });
@@ -232,7 +227,11 @@ export async function POST(req: Request) {
         message: 'Pago cancelado/rechazado',
         data: { 
           ticketId: ticket._id,
-          status: 'CANCELLED'
+          status: 'CANCELLED',
+          qrTickets: ticket.qrTickets.map((qt: { qrMetadata: { subTicketId: any; status: any; }; }) => ({
+            subTicketId: qt.qrMetadata.subTicketId,
+            status: qt.qrMetadata.status
+          }))
         }
       });
     }
@@ -243,7 +242,11 @@ export async function POST(req: Request) {
       message: 'Webhook procesado',
       data: {
         ticketId: ticket._id,
-        status: ticket.status
+        status: ticket.status,
+        qrTickets: ticket.qrTickets.map((qt: { qrMetadata: { subTicketId: any; status: any; }; }) => ({
+          subTicketId: qt.qrMetadata.subTicketId,
+          status: qt.qrMetadata.status
+        }))
       }
     });
 

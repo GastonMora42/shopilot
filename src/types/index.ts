@@ -52,6 +52,7 @@ export interface ISection extends Document {
 }
 
 export interface ITicket extends Document {
+ qrTickets: any;
  qrValidation: any;
  qrMetadata: any;
  _id: string;

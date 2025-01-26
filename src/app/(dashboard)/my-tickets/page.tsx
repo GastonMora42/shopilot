@@ -1,3 +1,4 @@
+// app/my-tickets/page.tsx
 'use client'
 
 import { SetStateAction, useEffect, useState } from 'react'
@@ -10,10 +11,8 @@ import { QRCodeSVG } from 'qrcode.react'
 import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Skeleton } from '@/components/ui/Skeleton'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
-import QRCode from 'qrcode';
 import { 
   CalendarIcon, 
   MapPinIcon, 
@@ -29,6 +28,21 @@ import {
   Loader2Icon
 } from 'lucide-react'
 
+interface QRTicket {
+  subTicketId: string;
+  qrCode: string;
+  qrValidation: string;
+  status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
+  type: 'SEATED' | 'GENERAL';
+  seatInfo?: {
+    seat: string;
+  };
+  generalInfo?: {
+    ticketType: string;
+    index: number;
+  };
+}
+
 interface BaseTicket {
   id: string;
   eventName: string;
@@ -37,19 +51,13 @@ interface BaseTicket {
   eventImage: string;
   eventType: 'SEATED' | 'GENERAL';
   status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
-  qrCode: string;
-  qrValidation: string;
-  qrMetadata: {
-    timestamp: number;
-    ticketId: string;
-    type: 'SEATED' | 'GENERAL';
-  };
   price: number;
   buyerInfo: {
     name: string;
     email: string;
   };
   createdAt: string;
+  qrTickets: QRTicket[];
 }
 
 interface SeatedTicket extends BaseTicket {
@@ -84,6 +92,39 @@ function StatusBadge({ status }: { status: Ticket['status'] }) {
   );
 }
 
+function QRTicketDisplay({ qrTicket, eventType }: { qrTicket: QRTicket; eventType: 'SEATED' | 'GENERAL' }) {
+  return (
+    <div className="border rounded-lg p-4 mb-4">
+      <div className="flex justify-between items-center mb-3">
+        <div>
+          {eventType === 'SEATED' ? (
+            <p className="font-medium">Asiento: {qrTicket.seatInfo?.seat}</p>
+          ) : (
+            <p className="font-medium">
+              Entrada {qrTicket.generalInfo?.index! + 1}
+            </p>
+          )}
+        </div>
+        <StatusBadge status={qrTicket.status} />
+      </div>
+      
+      {qrTicket.status === 'PAID' && (
+        <div className="flex flex-col items-center mt-2">
+          <QRCodeSVG 
+            value={qrTicket.qrCode}
+            size={150}
+            level="H"
+            includeMargin={true}
+          />
+          <p className="text-sm text-gray-500 mt-2">
+            ID: {qrTicket.subTicketId.slice(-8)}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MyTicketsPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -92,6 +133,8 @@ export default function MyTicketsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<Ticket['status'] | ''>('')
   const [sortOrder, setSortOrder] = useState('')
+  const [downloadingPdf, setDownloadingPdf] = useState<string | null>(null)
+  const [printingTicket, setPrintingTicket] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -120,21 +163,18 @@ export default function MyTicketsPage() {
   const filterAndSortTickets = () => {
     let filteredTickets = [...tickets]
 
-    // Aplicar filtro de búsqueda
     if (searchTerm) {
       filteredTickets = filteredTickets.filter(ticket =>
         ticket.eventName.toLowerCase().includes(searchTerm.toLowerCase())
       )
     }
 
-    // Aplicar filtro de estado
     if (statusFilter) {
       filteredTickets = filteredTickets.filter(ticket => 
         ticket.status === statusFilter
       )
     }
 
-    // Aplicar ordenamiento
     if (sortOrder) {
       filteredTickets.sort((a, b) => {
         switch (sortOrder) {
@@ -155,6 +195,7 @@ export default function MyTicketsPage() {
 
   const handleDownloadPDF = async (ticket: Ticket) => {
     try {
+      setDownloadingPdf(ticket.id)
       const response = await fetch('/api/tickets/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -174,124 +215,90 @@ export default function MyTicketsPage() {
       window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Error downloading ticket:', error)
+    } finally {
+      setDownloadingPdf(null)
     }
   }
 
-  const generateQRDataUrl = async (data: string): Promise<string> => {
-    try {
-      return await QRCode.toDataURL(data, {
-        width: 200,
-        margin: 1,
-        errorCorrectionLevel: 'H'
-      });
-    } catch (err) {
-      console.error('Error generando QR:', err);
-      return '';
-    }
-  };
-
   const handlePrint = async (ticket: Ticket) => {
     try {
-      const qrDataUrl = ticket.status === 'PAID' ? 
-        await QRCode.toDataURL(ticket.qrCode, {
-          width: 200,
-          margin: 1,
-          errorCorrectionLevel: 'H'
-        }) : '';
+      setPrintingTicket(ticket.id)
+      const printWindow = window.open('', '_blank')
+      if (!printWindow) return
   
-      // Crear una nueva ventana para imprimir
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) return;
-  
-      // Agregar estilos específicos para impresión
       const printContent = `
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Ticket - ${ticket.eventName}</title>
+            <title>Tickets - ${ticket.eventName}</title>
             <style>
-              @page {
-                size: A4;
-                margin: 20mm;
-              }
-              body {
-                font-family: Arial, sans-serif;
-                padding: 20px;
-              }
-              .ticket-container {
-                max-width: 600px;
-                margin: 0 auto;
+              @page { size: A4; margin: 20mm; }
+              body { font-family: Arial, sans-serif; }
+              .ticket { 
+                page-break-after: always;
                 padding: 20px;
                 border: 1px solid #ccc;
-                border-radius: 8px;
+                margin-bottom: 20px;
               }
-              .ticket-details {
-                margin: 20px 0;
-              }
-              .qr-container {
-                text-align: center;
-                margin: 20px 0;
-              }
-              .ticket-status {
-                font-weight: bold;
-                margin-top: 10px;
-              }
-              @media print {
-                body {
-                  margin: 0;
-                  padding: 0;
-                }
-                .no-print {
-                  display: none;
-                }
-              }
+              .qr-container { text-align: center; margin: 20px 0; }
+              .ticket-info { margin: 20px 0; }
             </style>
           </head>
           <body>
-            <div class="ticket-container">
-              <h1>${ticket.eventName}</h1>
-              <div class="ticket-details">
-                <p>Fecha: ${format(new Date(ticket.eventDate), "d 'de' MMMM, yyyy - HH:mm", { locale: es })}</p>
-                <p>Ubicación: ${ticket.eventLocation}</p>
-                ${ticket.eventType === 'SEATED' 
-                  ? `<p>Asientos: ${ticket.seats.join(', ')}</p>`
-                  : `<p>Tipo: ${ticket.ticketType?.name || 'N/A'}</p>
-                     <p>Cantidad: ${ticket.quantity || 0}</p>`
-                }
-                <p>Comprador: ${ticket.buyerInfo.name}</p>
-                <p>Email: ${ticket.buyerInfo.email}</p>
-              </div>
-              ${ticket.status === 'PAID' && qrDataUrl ? `
-                <div class="qr-container">
-                  <img src="${qrDataUrl}" alt="QR Code" style="width: 200px; height: 200px;"/>
-                  <p style="margin-top: 10px;">Muestra este código en la entrada</p>
+            ${ticket.qrTickets.map(qrTicket => `
+              <div class="ticket">
+                <h1>${ticket.eventName}</h1>
+                <div class="ticket-info">
+                  <p>Fecha: ${format(new Date(ticket.eventDate), "d 'de' MMMM, yyyy - HH:mm", { locale: es })}</p>
+                  <p>Ubicación: ${ticket.eventLocation}</p>
+                  <p>Comprador: ${ticket.buyerInfo.name}</p>
+                  <p>Email: ${ticket.buyerInfo.email}</p>
+                  ${ticket.eventType === 'SEATED' 
+                    ? `<p>Asiento: ${qrTicket.seatInfo?.seat}</p>`
+                    : `<p>Tipo: ${ticket.ticketType.name}</p>
+                       <p>Entrada ${qrTicket.generalInfo?.index! + 1} de ${ticket.quantity}</p>`
+                  }
                 </div>
-              ` : ''}
-              <div class="ticket-status">
-                Estado: ${statusConfig[ticket.status].label}
+                ${qrTicket.status === 'PAID' ? `
+                  <div class="qr-container">
+                    <svg width="200" height="200" viewBox="0 0 200 200">
+                      <foreignObject width="100%" height="100%">
+                        ${QRCodeSVG({
+                          value: qrTicket.qrCode,
+                          size: 200,
+                          level: 'H'
+                        })}
+                      </foreignObject>
+                    </svg>
+                    <p>ID: ${qrTicket.subTicketId.slice(-8)}</p>
+                  </div>
+                ` : ''}
+                <div class="ticket-status">
+                  Estado: ${statusConfig[qrTicket.status].label}
+                </div>
               </div>
-            </div>
+            `).join('')}
           </body>
         </html>
-      `;
+      `
   
-      printWindow.document.write(printContent);
-      printWindow.document.close();
+      printWindow.document.write(printContent)
+      printWindow.document.close()
       
-      // Esperar a que las imágenes se carguen antes de imprimir
       printWindow.onload = () => {
         setTimeout(() => {
-          printWindow.print();
+          printWindow.print()
           printWindow.onafterprint = () => {
-            printWindow.close();
-          };
-        }, 500);
-      };
+            printWindow.close()
+          }
+        }, 500)
+      }
     } catch (error) {
-      console.error('Error al preparar la impresión:', error);
+      console.error('Error al preparar la impresión:', error)
+    } finally {
+      setPrintingTicket(null)
     }
-  };
-  
+  }
 
   if (isLoading) {
     return <TicketsSkeleton />
@@ -321,6 +328,7 @@ export default function MyTicketsPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Header y Filtros */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Mis Tickets</h1>
         <div className="flex gap-2">
@@ -343,27 +351,27 @@ export default function MyTicketsPage() {
             />
           </div>
           <Select
-  value={statusFilter}
-  onChange={(e) => setStatusFilter(e.target.value as Ticket['status'] | '')}
->
-  <option value="">Todos los estados</option>
-  {Object.entries(statusConfig).map(([key, value]) => (
-    <option key={key} value={key}>{value.label}</option>
-  ))}
-</Select>
-
-<Select
-  value={sortOrder}
-  onChange={(e) => setSortOrder(e.target.value)}
->
-  <option value="">Ordenar por</option>
-  <option value="date-desc">Fecha más reciente</option>
-  <option value="date-asc">Fecha más antigua</option>
-  <option value="name">Nombre del evento</option>
-</Select>
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as Ticket['status'] | '')}
+          >
+            <option value="">Todos los estados</option>
+            {Object.entries(statusConfig).map(([key, value]) => (
+              <option key={key} value={key}>{value.label}</option>
+            ))}
+          </Select>
+          <Select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+          >
+            <option value="">Ordenar por</option>
+            <option value="date-desc">Fecha más reciente</option>
+            <option value="date-asc">Fecha más antigua</option>
+            <option value="name">Nombre del evento</option>
+          </Select>
         </div>
       </div>
 
+      {/* Lista de Tickets */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredTickets.map((ticket) => (
           <Card key={ticket.id} className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -395,63 +403,64 @@ export default function MyTicketsPage() {
               </div>
 
               <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-  {ticket.eventType === 'SEATED' ? (
-    <div className="flex items-center gap-2">
-      <SpaceIcon className="w-4 h-4" />
-      <p>Asientos: {ticket.seats.join(', ')}</p>
-    </div>
-  ) : (
-    <div className="space-y-1">
-      <p className="flex items-center gap-2">
-        <TicketIcon className="w-4 h-4" />
-        Tipo: {ticket.ticketType?.name || 'N/A'}
-      </p>
-      <p className="flex items-center gap-2">
-        <HashIcon className="w-4 h-4" />
-        Cantidad: {ticket.quantity || 0}
-      </p>
-    </div>
-  )}
-  <p className="font-semibold mt-2">Total: ${ticket.price}</p>
-</div>
-
-{ticket.status === 'PAID' && (
-  <div className="flex flex-col items-center mb-4 p-4 bg-white rounded-lg border">
-    <QRCodeSVG 
-      value={ticket.qrCode} // Usar directamente el QR almacenado
-      size={200}
-      level="H"
-      includeMargin={true}
-    />
-    <p className="text-sm text-gray-500 mt-2">
-      Muestra este código en la entrada
+                {ticket.eventType === 'SEATED' ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <SpaceIcon className="w-4 h-4" />
+                      <p>Asientos: {ticket.seats.join(', ')}</p>
+                    </div>
+                  </div>
+) : (
+  <div className="space-y-1">
+    <p className="flex items-center gap-2">
+      <TicketIcon className="w-4 h-4" />
+      Tipo: {ticket.ticketType.name}
+    </p>
+    <p className="flex items-center gap-2">
+      <HashIcon className="w-4 h-4" />
+      Cantidad: {ticket.quantity}
     </p>
   </div>
 )}
+<p className="font-semibold mt-2">Total: ${ticket.price}</p>
+</div>
 
-              <div className="text-sm text-gray-500 space-y-1 border-t pt-4">
-                <div className="flex items-center gap-2">
-                  <UserIcon className="w-4 h-4" />
-                  <p>{ticket.buyerInfo.name}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MailIcon className="w-4 h-4" />
-                  <p>{ticket.buyerInfo.email}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <ClockIcon className="w-4 h-4" />
-                  <p>Comprado el {format(new Date(ticket.createdAt), "d 'de' MMMM, yyyy", { locale: es })}</p>
-                </div>
-              </div>
+{/* QRs individuales */}
+{ticket.status === 'PAID' && (
+<div className="space-y-4">
+  {ticket.qrTickets.map((qrTicket) => (
+    <QRTicketDisplay 
+      key={qrTicket.subTicketId}
+      qrTicket={qrTicket}
+      eventType={ticket.eventType}
+    />
+  ))}
+</div>
+)}
 
-              <div className="mt-4 flex gap-2">
-              <Button 
+<div className="text-sm text-gray-500 space-y-1 border-t pt-4">
+<div className="flex items-center gap-2">
+  <UserIcon className="w-4 h-4" />
+  <p>{ticket.buyerInfo.name}</p>
+</div>
+<div className="flex items-center gap-2">
+  <MailIcon className="w-4 h-4" />
+  <p>{ticket.buyerInfo.email}</p>
+</div>
+<div className="flex items-center gap-2">
+  <ClockIcon className="w-4 h-4" />
+  <p>Comprado el {format(new Date(ticket.createdAt), "d 'de' MMMM, yyyy", { locale: es })}</p>
+</div>
+</div>
+
+<div className="mt-4 flex gap-2">
+<Button 
   onClick={() => handlePrint(ticket)} 
   variant="outline" 
   className="w-full"
-  disabled={isLoading}
+  disabled={printingTicket === ticket.id}
 >
-  {isLoading ? (
+  {printingTicket === ticket.id ? (
     <span className="flex items-center">
       <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
       Preparando...
@@ -463,33 +472,43 @@ export default function MyTicketsPage() {
     </>
   )}
 </Button>
-                {ticket.status === 'PAID' && (
-                  <Button 
-                    onClick={() => handleDownloadPDF(ticket)}
-                    className="w-full"
-                  >
-                    <DownloadIcon className="w-4 h-4 mr-2" />
-                    Descargar PDF
-                  </Button>
-                )}
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
-    </div>
-  )
+{ticket.status === 'PAID' && (
+  <Button 
+    onClick={() => handleDownloadPDF(ticket)}
+    className="w-full"
+    disabled={downloadingPdf === ticket.id}
+  >
+    {downloadingPdf === ticket.id ? (
+      <span className="flex items-center">
+        <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+        Descargando...
+      </span>
+    ) : (
+      <>
+        <DownloadIcon className="w-4 h-4 mr-2" />
+        Descargar PDF
+      </>
+    )}
+  </Button>
+)}
+</div>
+</div>
+</Card>
+))}
+</div>
+</div>
+);
 }
 
 function TicketsSkeleton() {
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <Skeleton className="h-8 w-48 mb-6" />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {[1, 2, 3].map((n) => (
-          <Skeleton key={n} className="h-[600px]" />
-        ))}
-      </div>
-    </div>
-  )
+return (
+<div className="container mx-auto px-4 py-8">
+<div className="h-8 w-48 bg-gray-200 rounded mb-6 animate-pulse" />
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+{[1, 2, 3].map((n) => (
+<div key={n} className="h-[600px] bg-gray-200 rounded animate-pulse" />
+))}
+</div>
+</div>
+);
 }

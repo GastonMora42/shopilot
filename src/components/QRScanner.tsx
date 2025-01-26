@@ -3,15 +3,13 @@ import { useState, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Check, X } from 'lucide-react';
+import { Check, X, Loader2 } from 'lucide-react';
 
-// components/QRScanner.tsx
 interface QRMetadata {
-  timestamp: number;
-  ticketId: string;
+  subTicketId: string;
   type: 'SEATED' | 'GENERAL';
   seatInfo?: {
-    seats: string[];
+    seat: string;
   };
   generalInfo?: {
     ticketType: string;
@@ -24,33 +22,28 @@ interface BaseTicketInfo {
   buyerName: string;
   status: string;
   eventType: 'SEATED' | 'GENERAL';
-  qrValidation: string;
+  validatedAt?: Date;
   qrMetadata: QRMetadata;
+  buyerInfo: {
+    name: string;
+    dni: string;
+  };
 }
 
 interface SeatedTicketInfo extends BaseTicketInfo {
   eventType: 'SEATED';
   seat: string;
-  qrMetadata: QRMetadata & {
-    type: 'SEATED';
-    seatInfo: {
-      seats: string[];
-    };
+  seatInfo: {
+    seat: string;
   };
 }
 
 interface GeneralTicketInfo extends BaseTicketInfo {
   eventType: 'GENERAL';
-  ticketType: {
-    name: string;
-  };
-  quantity: number;
-  qrMetadata: QRMetadata & {
-    type: 'GENERAL';
-    generalInfo: {
-      ticketType: string;
-      index: number;
-    };
+  ticketType: string;
+  generalInfo: {
+    ticketType: string;
+    index: number;
   };
 }
 
@@ -67,6 +60,7 @@ export function QrScanner() {
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     const html5QrCode = new Html5Qrcode("qr-reader");
@@ -78,7 +72,6 @@ export function QrScanner() {
       }
     };
   }, []);
-
 
   const startScanning = async () => {
     if (!scanner) return;
@@ -106,36 +99,40 @@ export function QrScanner() {
     }
   };
 
-// En handleScanSuccess:
-const handleScanSuccess = async (decodedText: string) => {
-  try {
-    await stopScanning();
+  const handleScanSuccess = async (decodedText: string) => {
+    if (isProcessing) return; // Evitar múltiples validaciones simultáneas
+    
+    try {
+      setIsProcessing(true);
+      await stopScanning();
 
-    const response = await fetch('/api/tickets/validate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ qrString: decodedText }) // Cambiado de qrCode a qrString
-    });
+      const response = await fetch('/api/tickets/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ qrString: decodedText })
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    setResult({
-      success: data.success,
-      message: data.message,
-      ticket: data.ticket
-    });
+      setResult({
+        success: data.success,
+        message: data.message,
+        ticket: data.ticket
+      });
 
-    setShowModal(true);
-  } catch (error) {
-    setResult({
-      success: false,
-      message: 'Error al validar el ticket'
-    });
-    setShowModal(true);
-  }
-};
+      setShowModal(true);
+    } catch (error) {
+      setResult({
+        success: false,
+        message: 'Error al validar el ticket'
+      });
+      setShowModal(true);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleScanError = (error: string) => {
     if (!error.includes('No QR code found')) {
@@ -146,15 +143,8 @@ const handleScanSuccess = async (decodedText: string) => {
   const handleCloseResult = () => {
     setShowModal(false);
     setResult(null);
-    startScanning(); // Reiniciar el scanner solo después de que el usuario cierre el resultado
-  };
-
-  useEffect(() => {
     startScanning();
-    return () => {
-      stopScanning();
-    };
-  }, [startScanning, stopScanning]); 
+  };
 
   return (
     <div className="space-y-4">
@@ -166,8 +156,8 @@ const handleScanSuccess = async (decodedText: string) => {
         </div>
       </Card>
 
-   {/* Modal de Resultado */}
-   {showModal && result && (
+      {/* Modal de Resultado */}
+      {showModal && result && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <Card className={`w-full max-w-md p-6 ${
             result.success ? 'bg-green-50' : 'bg-red-50'
@@ -193,18 +183,25 @@ const handleScanSuccess = async (decodedText: string) => {
                 {result.success ? '¡ACCESO PERMITIDO!' : 'NO PUEDE PASAR'}
               </h2>
 
-             {/* Detalles del Ticket */}
-              {result.success && result.ticket && (
+              {/* Detalles del Ticket */}
+              {result.ticket && (
                 <div className="mb-6 text-left">
                   <div className="bg-white rounded-lg p-4 space-y-2">
                     <p><strong>Evento:</strong> {result.ticket.eventName}</p>
-                    <p><strong>Comprador:</strong> {result.ticket.buyerName}</p>
+                    <p><strong>Comprador:</strong> {result.ticket.buyerInfo.name}</p>
+                    <p><strong>DNI:</strong> {result.ticket.buyerInfo.dni}</p>
                     {result.ticket.eventType === 'SEATED' ? (
                       <p><strong>Asiento:</strong> {result.ticket.seat}</p>
                     ) : (
-                      <p><strong>Tipo de entrada:</strong> {result.ticket.ticketType.name}</p>
+                      <>
+                        <p><strong>Tipo de entrada:</strong> {result.ticket.ticketType}</p>
+                        <p><strong>Número:</strong> {(result.ticket.generalInfo.index + 1)}</p>
+                      </>
                     )}
                     <p><strong>Estado:</strong> {result.ticket.status}</p>
+                    {result.ticket.validatedAt && (
+                      <p><strong>Validado:</strong> {new Date(result.ticket.validatedAt).toLocaleString()}</p>
+                    )}
                   </div>
                 </div>
               )}
@@ -214,8 +211,8 @@ const handleScanSuccess = async (decodedText: string) => {
                 <p className="text-red-600 mb-6">{result.message}</p>
               )}
 
-             {/* Botón de Cierre */}
-             <Button 
+              {/* Botón de Cierre */}
+              <Button 
                 onClick={handleCloseResult}
                 className="w-full text-lg py-6"
                 variant={result.success ? "default" : "destructive"}
@@ -233,9 +230,18 @@ const handleScanSuccess = async (decodedText: string) => {
           variant={scanning ? "destructive" : "default"}
           onClick={scanning ? stopScanning : startScanning}
           className="w-full max-w-sm"
-          disabled={showModal}
+          disabled={showModal || isProcessing}
         >
-          {scanning ? 'Detener Scanner' : 'Iniciar Scanner'}
+          {isProcessing ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Procesando...
+            </>
+          ) : scanning ? (
+            'Detener Scanner'
+          ) : (
+            'Iniciar Scanner'
+          )}
         </Button>
       </div>
     </div>

@@ -1,28 +1,18 @@
-// app/api/tickets/validate/route.ts
+// api/tickets/validate/route.ts
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Seat } from '@/app/models/Seat';
-import { Event } from '@/app/models/Event'; 
 import mongoose from 'mongoose';
-import { validateQR, type QRData } from '@/app/lib/qrGenerator';
+import { validateQR } from '@/app/lib/qrGenerator';
 
 export async function POST(req: Request) {
-  let session: mongoose.ClientSession | null = null;
- 
+  const session = await mongoose.startSession();
+  
   try {
-    await dbConnect();
     const { qrString } = await req.json();
-    
-    if (!qrString) {
-      return NextResponse.json({
-        success: false,
-        message: 'Código QR requerido'
-      }, { status: 400 });
-    }
-
-    // Validar estructura del QR
     const qrValidation = validateQR(qrString);
+    
     if (!qrValidation.isValid || !qrValidation.data) {
       return NextResponse.json({
         success: false,
@@ -30,82 +20,69 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    const qrData = qrValidation.data;
-
-    session = await mongoose.startSession();
     await session.startTransaction();
 
-    const ticket = await Ticket.findById(qrData.ticketId)
+    const ticket = await Ticket.findById(qrValidation.data.ticketId)
       .populate('eventId')
       .session(session);
 
     if (!ticket) {
-      await session.abortTransaction();
-      return NextResponse.json({
-        success: false,
-        message: 'Ticket no encontrado'
-      }, { status: 404 });
+      throw new Error('Ticket no encontrado');
     }
 
-    // Validar fecha del evento
+    // Verificar fecha del evento
     const eventDate = new Date(ticket.eventId.date);
     const now = new Date();
     
     if (eventDate < now) {
-      await session.abortTransaction();
+      throw new Error('El evento ya ha finalizado');
+    }
+
+    if (!qrValidation.isValid || !qrValidation.data) {
       return NextResponse.json({
         success: false,
-        message: 'El evento ya ha finalizado'
+        message: qrValidation.error || 'QR inválido'
       }, { status: 400 });
     }
 
-    // Validar estado del ticket
-    if (ticket.status === 'USED') {
-      await session.abortTransaction();
+    const qrData = qrValidation.data; // TypeScript ahora sabe que data existe
+    
+    // Buscar el QR específico
+    const qrTicket = ticket.qrTickets.find(
+      (      qt: { qrMetadata: { subTicketId: string; }; }) => qt.qrMetadata.subTicketId === qrData.subTicketId
+    );
+    
+    if (!qrTicket) {
+      throw new Error('QR no encontrado en el ticket');
+    }
+
+    if (qrTicket.qrMetadata.status !== 'PAID') {
       return NextResponse.json({
         success: false,
-        message: 'Ticket ya utilizado',
+        message: `Ticket no válido - Estado: ${qrTicket.qrMetadata.status}`,
         ticket: {
           eventName: ticket.eventId.name,
           buyerName: ticket.buyerInfo.name,
-          status: ticket.status,
-          usedAt: ticket.updatedAt
+          status: qrTicket.qrMetadata.status,
+          usedAt: qrTicket.qrMetadata.status === 'USED' ? ticket.updatedAt : undefined
         }
       }, { status: 400 });
     }
 
-    if (ticket.status !== 'PAID') {
-      await session.abortTransaction();
-      return NextResponse.json({
-        success: false,
-        message: `Ticket no válido - Estado: ${ticket.status}`,
-        ticket: {
-          eventName: ticket.eventId.name,
-          buyerName: ticket.buyerInfo.name,
-          status: ticket.status
-        }
-      }, { status: 400 });
+    // Actualizar estado del QR específico
+    qrTicket.qrMetadata.status = 'USED';
+    
+    // Actualizar estado general del ticket si todos los QR están usados
+    if (ticket.qrTickets.every((qt: { qrMetadata: { status: string; }; }) => qt.qrMetadata.status === 'USED')) {
+      ticket.status = 'USED';
     }
 
-    // Verificar que el QR corresponda al ticket
-    if (qrData.validationHash !== ticket.qrValidation) {
-      await session.abortTransaction();
-      return NextResponse.json({
-        success: false,
-        message: 'QR inválido o manipulado'
-      }, { status: 400 });
-    }
-
-    // Actualizar ticket
-    ticket.status = 'USED';
-    await ticket.save({ session });
-
-    // Manejar según el tipo de ticket
-    if (ticket.eventType === 'SEATED') {
-      const seatResult = await Seat.updateMany(
+    // Si es un ticket con asientos, actualizar el estado del asiento
+    if (ticket.eventType === 'SEATED' && qrTicket.qrMetadata.seatInfo?.seat) {
+      const seatResult = await Seat.findOneAndUpdate(
         {
           eventId: ticket.eventId._id,
-          seatId: { $in: ticket.seats },
+          seatId: qrTicket.qrMetadata.seatInfo.seat,
           status: 'OCCUPIED',
           ticketId: ticket._id
         },
@@ -115,15 +92,12 @@ export async function POST(req: Request) {
         { session }
       );
 
-      if (seatResult.modifiedCount !== ticket.seats.length) {
-        await session.abortTransaction();
-        return NextResponse.json({
-          success: false,
-          message: 'Error al validar asientos'
-        }, { status: 500 });
+      if (!seatResult) {
+        throw new Error('Error al actualizar el estado del asiento');
       }
     }
 
+    await ticket.save({ session });
     await session.commitTransaction();
 
     // Preparar respuesta
@@ -136,30 +110,76 @@ export async function POST(req: Request) {
         eventType: ticket.eventType,
         ...(ticket.eventType === 'SEATED' 
           ? { 
-              seats: ticket.seats.join(', '),
-              seatInfo: qrData.metadata.seatInfo
+              seat: qrTicket.qrMetadata.seatInfo?.seat,
+              seatInfo: qrTicket.qrMetadata.seatInfo
             }
           : { 
               ticketType: ticket.ticketType?.name,
-              quantity: ticket.quantity,
-              generalInfo: qrData.metadata.generalInfo
+              generalInfo: qrTicket.qrMetadata.generalInfo
             }),
         status: 'USED',
         validatedAt: new Date(),
-        dni: ticket.buyerInfo.dni
+        qrMetadata: {
+          subTicketId: qrTicket.qrMetadata.subTicketId,
+          type: qrTicket.qrMetadata.type
+        },
+        buyerInfo: {
+          name: ticket.buyerInfo.name,
+          dni: ticket.buyerInfo.dni
+        }
       }
     };
 
     return NextResponse.json(response);
 
   } catch (error) {
-    if (session) await session.abortTransaction();
+    if (session) {
+      await session.abortTransaction();
+    }
     console.error('Error validating ticket:', error);
     return NextResponse.json({
       success: false,
-      message: error instanceof Error ? error.message : 'Error al validar ticket'
+      message: error instanceof Error ? error.message : 'Error al validar el ticket'
     }, { status: 500 });
   } finally {
-    if (session) await session.endSession();
+    if (session) {
+      await session.endSession();
+    }
   }
 }
+
+// Tipos auxiliares para la respuesta
+interface BaseTicketResponse {
+  eventName: string;
+  buyerName: string;
+  eventType: 'SEATED' | 'GENERAL';
+  status: string;
+  validatedAt: Date;
+  qrMetadata: {
+    subTicketId: string;
+    type: 'SEATED' | 'GENERAL';
+  };
+  buyerInfo: {
+    name: string;
+    dni: string;
+  };
+}
+
+interface SeatedTicketResponse extends BaseTicketResponse {
+  eventType: 'SEATED';
+  seat: string;
+  seatInfo: {
+    seat: string;
+  };
+}
+
+interface GeneralTicketResponse extends BaseTicketResponse {
+  eventType: 'GENERAL';
+  ticketType: string;
+  generalInfo: {
+    ticketType: string;
+    index: number;
+  };
+}
+
+type TicketResponse = SeatedTicketResponse | GeneralTicketResponse;

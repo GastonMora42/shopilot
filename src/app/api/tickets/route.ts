@@ -9,7 +9,7 @@ import { isValidObjectId } from 'mongoose';
 import mongoose from 'mongoose';
 import { authOptions } from '@/app/lib/auth';
 import { getServerSession } from 'next-auth/next';
-import { generateTicketQR } from '@/app/lib/qrGenerator';
+import { generateTicketQRs } from '@/app/lib/qrGenerator';
 
 export async function POST(req: Request) {
   let session = null;
@@ -199,7 +199,7 @@ if (eventType === 'SEATED' && (!seats?.length)) {
       }
     }
 
-    const { qrData, qrString, validationHash } = generateTicketQR({
+    const qrTickets = await generateTicketQRs({
       ticketId: new mongoose.Types.ObjectId().toString(),
       eventType,
       seats,
@@ -207,29 +207,11 @@ if (eventType === 'SEATED' && (!seats?.length)) {
       quantity
     });
     
-    // Crear ticket
+    // Crear ticket con los QRs individuales
     const ticketData = {
       eventId,
       eventType,
-      qrCode: qrString,
-      qrValidation: validationHash,
-      qrMetadata: {
-        timestamp: qrData.timestamp,
-        ticketId: qrData.ticketId,
-        type: eventType,
-        ...(eventType === 'SEATED' 
-          ? {
-              seatInfo: {
-                seats: seats || []
-              }
-            }
-          : {
-              generalInfo: {
-                ticketType: ticketType?.name || '',
-                index: 0
-              }
-            })
-      },
+      qrTickets, // Ahora guardamos el array de QRs
       status: 'PENDING',
       buyerInfo: {
         ...buyerInfo,
@@ -245,7 +227,7 @@ if (eventType === 'SEATED' && (!seats?.length)) {
             quantity 
           })
     };
-
+    
     const [newTicket] = await Ticket.create([ticketData], { session });
 
 // En la función POST
@@ -358,7 +340,16 @@ function findSectionGaps(sections: Array<{ rowStart: number; rowEnd: number }>) 
         ticketType: newTicket.ticketType,
         quantity: newTicket.quantity,
         total: newTicket.price,
-        qrValidation: qrData.validationHash // Incluir para verificaciones
+        qrTickets: newTicket.qrTickets.map((qr: { qrMetadata: { subTicketId: any; status: any; seatInfo: any; generalInfo: any; }; qrCode: any; qrValidation: any; }) => ({
+          subTicketId: qr.qrMetadata.subTicketId,
+          qrCode: qr.qrCode,
+          qrValidation: qr.qrValidation,
+          status: qr.qrMetadata.status,
+          ...(eventType === 'SEATED'
+            ? { seatInfo: qr.qrMetadata.seatInfo }
+            : { generalInfo: qr.qrMetadata.generalInfo }
+          )
+        }))
       },
       checkoutUrl: preference.init_point,
       preferenceId: preference.id

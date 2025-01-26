@@ -232,6 +232,7 @@ export default function PaymentSuccessPage() {
                   )}
                   <p>ID: {qrTicket.subTicketId.slice(-8)}</p>
                 </div>
+                
 
                 {qrTicket.status === 'PAID' && (
                   <div className="flex flex-col items-center">

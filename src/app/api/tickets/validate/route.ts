@@ -9,53 +9,67 @@ import { validateQR } from '@/app/lib/qrGenerator';
 export async function POST(req: Request) {
   const session = await mongoose.startSession();
   
-  try {
-    const { qrString } = await req.json();
-    const qrValidation = validateQR(qrString);
-    
-    if (!qrValidation.isValid || !qrValidation.data) {
-      return NextResponse.json({
-        success: false,
-        message: qrValidation.error || 'QR inválido'
-      }, { status: 400 });
-    }
+// api/tickets/validate/route.ts
+// ... resto del código ...
 
-    await session.startTransaction();
+try {
+  const { qrString } = await req.json();
+  
+  console.log('QR Recibido para validación:', {
+    qrString,
+    parsed: JSON.parse(qrString)
+  });
 
-    const ticket = await Ticket.findById(qrValidation.data.ticketId)
-      .populate('eventId')
-      .session(session);
+  const qrValidation = validateQR(qrString);
+  console.log('Resultado de validación:', {
+    isValid: qrValidation.isValid,
+    error: qrValidation.error,
+    validationData: qrValidation.data
+  });
+  
+  if (!qrValidation.isValid || !qrValidation.data) {
+    return NextResponse.json({
+      success: false,
+      message: qrValidation.error || 'QR inválido'
+    }, { status: 400 });
+  }
 
-    if (!ticket) {
-      throw new Error('Ticket no encontrado');
-    }
+  // Ya sabemos que qrValidation.data existe
+  const validationData = qrValidation.data;
 
-    // Verificar fecha del evento
-    const eventDate = new Date(ticket.eventId.date);
-    const now = new Date();
-    
-    if (eventDate < now) {
-      throw new Error('El evento ya ha finalizado');
-    }
+  await session.startTransaction();
 
-    if (!qrValidation.isValid || !qrValidation.data) {
-      return NextResponse.json({
-        success: false,
-        message: qrValidation.error || 'QR inválido'
-      }, { status: 400 });
-    }
+  const ticket = await Ticket.findById(validationData.ticketId)
+    .populate('eventId')
+    .session(session);
 
-    const qrData = qrValidation.data; // TypeScript ahora sabe que data existe
-    
-    // Buscar el QR específico
-    const qrTicket = ticket.qrTickets.find(
-      (      qt: { qrMetadata: { subTicketId: string; }; }) => qt.qrMetadata.subTicketId === qrData.subTicketId
-    );
-    
-    if (!qrTicket) {
-      throw new Error('QR no encontrado en el ticket');
-    }
+  if (!ticket) {
+    throw new Error('Ticket no encontrado');
+  }
 
+  // Verificar fecha del evento
+  const eventDate = new Date(ticket.eventId.date);
+  const now = new Date();
+  
+  if (eventDate < now) {
+    throw new Error('El evento ya ha finalizado');
+  }
+
+  // Buscar el QR específico usando validationData
+  const qrTicket = ticket.qrTickets.find(
+    (    qt: { qrMetadata: { subTicketId: string; }; }) => qt.qrMetadata.subTicketId === validationData.subTicketId
+  );
+
+  if (!qrTicket) {
+    console.log('QR no encontrado en ticket:', {
+      ticketId: ticket._id,
+      subTicketId: validationData.subTicketId,
+      availableQRs: ticket.qrTickets.map((qt: { qrMetadata: { subTicketId: any; }; }) => qt.qrMetadata.subTicketId)
+    });
+    throw new Error('QR no encontrado en el ticket');
+  }
+
+    // Verificar estado del QR
     if (qrTicket.qrMetadata.status !== 'PAID') {
       return NextResponse.json({
         success: false,
@@ -89,10 +103,15 @@ export async function POST(req: Request) {
         {
           $set: { status: 'USED' }
         },
-        { session }
+        { session, new: true }
       );
 
       if (!seatResult) {
+        console.log('Error al actualizar asiento:', {
+          eventId: ticket.eventId._id,
+          seatId: qrTicket.qrMetadata.seatInfo.seat,
+          ticketId: ticket._id
+        });
         throw new Error('Error al actualizar el estado del asiento');
       }
     }
@@ -148,7 +167,6 @@ export async function POST(req: Request) {
   }
 }
 
-// Tipos auxiliares para la respuesta
 interface BaseTicketResponse {
   eventName: string;
   buyerName: string;

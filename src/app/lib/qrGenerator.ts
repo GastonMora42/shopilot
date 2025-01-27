@@ -60,45 +60,62 @@ function generateSingleQR(options: {
 }): QRTicket {
   const timestamp = Date.now();
   
-  const qrMetadata = {
+  // Primero creamos los metadatos base
+  const baseMetadata = {
     timestamp,
     ticketId: options.ticketId,
     subTicketId: options.subTicketId,
     type: options.eventType,
-    status: 'PENDING' as const,
+    status: 'PENDING' as const
+  };
+
+  // Añadimos la información específica según el tipo
+  const qrMetadata = {
+    ...baseMetadata,
     ...(options.eventType === 'SEATED' 
       ? { seatInfo: options.seatInfo }
       : { generalInfo: options.generalInfo }
     )
   };
 
-  const validationHash = crypto
-    .createHash('sha256')
-    .update(`${options.ticketId}-${options.subTicketId}-${timestamp}-${JSON.stringify(qrMetadata)}`)
-    .digest('hex');
-
-  const qrData: QRData = {
+  const hashString = JSON.stringify({
     ticketId: options.ticketId,
     subTicketId: options.subTicketId,
-    validationHash,
     timestamp,
     type: options.eventType,
-    metadata: {
-      eventType: options.eventType,
-      status: 'PENDING',
-      ...(options.eventType === 'SEATED' 
-        ? { seatInfo: options.seatInfo }
-        : { generalInfo: options.generalInfo }
-      )
-    }
-  };
+    ...(options.eventType === 'SEATED' 
+      ? { seatInfo: options.seatInfo }
+      : { generalInfo: options.generalInfo }
+    )
+  });
 
-  return {
-    qrCode: JSON.stringify(qrData),
-    qrValidation: validationHash,
-    qrMetadata: qrMetadata
-  };
-}
+  const validationHash = crypto
+    .createHash('sha256')
+    .update(hashString)
+    .digest('hex');
+
+    const qrData: QRData = {
+      ticketId: options.ticketId,
+      subTicketId: options.subTicketId,
+      validationHash,
+      timestamp,
+      type: options.eventType,
+      metadata: {
+        eventType: options.eventType,
+        status: 'PENDING',
+        ...(options.eventType === 'SEATED' 
+          ? { seatInfo: options.seatInfo }
+          : { generalInfo: options.generalInfo }
+      )
+      }
+    };
+  
+    return {
+      qrCode: JSON.stringify(qrData),
+      qrValidation: validationHash,
+      qrMetadata: qrMetadata
+    };
+  }
 
 export async function generateTicketQRs(options: QRGeneratorOptions): Promise<QRTicket[]> {
   const qrTickets: QRTicket[] = [];
@@ -141,19 +158,44 @@ export function validateQR(qrString: string): {
   error?: string;
 } {
   try {
+    // Intentamos parsear el QR
     const qrData = JSON.parse(qrString) as QRData;
-    
+
+    // Validamos la estructura básica
+    if (!qrData.ticketId || !qrData.subTicketId || !qrData.timestamp || !qrData.type) {
+      return { isValid: false, error: 'Estructura de QR inválida' };
+    }
+
+    // Recreamos el string para el hash de la misma manera que lo generamos
+    const hashString = JSON.stringify({
+      ticketId: qrData.ticketId,
+      subTicketId: qrData.subTicketId,
+      timestamp: qrData.timestamp,
+      type: qrData.type,
+      ...(qrData.type === 'SEATED' 
+        ? { seatInfo: qrData.metadata.seatInfo }
+        : { generalInfo: qrData.metadata.generalInfo }
+      )
+    });
+
     const expectedHash = crypto
       .createHash('sha256')
-      .update(`${qrData.ticketId}-${qrData.subTicketId}-${qrData.timestamp}-${JSON.stringify(qrData.metadata)}`)
+      .update(hashString)
       .digest('hex');
 
+    // Comparamos los hashes
     if (expectedHash !== qrData.validationHash) {
+      console.log('Hash validation failed:', {
+        expected: expectedHash,
+        received: qrData.validationHash,
+        hashString
+      });
       return { isValid: false, error: 'QR inválido o manipulado' };
     }
 
     return { isValid: true, data: qrData };
   } catch (error) {
+    console.error('QR validation error:', error);
     return { isValid: false, error: 'Formato de QR inválido' };
   }
 }

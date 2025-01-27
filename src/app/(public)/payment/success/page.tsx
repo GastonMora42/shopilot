@@ -1,7 +1,7 @@
 // app/payment/success/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
@@ -64,16 +64,10 @@ export default function PaymentSuccessPage() {
   const [verificationAttempts, setVerificationAttempts] = useState(0);
   const { downloadPDF, loading: pdfLoading } = usePDFDownload();
 
-  const verifyPayment = async () => {
+  const verifyPayment = useCallback(async () => {
     try {
       const ticketId = searchParams.get('ticketId') || searchParams.get('external_reference');
       const paymentId = searchParams.get('payment_id');
-
-      console.log('Intento de verificación:', {
-        intento: verificationAttempts + 1,
-        ticketId,
-        paymentId
-      });
 
       if (!ticketId || !paymentId) {
         throw new Error('Información de pago incompleta');
@@ -87,56 +81,96 @@ export default function PaymentSuccessPage() {
         body: JSON.stringify({
           ticketId,
           paymentId
-        })
+        }),
+        cache: 'no-store'
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Error en la verificación del pago');
+        const errorData = await response.json().catch(() => ({ error: 'Error de red' }));
+        throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        console.error('Error parsing response:', e);
+        throw new Error('Error al procesar la respuesta del servidor');
+      }
 
-      if (!data.success) {
+      if (!data.success || !data.ticket) {
         throw new Error(data.error || 'Error en la verificación');
       }
 
-      if (data.ticket) {
-        setTicket(data.ticket);
-        return data.ticket.status === 'PAID';
+      if (!data.ticket.qrTickets || !Array.isArray(data.ticket.qrTickets)) {
+        throw new Error('Formato de ticket inválido');
       }
 
-      return false;
+      setTicket(data.ticket);
+      return data.ticket.status === 'PAID';
+
     } catch (error) {
       console.error('Error en verificación:', error);
       setError(error instanceof Error ? error.message : 'Error al procesar el pago');
       return false;
     }
-  };
+  }, [searchParams]);
 
   useEffect(() => {
+    let isMounted = true;
     let timeoutId: NodeJS.Timeout;
-    
+
+    if (!searchParams.get('ticketId') && !searchParams.get('external_reference')) {
+      setError('Información de pago no encontrada');
+      setIsValidating(false);
+      return;
+    }
+
     const startVerification = async () => {
-      const isComplete = await verifyPayment();
-      setVerificationAttempts(prev => prev + 1);
-      
-      if (!isComplete && verificationAttempts < 12) {
-        timeoutId = setTimeout(startVerification, 5000);
-      } else {
-        setIsValidating(false);
-        if (!ticket && verificationAttempts >= 12) {
-          setError('No se pudo confirmar el pago después de varios intentos');
+      if (!isMounted) return;
+
+      try {
+        const isComplete = await verifyPayment();
+        
+        if (!isMounted) return;
+
+        setVerificationAttempts(prev => prev + 1);
+
+        if (!isComplete && verificationAttempts < 12) {
+          const delay = Math.min(1000 * Math.pow(1.5, verificationAttempts), 10000);
+          timeoutId = setTimeout(startVerification, delay);
+        } else {
+          setIsValidating(false);
+          if (!ticket && verificationAttempts >= 12) {
+            setError('No se pudo confirmar el pago después de varios intentos');
+          }
         }
+      } catch (error) {
+        if (!isMounted) return;
+        setIsValidating(false);
+        setError(error instanceof Error ? error.message : 'Error inesperado');
       }
     };
 
     startVerification();
 
     return () => {
-      if (timeoutId) clearTimeout(timeoutId);
+      isMounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
-  }, [verificationAttempts]);
+  }, [verificationAttempts, verifyPayment, searchParams, ticket]);
+
+  const handleDownloadPDF = async (qrTicket: QRTicket) => {
+    if (!ticket) return;
+
+    try {
+      await downloadPDF(ticket, qrTicket.subTicketId);
+    } catch (error) {
+      console.error('Error al generar PDF:', error);
+    }
+  };
 
   if (isValidating) {
     return (
@@ -195,7 +229,6 @@ export default function PaymentSuccessPage() {
           <p className="text-gray-600">Tus entradas están listas</p>
         </div>
 
-        {/* Resumen de compra */}
         <div className="mb-6 border-b pb-4">
           <h2 className="text-lg font-semibold mb-2">Resumen de compra</h2>
           <p className="text-sm text-gray-600">
@@ -212,13 +245,12 @@ export default function PaymentSuccessPage() {
           </p>
         </div>
 
-        {/* Lista de QRs individuales */}
         <div className="space-y-6">
-          {ticket.qrTickets.map((qrTicket, index) => (
+          {ticket.qrTickets?.map((qrTicket, index) => (
             <div key={qrTicket.subTicketId} className="border rounded-lg p-4">
               <h3 className="font-semibold mb-4">
                 {ticket.eventType === 'SEATED'
-                  ? `Asiento: ${qrTicket.seatInfo?.seat}`
+                  ? `Asiento: ${qrTicket.seatInfo?.seat || 'No asignado'}`
                   : `Entrada ${index + 1} de ${(ticket as GeneralTicketData).quantity}`
                 }
               </h3>
@@ -232,9 +264,8 @@ export default function PaymentSuccessPage() {
                   )}
                   <p>ID: {qrTicket.subTicketId.slice(-8)}</p>
                 </div>
-                
 
-                {qrTicket.status === 'PAID' && (
+                {qrTicket.status === 'PAID' && qrTicket.qrCode && (
                   <div className="flex flex-col items-center">
                     <QRCodeSVG 
                       value={qrTicket.qrCode}
@@ -250,7 +281,7 @@ export default function PaymentSuccessPage() {
               </div>
 
               <Button
-                onClick={() => downloadPDF(ticket, qrTicket.subTicketId)}
+                onClick={() => handleDownloadPDF(qrTicket)}
                 disabled={pdfLoading}
                 className="w-full mt-4"
               >

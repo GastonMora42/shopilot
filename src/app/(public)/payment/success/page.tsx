@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 import { usePDFDownload } from '@/app/hooks/usePDFDownload';
-import { Loader2Icon } from 'lucide-react';
+import { Loader2Icon, TicketIcon, DownloadIcon } from 'lucide-react';
+import Image from 'next/image';
 
 interface QRTicket {
   subTicketId: string;
@@ -90,20 +91,14 @@ export default function PaymentSuccessPage() {
         throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
       }
 
-      let data;
-      try {
-        data = await response.json();
-      } catch (e) {
-        console.error('Error parsing response:', e);
-        throw new Error('Error al procesar la respuesta del servidor');
-      }
+      const data = await response.json();
 
       if (!data.success || !data.ticket) {
         throw new Error(data.error || 'Error en la verificación');
       }
 
-      if (!data.ticket.qrTickets || !Array.isArray(data.ticket.qrTickets)) {
-        throw new Error('Formato de ticket inválido');
+      if (!data.ticket.qrTickets?.length) {
+        throw new Error('Estructura de ticket inválida');
       }
 
       setTicket(data.ticket);
@@ -134,14 +129,15 @@ export default function PaymentSuccessPage() {
         
         if (!isMounted) return;
 
-        setVerificationAttempts(prev => prev + 1);
-
-        if (!isComplete && verificationAttempts < 12) {
-          const delay = Math.min(1000 * Math.pow(1.5, verificationAttempts), 10000);
-          timeoutId = setTimeout(startVerification, delay);
-        } else {
+        if (isComplete) {
           setIsValidating(false);
-          if (!ticket && verificationAttempts >= 12) {
+        } else {
+          setVerificationAttempts(prev => prev + 1);
+          if (verificationAttempts < 12) {
+            const delay = Math.min(1000 * Math.pow(1.5, verificationAttempts), 10000);
+            timeoutId = setTimeout(startVerification, delay);
+          } else {
+            setIsValidating(false);
             setError('No se pudo confirmar el pago después de varios intentos');
           }
         }
@@ -160,21 +156,20 @@ export default function PaymentSuccessPage() {
         clearTimeout(timeoutId);
       }
     };
-  }, [verificationAttempts, verifyPayment, searchParams, ticket]);
-
-  const handleDownloadPDF = async (qrTicket: QRTicket) => {
-    if (!ticket) return;
-
-    try {
-      await downloadPDF(ticket, qrTicket.subTicketId);
-    } catch (error) {
-      console.error('Error al generar PDF:', error);
-    }
-  };
+  }, [verificationAttempts, verifyPayment]);
 
   if (isValidating) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-gray-50 to-white">
+        <div className="mb-8">
+          <Image 
+            src="/logo.png" 
+            alt="ShowSpot Logo" 
+            width={180} 
+            height={60} 
+            className="animate-pulse"
+          />
+        </div>
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4" />
         <h2 className="text-xl font-semibold mb-2">Validando tu compra</h2>
         <p className="text-gray-600 text-center max-w-md">
@@ -189,7 +184,15 @@ export default function PaymentSuccessPage() {
 
   if (error || (!isValidating && !ticket)) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-gray-50 to-white">
+        <div className="mb-8">
+          <Image 
+            src="/logo.png" 
+            alt="ShowSpot Logo" 
+            width={180} 
+            height={60}
+          />
+        </div>
         <div className="text-red-600 mb-4">
           <svg 
             className="w-16 h-16 mx-auto" 
@@ -219,60 +222,72 @@ export default function PaymentSuccessPage() {
   if (!ticket) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-6">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-12 px-4">
+      <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-2xl text-green-600">✓</span>
+          <Image 
+            src="/logo.png" 
+            alt="ShowSpot Logo" 
+            width={180} 
+            height={60}
+            className="mx-auto mb-8"
+          />
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl text-green-600">✓</span>
+            </div>
+            <h1 className="text-2xl font-bold mb-2">¡Compra exitosa!</h1>
+            <p className="text-gray-600">Tus entradas están listas</p>
           </div>
-          <h1 className="text-2xl font-bold mb-2">¡Compra exitosa!</h1>
-          <p className="text-gray-600">Tus entradas están listas</p>
         </div>
 
-        <div className="mb-6 border-b pb-4">
-          <h2 className="text-lg font-semibold mb-2">Resumen de compra</h2>
-          <p className="text-sm text-gray-600">
-            Evento: {ticket.eventName}
-          </p>
-          <p className="text-sm text-gray-600">
-            {ticket.eventType === 'SEATED' 
-              ? `Asientos: ${ticket.seats.join(', ')}`
-              : `${ticket.quantity} entrada(s) - ${ticket.ticketType.name}`
-            }
-          </p>
-          <p className="text-sm text-gray-600">
-            Total: ${ticket.price}
-          </p>
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <TicketIcon className="w-5 h-5" />
+            Resumen de compra
+          </h2>
+          <div className="space-y-2 text-gray-600">
+            <p className="font-medium">Evento: {ticket.eventName}</p>
+            <p>
+              {ticket.eventType === 'SEATED' 
+                ? `Asientos: ${ticket.seats.join(', ')}`
+                : `${ticket.quantity} entrada(s) - ${ticket.ticketType.name}`
+              }
+            </p>
+            <p className="font-semibold text-lg">Total: ${ticket.price}</p>
+          </div>
         </div>
 
         <div className="space-y-6">
           {ticket.qrTickets?.map((qrTicket, index) => (
-            <div key={qrTicket.subTicketId} className="border rounded-lg p-4">
-              <h3 className="font-semibold mb-4">
+            <div key={qrTicket.subTicketId} className="bg-white rounded-lg shadow-lg p-6 transform transition-all hover:scale-[1.02]">
+              <h3 className="font-semibold mb-4 text-lg">
                 {ticket.eventType === 'SEATED'
-                  ? `Asiento: ${qrTicket.seatInfo?.seat || 'No asignado'}`
+                  ? `Asiento: ${qrTicket.seatInfo?.seat}`
                   : `Entrada ${index + 1} de ${(ticket as GeneralTicketData).quantity}`
                 }
               </h3>
 
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-2 text-sm">
-                  <p>Fecha: {new Date(ticket.date).toLocaleString()}</p>
+                  <p className="font-medium">Fecha: {new Date(ticket.date).toLocaleString()}</p>
                   <p>Ubicación: {ticket.location}</p>
                   {ticket.eventType === 'GENERAL' && (
                     <p>Tipo: {(ticket as GeneralTicketData).ticketType.name}</p>
                   )}
-                  <p>ID: {qrTicket.subTicketId.slice(-8)}</p>
+                  <p className="text-gray-500">ID: {qrTicket.subTicketId.slice(-8)}</p>
                 </div>
 
                 {qrTicket.status === 'PAID' && qrTicket.qrCode && (
                   <div className="flex flex-col items-center">
-                    <QRCodeSVG 
-                      value={qrTicket.qrCode}
-                      size={150}
-                      level="H"
-                      includeMargin={true}
-                    />
+                    <div className="p-2 bg-white rounded-lg shadow">
+                      <QRCodeSVG 
+                        value={qrTicket.qrCode}
+                        size={150}
+                        level="H"
+                        includeMargin={true}
+                      />
+                    </div>
                     <p className="text-sm text-gray-500 mt-2">
                       Código QR de entrada
                     </p>
@@ -281,9 +296,9 @@ export default function PaymentSuccessPage() {
               </div>
 
               <Button
-                onClick={() => handleDownloadPDF(qrTicket)}
+                onClick={() => ticket && qrTicket && downloadPDF(ticket, qrTicket.subTicketId)}
                 disabled={pdfLoading}
-                className="w-full mt-4"
+                className="w-full mt-4 group"
               >
                 {pdfLoading ? (
                   <span className="flex items-center justify-center">
@@ -291,7 +306,10 @@ export default function PaymentSuccessPage() {
                     Generando PDF...
                   </span>
                 ) : (
-                  'Descargar PDF'
+                  <span className="flex items-center justify-center">
+                    <DownloadIcon className="w-5 h-5 mr-2 group-hover:animate-bounce" />
+                    Descargar PDF
+                  </span>
                 )}
               </Button>
             </div>
@@ -299,7 +317,7 @@ export default function PaymentSuccessPage() {
         </div>
 
         <div className="mt-8 text-center">
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className="hover:scale-105 transition-transform">
             <Link href="/my-tickets">
               Ver todos mis tickets
             </Link>

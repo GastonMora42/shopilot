@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Button } from "@/components/ui/Button"
 import {
   Sheet,
@@ -11,39 +11,27 @@ import {
 } from "@/components/ui/sheet"
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Ticket, Calendar, Shield } from 'lucide-react'
+import { Ticket, Calendar, Shield, CreditCard, Map, Settings } from 'lucide-react'
 import Link from 'next/link'
+import { motion, useAnimation, useInView } from "framer-motion"
+import Image from "next/image"
+import InteractiveImage from '@/components/ui/InteractiveImageLanding'
+import BackgroundImageSection from '@/components/ui/BackgroundImageLanding'
+import BrandCarousel from '@/components/ui/BrandCarrousel'
 
 interface Event {
   title: string;
   date: string;
   image: string;
   description: string;
+  price: string;
 }
 
 export default function LandingPage() {
   const [isLoginOpen, setIsLoginOpen] = useState(false)
+  const featuresRef = useRef(null)
+  const isInView = useInView(featuresRef, { once: true })
 
-  const events: Event[] = [
-    {
-      title: "Festival Urbano",
-      date: "15 Ago 2024",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "El mayor festival de cultura urbana del año."
-    },
-    {
-      title: "Tech Summit",
-      date: "22-25 Sep 2024",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "Conferencia líder en innovación tecnológica."
-    },
-    {
-      title: "Arte & Diseño",
-      date: "10 Oct 2024",
-      image: "/placeholder.svg?height=400&width=600",
-      description: "Exposición de arte contemporáneo y diseño."
-    }
-  ];
 
   return (
     <div className="flex flex-col min-h-screen bg-white">
@@ -62,13 +50,10 @@ export default function LandingPage() {
       <Link href="/">
         <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Inicio</Button>
       </Link>
-      <Link href="/">
-        <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Eventos</Button>
-      </Link>
-      <Link href="/">
+      <Link href="/blog">
         <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Precios</Button>
       </Link>
-      <Link href="/">
+      <Link href="/blog">
         <Button variant="ghost" className="text-gray-700 hover:text-[#FF5F1F] transition-colors text-base">Guía de uso</Button>
       </Link>
       <Link href="/blog">
@@ -84,104 +69,136 @@ export default function LandingPage() {
           </div>
         </div>
       </header>
-      {/* Hero Section */}
-      <section className="pt-24 pb-16 bg-gradient-to-b from-white to-gray-50">
+      {/* Hero Section Mejorado */}
+      <section className="pt-32 pb-20 bg-gradient-to-b from-white to-gray-50">
         <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto text-center">
-            <br />
-            <h1 className="text-5xl md:text-6xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-[#FF5F1F]">
-              Coleccionando momentos
-            </h1>
-            <p className="text-xl mb-8 text-gray-600">
-              Descubre experiencias únicas con la plataforma más innovadora del mercado.
-            </p>
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Button 
-                size="lg" 
-                className="bg-[#FF5F1F] text-white hover:bg-[#FF5F1F]/90 shadow-lg shadow-orange-500/20"
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            <div>
+              <motion.h1 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-5xl md:text-6xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-[#FF5F1F]"
               >
-                Explorar Eventos
-              </Button>
-              <Button 
-                size="lg" 
-                variant="outline" 
-                className="border-[#FF5F1F] text-[#FF5F1F] hover:bg-[#FF5F1F]/10"
+                Gestiona Eventos como un Pro
+              </motion.h1>
+              <motion.p 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="text-xl mb-8 text-gray-600"
               >
-                Crear Evento
-              </Button>
+                Plataforma todo en uno para crear, vender y gestionar eventos. 
+                Comisiones más bajas garantizadas y cobros instantáneos.
+              </motion.p>
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="flex flex-col sm:flex-row gap-4"
+              >
+<Link href="/admin">
+  <Button 
+    size="lg" 
+    className="bg-[#FF5F1F] text-white hover:bg-[#FF5F1F]/90 shadow-lg shadow-orange-500/20"
+  >
+    Crea Tu Evento Gratis
+  </Button>
+</Link>
+<Link 
+  href="https://wa.me/5492995882072"
+  target="_blank"
+  rel="noopener noreferrer"
+>
+  <Button 
+    size="lg" 
+    variant="outline" 
+    className="border-[#FF5F1F] text-[#FF5F1F] hover:bg-[#FF5F1F]/10"
+  >
+    Contactanos
+  </Button>
+</Link>
+              </motion.div>
             </div>
+            <InteractiveImage />
           </div>
         </div>
       </section>
 
-      {/* Events Section */}
-      <section className="py-20 bg-white">
+            {/* Brand Carousel */}
+  
+
+      {/* Nuevo Componente: Métricas */}
+      <section className="py-16 bg-white">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center mb-12 text-gray-900">
-            Eventos Destacados
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {events.map((event: Event, index: number) => (
-              <Card key={index} className="group bg-white border-gray-100 hover:border-[#FF5F1F]/50 shadow-lg hover:shadow-xl transition-all duration-300">
-                <CardHeader className="p-0">
-                  <div className="relative">
-                    <img 
-                      src={event.image} 
-                      alt={event.title} 
-                      className="w-full h-48 object-cover rounded-t-lg" 
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent rounded-t-lg" />
-                  </div>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <CardTitle className="text-gray-900">{event.title}</CardTitle>
-                  <CardDescription className="text-[#FF5F1F] font-medium">
-                    {event.date}
-                  </CardDescription>
-                  <p className="mt-2 text-gray-600">{event.description}</p>
-                </CardContent>
-                <CardFooter>
-                  <Button className="w-full bg-gray-900 text-white hover:bg-[#FF5F1F] transition-colors shadow-lg">
-                    <Ticket className="mr-2 h-4 w-4" /> Comprar Entradas
-                  </Button>
-                </CardFooter>
-              </Card>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {[
+              { number: "1K+", label: "Eventos Creados" },
+              { number: "50Mil+", label: "Tickets Vendidos" },
+              { number: "0%", label: "Comisión Base" },
+              { number: "24/7", label: "Soporte" },
+            ].map((metric, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className="text-center"
+              >
+                <div className="text-4xl font-bold text-[#FF5F1F]">{metric.number}</div>
+                <div className="text-gray-600 mt-2">{metric.label}</div>
+              </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-20 bg-gray-50">
+      <BrandCarousel />
+
+
+      {/* Características Principales */}
+      <section className="py-20 bg-gray-50" ref={featuresRef}>
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center mb-12 text-gray-900">
-            Nuestras Características
+          <h2 className="text-3xl font-bold text-center mb-16 text-gray-900">
+            Todo lo que necesitas para tu evento
           </h2>
           <div className="grid md:grid-cols-3 gap-8">
-            <div className="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
-              <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center rounded-lg bg-[#FF5F1F]/10">
-                <Calendar className="h-6 w-6 text-[#FF5F1F]" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2 text-center text-gray-900">Reserva Fácil</h3>
-              <p className="text-gray-600 text-center">Reserva tus entradas con solo unos clics.</p>
-            </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
-              <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center rounded-lg bg-[#FF5F1F]/10">
-                <Ticket className="h-6 w-6 text-[#FF5F1F]" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2 text-center text-gray-900">Gestión Simple</h3>
-              <p className="text-gray-600 text-center">Administra tus eventos sin complicaciones.</p>
-            </div>
-            <div className="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
-              <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center rounded-lg bg-[#FF5F1F]/10">
-                <Shield className="h-6 w-6 text-[#FF5F1F]" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2 text-center text-gray-900">Acceso Seguro</h3>
-              <p className="text-gray-600 text-center">Sistema de validación mediante QR.</p>
-            </div>
+            {[
+              {
+                icon: <Settings />,
+                title: "Configuración Intuitiva",
+                description: "Crea eventos en minutos con nuestra interfaz drag & drop"
+              },
+              {
+                icon: <Map />,
+                title: "Mapas de Asientos Y Eventos Generales",
+                description: "Diseña layouts personalizados para tus eventos o Vende entradas generales"
+              },
+              {
+                icon: <CreditCard />,
+                title: "Cobros Instantáneos",
+                description: "Recibe tus fondos en tiempo real con las comisiones más bajas"
+              }
+            ].map((feature, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                animate={isInView ? { opacity: 1, y: 0 } : {}}
+                transition={{ delay: index * 0.2 }}
+                className="bg-white p-8 rounded-xl shadow-lg hover:shadow-xl transition-shadow"
+              >
+                <div className="w-12 h-12 flex items-center justify-center rounded-lg bg-[#FF5F1F]/10 mb-6">
+                  <div className="text-[#FF5F1F]">{feature.icon}</div>
+                </div>
+                <h3 className="text-xl font-semibold mb-4">{feature.title}</h3>
+                <p className="text-gray-600">{feature.description}</p>
+              </motion.div>
+            ))}
           </div>
         </div>
       </section>
+
+      <BackgroundImageSection />
+
 
       {/* Footer */}
       <footer className="bg-white border-t border-gray-100 py-12">
@@ -219,7 +236,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="mt-8 pt-8 border-t border-gray-100 text-center text-sm text-gray-600">
-            <p>&copy; 2025 ShowSpot. Todos los derechos reservados.</p>
+            <p>&copy; 2025 ShowSpot. Todos los derechos reservados. Develop By www.jettlabs.xyz</p>
           </div>
         </div>
       </footer>

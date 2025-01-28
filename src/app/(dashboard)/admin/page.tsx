@@ -7,11 +7,28 @@ import { getServerSession } from 'next-auth'
 import { formatCurrency } from '@/app/lib/utils'
 import Link from 'next/link'
 import { authOptions } from '@/app/lib/auth'
+import { Types } from 'mongoose'
 import dbConnect from '@/app/lib/mongodb'
+
+interface Event {
+  _id: Types.ObjectId;
+  name: string;
+  date: Date;
+}
+
+interface Sale {
+  _id: Types.ObjectId;
+  eventId: {
+    name: string;
+  };
+  buyerInfo: {
+    name: string;
+  };
+  price: number;
+}
 
 async function getStats() {
   try {
-    // Primero conectamos a la DB
     await dbConnect();
     
     const session = await getServerSession(authOptions)
@@ -19,32 +36,27 @@ async function getStats() {
 
     const now = new Date()
 
-    // Realizar consultas en paralelo para mejorar el rendimiento
+    // Realizar las consultas en paralelo para mejor rendimiento
     const [activeEvents, tickets, upcomingEvents, recentSales] = await Promise.all([
-      // Eventos activos
       Event.countDocuments({
         organizerId: session.user.id,
         status: 'PUBLISHED',
         date: { $gte: now }
-      }).lean(),
+      }),
 
-      // Tickets vendidos
       TicketModel.find({
         userId: session.user.id,
         status: 'PAID'
-      }).lean(),
+      }),
 
-      // Próximos eventos
       Event.find({
         organizerId: session.user.id,
         status: 'PUBLISHED',
         date: { $gte: now }
       })
       .sort({ date: 1 })
-      .limit(5)
-      .lean(),
+      .limit(5),
 
-      // Últimas ventas
       TicketModel.find({
         userId: session.user.id,
         status: 'PAID'
@@ -52,10 +64,8 @@ async function getStats() {
       .sort({ createdAt: -1 })
       .limit(5)
       .populate('eventId')
-      .lean()
     ]);
 
-    // Calcular ingresos totales
     const totalRevenue = tickets.reduce((acc, ticket) => acc + ticket.price, 0)
 
     return {
@@ -66,26 +76,22 @@ async function getStats() {
       recentSales
     }
   } catch (error) {
-    console.error('Error fetching stats:', error);
-    return null;
+    console.error('Error fetching stats:', error)
+    // Retornar datos por defecto en caso de error
+    return {
+      activeEvents: 0,
+      ticketsSold: 0,
+      totalRevenue: 0,
+      upcomingEvents: [],
+      recentSales: []
+    }
   }
 }
-
-// Añadir opciones de caching para la página
-export const revalidate = 60; // revalidar cada minuto
 
 export default async function DashboardPage() {
   try {
     const stats = await getStats()
-    if (!stats) {
-      return (
-        <div className="flex items-center justify-center min-h-screen">
-          <p className="text-gray-500">No se pudieron cargar los datos</p>
-        </div>
-      )
-    }
-
-
+    if (!stats) return null
   return (
 <div className="space-y-8 p-6">
   <div>
@@ -166,7 +172,7 @@ export default async function DashboardPage() {
             <div className="space-y-4">
               {stats.upcomingEvents.length > 0 ? (
                 stats.upcomingEvents.map((event) => (
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div key={event._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-4">
                       <Clock className="h-5 w-5 text-gray-400" />
                       <div>
@@ -202,7 +208,7 @@ export default async function DashboardPage() {
             <div className="space-y-4">
               {stats.recentSales.length > 0 ? (
                 stats.recentSales.map((sale) => (
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div key={sale._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                     <div>
                       <p className="font-medium">{sale.eventId.name}</p>
                       <p className="text-sm text-gray-500">
@@ -226,13 +232,8 @@ export default async function DashboardPage() {
       </div>
     </div>
   )
- // ... resto del código del return ...
-  } catch (error) {
-    console.error('Error in DashboardPage:', error);
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-red-500">Ocurrió un error al cargar el dashboard</p>
-      </div>
-    )
-  }
+} catch (error) {
+  console.error('Error in DashboardPage:', error)
+  return null
+}
 }

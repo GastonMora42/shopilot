@@ -1,6 +1,7 @@
 // src/components/credits/CustomCreditCalculator.tsx
 'use client'
 
+import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 
 const CREDIT_PRICE = 189.99;
@@ -43,55 +44,66 @@ function CustomCreditCalculator() {
   };
 
   return (
-    <div className="p-8 border border-gray-300 rounded-lg shadow-lg bg-white max-w-md mx-auto">
-      <h3 className="text-2xl font-semibold text-gray-800 mb-6">Calculador de Créditos</h3>
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl mx-auto border-2 border-[#a5dcfd]"
+    >
+      <h3 className="font-['Bristol'] text-3xl text-[#032936] mb-8 text-center">
+        Personaliza tu Compra
+      </h3>
       
-      <div className="flex items-center justify-center gap-6 mb-6">
-        <button 
+      <div className="flex items-center justify-center gap-8 mb-8">
+        <motion.button 
+          whileTap={{ scale: 0.95 }}
           onClick={() => adjustCredits(-10)}
-          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300 transition"
+          className="w-12 h-12 rounded-full bg-[#032936] text-white flex items-center justify-center text-2xl hover:bg-[#032936]/90"
           disabled={credits < 10}
         >
-          -10
-        </button>
+          -
+        </motion.button>
         
         <input
           type="number"
           value={credits}
           onChange={handleInputChange}
-          className="w-20 px-4 py-2 border rounded-lg text-center text-xl font-medium text-gray-800"
+          className="w-32 text-center text-3xl font-bold text-[#032936] bg-[#a5dcfd]/20 rounded-lg p-4 border-2 border-[#a5dcfd] focus:outline-none focus:ring-2 focus:ring-[#a5dcfd]"
           min="0"
         />
         
-        <button 
+        <motion.button 
+          whileTap={{ scale: 0.95 }}
           onClick={() => adjustCredits(10)}
-          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300 transition"
+          className="w-12 h-12 rounded-full bg-[#032936] text-white flex items-center justify-center text-2xl hover:bg-[#032936]/90"
         >
-          +10
-        </button>
+          +
+        </motion.button>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex justify-between text-lg text-gray-700">
-          <span>Precio por crédito:</span>
-          <span>${CREDIT_PRICE.toFixed(2)}</span>
+      <div className="space-y-6 bg-[#a5dcfd]/10 p-6 rounded-xl">
+        <div className="flex justify-between text-lg">
+          <span className="text-[#032936]">Precio por crédito:</span>
+          <span className="font-bold text-[#032936]">${CREDIT_PRICE.toFixed(2)}</span>
         </div>
         
-        <div className="flex justify-between text-lg font-semibold text-gray-800">
-          <span>Total a pagar:</span>
-          <span>${totalPrice.toLocaleString()}</span>
+        <div className="flex justify-between text-xl font-bold">
+          <span className="text-[#032936]">Total:</span>
+          <span className="text-[#ff3131]">${totalPrice.toLocaleString()}</span>
         </div>
 
-        <button
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           onClick={handlePurchase}
           disabled={credits <= 0}
-          className="w-full py-3 bg-blue-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition"
+          className="w-full py-4 bg-[#ff3131] text-white rounded-xl text-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#ff3131]/90 transition-colors"
         >
           Comprar {credits} créditos
-        </button>
+        </motion.button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 export { CustomCreditCalculator };
+

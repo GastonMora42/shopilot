@@ -6,7 +6,8 @@ const nextConfig = {
       'storage.googleapis.com',
       'storage.cloud.google.com',
       'shopilot-images-events.s3.us-east-1.amazonaws.com',
-      'lh3.googleusercontent.com'
+      'lh3.googleusercontent.com',
+      'credits-showspot.s3.us-east-2.amazonaws.com'
     ],
     remotePatterns: [
       {

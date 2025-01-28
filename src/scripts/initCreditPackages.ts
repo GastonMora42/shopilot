@@ -1,6 +1,6 @@
 // src/scripts/initCreditPackages.ts
 import mongoose from 'mongoose';
-import { CreditPackage } from '../app/models/Credit';
+import { CreditPackage } from '../app/models/Credit.js';
 
 const MONGODB_URI = 'mongodb+srv://gastonmora1742:5YOkjCJs3UxUBwUs@shopilot-cluster.jk2qs.mongodb.net/'
 
@@ -15,18 +15,21 @@ async function initCreditPackages() {
     const result = await CreditPackage.insertMany([
       {
         name: 'Starter',
-        credits: 50,
-        price: 1000
+        credits: 200,
+        price: 33800,
+        imageUrl: '/public/10off.png'
       },
       {
-        name: 'Professional',
-        credits: 200,
-        price: 3500
+        name: 'Profesional',
+        credits: 300,
+        price: 44700,
+        imageUrl: '/public/21off.png'
       },
       {
         name: 'Enterprise',
         credits: 1000,
-        price: 15000
+        price: 109000,
+        imageUrl: '/public/42off.png'
       }
     ]);
     

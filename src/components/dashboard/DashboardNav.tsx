@@ -1,3 +1,4 @@
+// components/dashboard/DashboardNav.tsx
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -10,7 +11,8 @@ import {
   CreditCard,
   User,
   LogOut,
-  ChevronRight
+  ChevronRight,
+  BookOpen
 } from 'lucide-react'
 import { cn } from '@/app/lib/utils'
 import { useSession, signOut } from 'next-auth/react'
@@ -20,8 +22,6 @@ interface DashboardNavProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-
 
 export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
   const pathname = usePathname()
@@ -41,7 +41,7 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       description: 'Gestiona tus eventos'
     },
     {
-      name: 'Tickets',
+      name: 'Tickets vendidos',
       href: '/admin/tickets',
       icon: Ticket,
       description: 'Administra tus tickets'
@@ -75,6 +75,12 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       href: '/admin/settings',
       icon: Settings,
       description: 'Ajustes de tu cuenta'
+    },
+    {
+      name: 'Tutorial Rápido',
+      href: '/blog',
+      icon: BookOpen,
+      description: 'Aprende a usar la plataforma'
     }
   ]
 
@@ -84,7 +90,7 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       onClick={onClose}
       className={cn(
         "group flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200",
-        "hover:bg-gray-50",
+        "hover:bg-[#a5dcfd]/10",
         pathname === item.href
           ? "bg-black text-white hover:bg-black/90"
           : "text-gray-700"
@@ -92,10 +98,10 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
     >
       <item.icon className={cn(
         "h-5 w-5 transition-colors shrink-0",
-        pathname === item.href ? "text-white" : "text-gray-500 group-hover:text-gray-700"
+        pathname === item.href ? "text-white" : "text-gray-500 group-hover:text-[#a5dcfd]"
       )} />
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{item.name}</p>
+        <p className="font-medium truncate text-sm">{item.name}</p>
         <p className={cn(
           "text-xs truncate",
           pathname === item.href ? "text-white/80" : "text-gray-500"
@@ -106,7 +112,7 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       <ChevronRight className={cn(
         "h-4 w-4 opacity-0 transition-all shrink-0",
         "group-hover:opacity-100 group-hover:translate-x-1",
-        pathname === item.href ? "text-white opacity-100" : "text-gray-400"
+        pathname === item.href ? "text-white opacity-100" : "text-[#a5dcfd]"
       )} />
     </Link>
   )
@@ -115,7 +121,7 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
     <>
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-20 w-64 md:w-72 lg:w-80 bg-white border-r transform transition-all duration-300 ease-in-out",
+          "fixed inset-y-0 left-0 z-20 w-64 md:w-68 lg:w-72 bg-white border-r transform transition-all duration-300 ease-in-out",
           "flex flex-col",
           "shadow-sm",
           "top-16 pb-0",
@@ -124,7 +130,7 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
       >
         <div className="flex flex-col h-full">
           {/* User Profile Section */}
-          <div className="px-4 py-3 border-b">
+          <div className="px-4 py-3 border-b bg-gray-50">
             <div className="flex items-center gap-3">
               {session?.user?.image ? (
                 <div className="relative w-9 h-9 shrink-0">
@@ -132,7 +138,7 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
                     src={session.user.image}
                     alt="Profile"
                     fill
-                    className="rounded-full object-cover"
+                    className="rounded-full object-cover ring-2 ring-[#a5dcfd]/20"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       target.src = '/default-avatar.png';
@@ -140,8 +146,8 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
                   />
                 </div>
               ) : (
-                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
-                  <User className="h-5 w-5 text-gray-500" />
+                <div className="w-9 h-9 rounded-full bg-[#a5dcfd]/10 flex items-center justify-center shrink-0">
+                  <User className="h-5 w-5 text-[#a5dcfd]" />
                 </div>
               )}
               <div className="flex-1 min-w-0">
@@ -182,13 +188,13 @@ export function DashboardNav({ isOpen, onClose }: DashboardNavProps) {
           </nav>
 
           {/* Logout Button */}
-          <div className="p-4 border-t mt-auto">
+          <div className="p-4 border-t mt-auto bg-gray-50">
             <button
               onClick={() => signOut()}
-              className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-gray-700 hover:bg-[#a5dcfd]/10 transition-colors"
             >
               <LogOut className="h-5 w-5 text-gray-500 shrink-0" />
-              <span className="truncate">Cerrar sesión</span>
+              <span className="truncate text-sm">Cerrar sesión</span>
             </button>
           </div>
         </div>

@@ -5,6 +5,10 @@ const CreditPackageSchema = new mongoose.Schema({
   name: String,
   credits: Number,
   price: Number,
+  imageUrl: {
+    type: String,
+    default: '/credits/off-creditos.png'
+  }, // Añadimos este campo
   isActive: {
     type: Boolean,
     default: true

@@ -7,59 +7,84 @@ import { getServerSession } from 'next-auth'
 import { formatCurrency } from '@/app/lib/utils'
 import Link from 'next/link'
 import { authOptions } from '@/app/lib/auth'
+import dbConnect from '@/app/lib/mongodb'
 
 async function getStats() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email) return null
+  try {
+    // Primero conectamos a la DB
+    await dbConnect();
+    
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.email) return null
 
-  const now = new Date()
+    const now = new Date()
 
-  // Obtener eventos activos
-  const activeEvents = await Event.countDocuments({
-    organizerId: session.user.id,
-    status: 'PUBLISHED',
-    date: { $gte: now }
-  })
+    // Realizar consultas en paralelo para mejorar el rendimiento
+    const [activeEvents, tickets, upcomingEvents, recentSales] = await Promise.all([
+      // Eventos activos
+      Event.countDocuments({
+        organizerId: session.user.id,
+        status: 'PUBLISHED',
+        date: { $gte: now }
+      }).lean(),
 
-  // Obtener tickets vendidos
-  const tickets = await TicketModel.find({
-    userId: session.user.id,
-    status: 'PAID'
-  })
+      // Tickets vendidos
+      TicketModel.find({
+        userId: session.user.id,
+        status: 'PAID'
+      }).lean(),
 
-  // Calcular ingresos totales
-  const totalRevenue = tickets.reduce((acc, ticket) => acc + ticket.price, 0)
+      // Próximos eventos
+      Event.find({
+        organizerId: session.user.id,
+        status: 'PUBLISHED',
+        date: { $gte: now }
+      })
+      .sort({ date: 1 })
+      .limit(5)
+      .lean(),
 
-  // Obtener próximos eventos
-  const upcomingEvents = await Event.find({
-    organizerId: session.user.id,
-    status: 'PUBLISHED',
-    date: { $gte: now }
-  })
-  .sort({ date: 1 })
-  .limit(5)
+      // Últimas ventas
+      TicketModel.find({
+        userId: session.user.id,
+        status: 'PAID'
+      })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('eventId')
+      .lean()
+    ]);
 
-  // Obtener últimas ventas
-  const recentSales = await TicketModel.find({
-    userId: session.user.id,
-    status: 'PAID'
-  })
-  .sort({ createdAt: -1 })
-  .limit(5)
-  .populate('eventId')
+    // Calcular ingresos totales
+    const totalRevenue = tickets.reduce((acc, ticket) => acc + ticket.price, 0)
 
-  return {
-    activeEvents,
-    ticketsSold: tickets.length,
-    totalRevenue,
-    upcomingEvents,
-    recentSales
+    return {
+      activeEvents,
+      ticketsSold: tickets.length,
+      totalRevenue,
+      upcomingEvents,
+      recentSales
+    }
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    return null;
   }
 }
 
+// Añadir opciones de caching para la página
+export const revalidate = 60; // revalidar cada minuto
+
 export default async function DashboardPage() {
-  const stats = await getStats()
-  if (!stats) return null
+  try {
+    const stats = await getStats()
+    if (!stats) {
+      return (
+        <div className="flex items-center justify-center min-h-screen">
+          <p className="text-gray-500">No se pudieron cargar los datos</p>
+        </div>
+      )
+    }
+
 
   return (
 <div className="space-y-8 p-6">
@@ -141,7 +166,7 @@ export default async function DashboardPage() {
             <div className="space-y-4">
               {stats.upcomingEvents.length > 0 ? (
                 stats.upcomingEvents.map((event) => (
-                  <div key={event._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-4">
                       <Clock className="h-5 w-5 text-gray-400" />
                       <div>
@@ -177,7 +202,7 @@ export default async function DashboardPage() {
             <div className="space-y-4">
               {stats.recentSales.length > 0 ? (
                 stats.recentSales.map((sale) => (
-                  <div key={sale._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                     <div>
                       <p className="font-medium">{sale.eventId.name}</p>
                       <p className="text-sm text-gray-500">
@@ -201,4 +226,13 @@ export default async function DashboardPage() {
       </div>
     </div>
   )
+ // ... resto del código del return ...
+  } catch (error) {
+    console.error('Error in DashboardPage:', error);
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-red-500">Ocurrió un error al cargar el dashboard</p>
+      </div>
+    )
+  }
 }

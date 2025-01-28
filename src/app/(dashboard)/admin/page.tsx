@@ -9,107 +9,174 @@ import Link from 'next/link'
 import { authOptions } from '@/app/lib/auth'
 import { Types } from 'mongoose'
 import dbConnect from '@/app/lib/mongodb'
+import { Key, ReactElement, JSXElementConstructor, ReactNode, ReactPortal, AwaitedReactNode } from 'react'
+
+interface DashboardStats {
+  activeEvents: number;
+  ticketsSold: number;
+  totalRevenue: number;
+  upcomingEvents: Event[];
+  recentSales: Sale[];
+}
 
 interface Event {
-  _id: Types.ObjectId;
-  name: string;
-  date: Date;
+ _id: Types.ObjectId;
+ name: string;
+ date: Date;
 }
 
 interface Sale {
-  _id: Types.ObjectId;
-  eventId: {
-    name: string;
-  };
-  buyerInfo: {
-    name: string;
-  };
-  price: number;
+ _id: Types.ObjectId;
+ eventId: {
+   name: string;
+ };
+ buyerInfo: {
+   name: string;
+ };
+ price: number;
 }
 
 async function getStats() {
-  try {
-    await dbConnect();
-    
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) return null
+ try {
+   await dbConnect();
+   
+   const session = await getServerSession(authOptions)
+   if (!session?.user?.email) return null
 
-    const now = new Date()
+   const now = new Date()
 
-    // Realizar las consultas en paralelo para mejor rendimiento
-    const [activeEvents, tickets, upcomingEvents, recentSales] = await Promise.all([
-      Event.countDocuments({
-        organizerId: session.user.id,
-        status: 'PUBLISHED',
-        date: { $gte: now }
-      }),
+   const [activeEvents, tickets, upcomingEvents, recentSales] = await Promise.all([
+     Event.countDocuments({
+       organizerId: session.user.id,
+       status: 'PUBLISHED',
+       date: { $gte: now }
+     }),
 
-      TicketModel.find({
-        userId: session.user.id,
-        status: 'PAID'
-      }),
+     TicketModel.find({
+       userId: session.user.id,
+       status: 'PAID'
+     }),
 
-      Event.find({
-        organizerId: session.user.id,
-        status: 'PUBLISHED',
-        date: { $gte: now }
-      })
-      .sort({ date: 1 })
-      .limit(5),
+     Event.find({
+       organizerId: session.user.id,
+       status: 'PUBLISHED',
+       date: { $gte: now }
+     })
+     .sort({ date: 1 })
+     .limit(5),
 
-      TicketModel.find({
-        userId: session.user.id,
-        status: 'PAID'
-      })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .populate('eventId')
-    ]);
+     TicketModel.find({
+       userId: session.user.id,
+       status: 'PAID'
+     })
+     .sort({ createdAt: -1 })
+     .limit(5)
+     .populate('eventId')
+   ]);
 
-    const totalRevenue = tickets.reduce((acc, ticket) => acc + ticket.price, 0)
+   const totalRevenue = tickets.reduce((acc, ticket) => acc + ticket.price, 0)
 
-    return {
-      activeEvents,
-      ticketsSold: tickets.length,
-      totalRevenue,
-      upcomingEvents,
-      recentSales
-    }
-  } catch (error) {
-    console.error('Error fetching stats:', error)
-    // Retornar datos por defecto en caso de error
-    return {
-      activeEvents: 0,
-      ticketsSold: 0,
-      totalRevenue: 0,
-      upcomingEvents: [],
-      recentSales: []
-    }
-  }
+   return {
+     activeEvents,
+     ticketsSold: tickets.length,
+     totalRevenue,
+     upcomingEvents,
+     recentSales
+   }
+ } catch (error) {
+   console.error('Error fetching stats:', error)
+   return {
+     activeEvents: 0,
+     ticketsSold: 0,
+     totalRevenue: 0,
+     upcomingEvents: [],
+     recentSales: []
+   }
+ }
+}
+
+function LoadingSkeleton() {
+ return (
+   <div className="animate-pulse space-y-8 p-6">
+     {/* Header Skeleton */}
+     <div className="flex items-center gap-6">
+       <div className="h-10 w-48 bg-gray-200 rounded"></div>
+       <div className="h-10 w-px bg-gray-200"></div>
+       <div className="h-14 w-32 bg-gray-200 rounded"></div>
+     </div>
+
+     {/* Metrics Skeleton */}
+     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+       {[1, 2, 3].map((i) => (
+         <div key={i} className="bg-white p-6 rounded-lg shadow">
+           <div className="h-4 w-24 bg-gray-200 rounded mb-4"></div>
+           <div className="h-8 w-16 bg-gray-200 rounded"></div>
+         </div>
+       ))}
+     </div>
+
+     {/* Lists Skeleton */}
+     <div className="grid md:grid-cols-2 gap-6">
+       {[1, 2].map((i) => (
+         <div key={i} className="bg-white p-6 rounded-lg shadow">
+           <div className="h-6 w-32 bg-gray-200 rounded mb-6"></div>
+           <div className="space-y-4">
+             {[1, 2, 3].map((j) => (
+               <div key={j} className="h-16 bg-gray-200 rounded"></div>
+             ))}
+           </div>
+         </div>
+       ))}
+     </div>
+   </div>
+ );
 }
 
 export default async function DashboardPage() {
   try {
-    const stats = await getStats()
-    if (!stats) return null
-  return (
-<div className="space-y-8 p-6">
-  <div>
-    <div className="flex items-center gap-6">
-      <h1 className="text-3xl font-bold tracking-tight">Panel de Control</h1>
-      <div className="h-10 w-px bg-gray-200"></div>
-      <img 
-        src="/logo.png" 
-        alt="Logo" 
-        className="h-14 w-auto object-contain"
-      />
-    </div>
-    <p className="text-gray-500 mt-2">
-      Visualiza y gestiona tus eventos y ventas
-    </p>
-  </div>
-      {/* Métricas Principales */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    let fetchStats = getStats();
+    let timeoutPromise = new Promise<null>((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout')), 5000)
+    );
+
+    let stats: DashboardStats | null = null;
+    
+    try {
+      stats = (await Promise.race([fetchStats, timeoutPromise])) as DashboardStats;
+    } catch (error) {
+      console.error('Timeout or error fetching stats:', error);
+    }
+
+    // Si no hay stats, usamos valores por defecto
+    if (!stats) {
+      stats = {
+        activeEvents: 0,
+        ticketsSold: 0,
+        totalRevenue: 0,
+        upcomingEvents: [],
+        recentSales: []
+      };
+    }
+
+   return (
+     <div className="space-y-8 p-6">
+       <div>
+         <div className="flex items-center gap-6">
+           <h1 className="text-3xl font-bold tracking-tight">Panel de Control</h1>
+           <div className="h-10 w-px bg-gray-200"></div>
+           <img 
+             src="/logo.png" 
+             alt="Logo" 
+             className="h-14 w-auto object-contain"
+           />
+         </div>
+         <p className="text-gray-500 mt-2">
+           Visualiza y gestiona tus eventos y ventas
+         </p>
+       </div>
+
+       {/* Métricas Principales */}
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-gradient-to-br from-blue-50 to-white">
           <div className="p-6">
             <div className="flex items-center justify-between">
@@ -159,8 +226,8 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      {/* Eventos y Ventas */}
-      <div className="grid md:grid-cols-2 gap-6">
+       {/* Eventos y Ventas */}
+       <div className="grid md:grid-cols-2 gap-6">
         <Card>
           <div className="p-6">
             <div className="flex items-center justify-between mb-6">
@@ -170,29 +237,29 @@ export default async function DashboardPage() {
               </Link>
             </div>
             <div className="space-y-4">
-              {stats.upcomingEvents.length > 0 ? (
-                stats.upcomingEvents.map((event) => (
-                  <div key={event._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <Clock className="h-5 w-5 text-gray-400" />
-                      <div>
-                        <p className="font-medium">{event.name}</p>
-                        <p className="text-sm text-gray-500">
-                          {new Date(event.date).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <Link 
-                      href={`/admin/events/${event._id}`}
-                      className="text-sm text-blue-600 hover:text-blue-700"
-                    >
-                      Detalles
-                    </Link>
-                  </div>
-                ))
-              ) : (
-                <p className="text-gray-500 text-sm">No hay eventos próximos</p>
-              )}
+{stats.upcomingEvents.length > 0 ? (
+  stats.upcomingEvents.map((event) => (
+    <div key={event._id.toString()} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+      <div className="flex items-center gap-4">
+        <Clock className="h-5 w-5 text-gray-400" />
+        <div>
+          <p className="font-medium">{event.name}</p>
+          <p className="text-sm text-gray-500">
+            {new Date(event.date).toLocaleDateString()}
+          </p>
+        </div>
+      </div>
+      <Link 
+        href={`/admin/events/${event._id.toString()}`}
+        className="text-sm text-blue-600 hover:text-blue-700"
+      >
+        Detalles
+      </Link>
+    </div>
+  ))
+) : (
+  <p className="text-gray-500 text-sm">No hay eventos próximos</p>
+)}
             </div>
           </div>
         </Card>
@@ -206,34 +273,36 @@ export default async function DashboardPage() {
               </Link>
             </div>
             <div className="space-y-4">
-              {stats.recentSales.length > 0 ? (
-                stats.recentSales.map((sale) => (
-                  <div key={sale._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">{sale.eventId.name}</p>
-                      <p className="text-sm text-gray-500">
-                        {sale.buyerInfo.name} - {formatCurrency(sale.price)}
-                      </p>
-                    </div>
-                    <Link 
-                      href={`/admin/tickets/${sale._id}`}
-                      className="text-sm text-blue-600 hover:text-blue-700"
-                    >
-                      Ver ticket
-                    </Link>
-                  </div>
-                ))
-              ) : (
-                <p className="text-gray-500 text-sm">No hay ventas recientes</p>
-              )}
+            {stats.recentSales.length > 0 ? (
+  stats.recentSales.map((sale) => (
+    <div key={sale._id.toString()} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+      <div>
+        <p className="font-medium">{sale.eventId.name}</p>
+        <p className="text-sm text-gray-500">
+          {sale.buyerInfo.name} - {formatCurrency(sale.price)}
+        </p>
+      </div>
+      <Link 
+        href={`/admin/tickets/${sale._id.toString()}`}
+        className="text-sm text-blue-600 hover:text-blue-700"
+      >
+        Ver ticket
+      </Link>
+    </div>
+  ))
+) : (
+  <p className="text-gray-500 text-sm">No hay ventas recientes</p>
+)}
             </div>
           </div>
         </Card>
       </div>
-    </div>
-  )
-} catch (error) {
-  console.error('Error in DashboardPage:', error)
-  return null
-}
+     </div>
+   )
+ } catch (error) {
+   console.error('Error in DashboardPage:', error)
+   
+   // En caso de error, mostramos la página con el skeleton loading
+   return <LoadingSkeleton />;
+ }
 }

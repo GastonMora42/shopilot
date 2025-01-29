@@ -4,14 +4,28 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { Button } from "@/components/ui/Button";
 
+// Tipos
 interface CreditPackage {
   _id: string;
   name: string;
   credits: number;
   price: number;
-  imageUrl?: string;
   isActive: boolean;
 }
+
+// Constantes
+const PACKAGE_IMAGES = {
+  'Starter': '/credits/10off.png',
+  'Profesional': '/credits/21off.png', 
+  'Enterprise': '/credits/42off.png',
+  'default': '/credits/off-creditos.png'
+} as const;
+
+const fadeInUpVariants = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, scale: 0.95 }
+};
 
 function PackageList() {
   const [packages, setPackages] = useState<CreditPackage[]>([]);
@@ -19,21 +33,23 @@ function PackageList() {
   const [error, setError] = useState<string | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchPackages();
-  }, []);
-
   const fetchPackages = async () => {
     try {
       const response = await fetch('/api/credits/packages');
+      if (!response.ok) throw new Error('Error en la respuesta del servidor');
       const data = await response.json();
       setPackages(data);
     } catch (err) {
       setError('Error al cargar los paquetes');
+      console.error('Error fetching packages:', err);
     } finally {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchPackages();
+  }, []);
 
   const handlePurchase = async (packageId: string) => {
     try {
@@ -43,9 +59,10 @@ function PackageList() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ packageId })
       });
+
+      if (!response.ok) throw new Error('Error en la compra');
       
       const data = await response.json();
-      
       if (data.init_point) {
         window.location.href = data.init_point;
       }
@@ -56,21 +73,14 @@ function PackageList() {
     }
   };
 
-  const getPackageImage = (name: string) => {
-    // Aquí usa las URLs completas de S3 en lugar de rutas locales
-    const imageMap: { [key: string]: string } = {
-      'Starter': 'https://credits-showspot.s3.[region].amazonaws.com/10off.png',
-      'Profesional': 'https://credits-showspot.s3.[region].amazonaws.com/21off.png',
-      'Enterprise': 'https://credits-showspot.s3.[region].amazonaws.com/42off.png'
-    };
-    // URL por defecto de S3
-    return imageMap[name] || 'https://credits-showspot.s3.[region].amazonaws.com/off-creditos.png';
+  const getPackageImage = (name: string): string => {
+    return PACKAGE_IMAGES[name as keyof typeof PACKAGE_IMAGES] || PACKAGE_IMAGES.default;
   };
 
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#032936]"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#032936]" />
       </div>
     );
   }
@@ -90,7 +100,7 @@ function PackageList() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -107,25 +117,22 @@ function PackageList() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <AnimatePresence>
           {packages.map((pkg, index) => (
-            <motion.div
+            <motion.article
               key={pkg._id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
+              {...fadeInUpVariants}
               transition={{ delay: index * 0.1 }}
               className="bg-white rounded-2xl shadow-2xl overflow-hidden transform transition-all duration-300 hover:scale-105"
               whileHover={{ y: -5 }}
             >
-              <div className="relative h-48">
-              <Image
-                // Usa la URL de S3 directamente o la función getPackageImage
-                src={pkg.imageUrl || getPackageImage(pkg.name)}
-                alt={pkg.name}
-                fill
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                className="object-cover transition-transform duration-300 group-hover:scale-110"
-                priority={index < 3}
-              />
+              <div className="relative h-48 group">
+                <Image
+                  src={getPackageImage(pkg.name)}
+                  alt={`Paquete ${pkg.name}`}
+                  fill
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                  className="object-cover transition-transform duration-300 group-hover:scale-110"
+                  priority={index < 3}
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                 <div className="absolute bottom-4 left-4 right-4">
                   <h3 className="text-white text-2xl font-bold">{pkg.name}</h3>
@@ -136,7 +143,7 @@ function PackageList() {
                 <div className="flex justify-between items-center">
                   <div>
                     <span className="text-3xl font-bold text-[#032936]">
-                      {pkg.credits}
+                      {pkg.credits.toLocaleString()}
                     </span>
                     <span className="text-gray-600 ml-2">créditos</span>
                   </div>
@@ -172,11 +179,11 @@ function PackageList() {
                   )}
                 </motion.button>
               </div>
-            </motion.div>
+            </motion.article>
           ))}
         </AnimatePresence>
       </div>
-    </div>
+    </section>
   );
 }
 

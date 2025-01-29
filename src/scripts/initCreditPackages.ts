@@ -17,7 +17,7 @@ async function initCreditPackages() {
         name: 'Starter',
         credits: 200,
         price: 33800,
-        imageUrl: '/public/10off.png'
+        imageUrl: '/credits/starter.png'
       },
       {
         name: 'Profesional',

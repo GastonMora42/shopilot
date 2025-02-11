@@ -1,6 +1,18 @@
 import React from 'react';
 import { EditorState } from "../types";
 import { Tooltip } from '@/components/ui/ToolTip';
+import { Card } from '@/components/ui/Card';
+import { 
+  MousePointerClick, 
+  Pencil, 
+  Trash2, 
+  UndoIcon, 
+  RedoIcon,
+  Save,
+  Maximize2,
+  Grid,
+  Settings
+} from 'lucide-react';
 
 interface ToolbarProps {
   tool: EditorState['tool'];
@@ -12,6 +24,12 @@ interface ToolbarProps {
   onSave?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
+  zoom?: number;
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onResetView?: () => void;
+  showGrid?: boolean;
+  onToggleGrid?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -22,217 +40,149 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   selectedCount = 0,
   onSave,
   onUndo,
-  onRedo
+  onRedo,
+  zoom = 100,
+  onZoomIn,
+  onZoomOut,
+  onResetView,
+  showGrid,
+  onToggleGrid,
+  onSpacingClick
 }) => {
+  // Definimos las herramientas con íconos modernos y mejor organización
   const mainTools = [
     {
-      id: 'SELECT' as const,
-      icon: '🖱️',
+      id: 'SELECT',
+      icon: <MousePointerClick className="h-5 w-5" />,
       label: 'Seleccionar',
       shortcut: '(V)',
-      description: 'Haz clic para seleccionar o arrastra para selección múltiple'
+      description: 'Selecciona y mueve asientos',
+      color: 'blue'
     },
     {
-      id: 'DRAW' as const,
-      icon: '✏️',
+      id: 'DRAW',
+      icon: <Pencil className="h-5 w-5" />,
       label: 'Dibujar',
       shortcut: '(D)',
-      description: 'Haz clic o arrastra para dibujar múltiples asientos'
+      description: 'Dibuja asientos individuales o en grupo',
+      color: 'green'
     },
     {
-      id: 'SPACE' as const,
-      icon: '⬜',
-      label: 'Espacios',
-      shortcut: '(S)',
-      description: 'Marca espacios que deben permanecer vacíos'
-    }
-  ];
-
-  const editTools = [
-    {
-      id: 'ERASE' as const,
-      icon: '🗑️',
+      id: 'ERASE',
+      icon: <Trash2 className="h-5 w-5" />,
       label: 'Borrar',
       shortcut: '(E)',
-      description: 'Selecciona asientos para eliminarlos'
+      description: 'Elimina asientos',
+      color: 'red'
     }
   ];
 
-  const handleDelete = () => {
-    if (!hasSelection && tool !== 'ERASE') return;
-    
-    if (selectedCount > 1) {
-      const confirm = window.confirm(`¿Estás seguro de eliminar ${selectedCount} asientos?`);
-      if (!confirm) return;
-    }
-    
-    onDelete();
-  };
-
-  // Agregar manejador de teclas para borrar
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' && hasSelection) {
-        handleDelete();
-      }
-      // Atajos de teclado para herramientas
-      if (e.ctrlKey) return; // Evitar conflictos con atajos del sistema
-      switch (e.key.toLowerCase()) {
-        case 'v': onToolChange('SELECT'); break;
-        case 'd': onToolChange('DRAW'); break;
-        case 'e': onToolChange('ERASE'); break;
-        case 's': onToolChange('SPACE'); break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasSelection, onDelete, onToolChange]);
-
   return (
-    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 flex flex-col items-center z-50">
-      <div className="flex items-stretch bg-white rounded-lg shadow-lg p-2 space-x-2">
-        {/* Herramientas principales */}
-        <div className="flex space-x-2">
-          {mainTools.map(({ id, icon, label, shortcut, description }) => (
-            <Tooltip
-              key={id}
-              content={
-                <div className="text-sm">
-                  <div className="font-medium">{label}</div>
-                  <div className="text-gray-200 text-xs">{description}</div>
-                  <div className="mt-1 text-xs opacity-75">Atajo: {shortcut}</div>
-                </div>
-              }
-            >
-              <button
-                onClick={() => onToolChange(id)}
-                className={`
-                  p-2 rounded-md transition-all duration-200
-                  flex flex-col items-center min-w-[60px]
-                  ${tool === id 
-                    ? 'bg-blue-100 text-blue-600 ring-2 ring-blue-500 ring-offset-2' 
-                    : 'hover:bg-gray-100'
-                  }
-                `}
-              >
-                <span className="text-xl mb-1">{icon}</span>
-                <span className="text-xs font-medium">{label}</span>
-              </button>
-            </Tooltip>
-          ))}
-        </div>
+    <div className="sticky top-0 z-30 w-full bg-white border-b">
+      <div className="max-w-screen-xl mx-auto px-4">
+        <div className="flex flex-col gap-2 py-2">
+          {/* Barra principal */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              {/* Herramientas principales */}
+              <div className="flex gap-1">
+                {mainTools.map(({ id, icon, label, shortcut, description, color }) => (
+                  <Tooltip
+                    key={id}
+                    content={
+                      <div className="text-sm">
+                        <p className="font-medium">{label}</p>
+                        <p className="text-gray-200 text-xs">{description}</p>
+                        <p className="mt-1 text-xs opacity-75">Atajo: {shortcut}</p>
+                      </div>
+                    }
+                  >
+                    <button
+                      onClick={() => onToolChange(id as EditorState['tool'])}
+                      className={`
+                        p-2 rounded-lg transition-all duration-200
+                        flex items-center gap-2 min-w-[40px]
+                        ${tool === id 
+                          ? `bg-${color}-100 text-${color}-600 ring-2 ring-${color}-500 ring-offset-1` 
+                          : 'hover:bg-gray-100'
+                        }
+                      `}
+                    >
+                      {icon}
+                      <span className="hidden sm:block text-sm font-medium">
+                        {label}
+                      </span>
+                    </button>
+                  </Tooltip>
+                ))}
+              </div>
 
-        <div className="w-px self-stretch bg-gray-200" />
+              {/* Separador */}
+              <div className="h-8 w-px bg-gray-200" />
 
-        {/* Herramientas de edición */}
-        <div className="flex space-x-2">
-          {editTools.map(({ id, icon, label, shortcut, description }) => (
-            <Tooltip
-              key={id}
-              content={
-                <div className="text-sm">
-                  <div className="font-medium">{label}</div>
-                  <div className="text-gray-200 text-xs">{description}</div>
-                  <div className="mt-1 text-xs opacity-75">Atajo: {shortcut}</div>
-                </div>
-              }
-            >
-              <button
-                onClick={() => onToolChange(id)}
-                className={`
-                  p-2 rounded-md transition-all duration-200
-                  flex flex-col items-center min-w-[60px]
-                  ${tool === id 
-                    ? 'bg-red-100 text-red-600 ring-2 ring-red-500 ring-offset-2' 
-                    : 'hover:bg-gray-100'
-                  }
-                `}
-              >
-                <span className="text-xl mb-1">{icon}</span>
-                <span className="text-xs font-medium">{label}</span>
-              </button>
-            </Tooltip>
-          ))}
-        </div>
-
-        <div className="w-px self-stretch bg-gray-200" />
-
-        {/* Acciones */}
-        <div className="flex items-center space-x-2">
-          {onUndo && onRedo && (
-            <>
-              <Tooltip content="Deshacer (Ctrl+Z)">
-                <button
-                  onClick={onUndo}
-                  className="p-2 rounded-md hover:bg-gray-100 transition-colors"
-                >
-                  <span className="text-xl">↩️</span>
-                </button>
-                
-              </Tooltip>
-              <Tooltip content="Rehacer (Ctrl+Y)">
-                <button
-                  onClick={onRedo}
-                  className="p-2 rounded-md hover:bg-gray-100 transition-colors"
-                >
-                  <span className="text-xl">↪️</span>
-                </button>
-              </Tooltip>
-              <div className="w-px self-stretch bg-gray-200" />
-            </>
-          )}
-
-          {hasSelection && (
-            <Tooltip content={`Eliminar ${selectedCount} asiento${selectedCount > 1 ? 's' : ''} (Del)`}>
-              <button
-                onClick={handleDelete}
-                className="p-2 rounded-md hover:bg-red-50 text-red-600 transition-colors flex items-center space-x-1"
-              >
-                <span className="text-xl">🗑️</span>
+              {/* Estado y acciones contextuales */}
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-gray-600">
+                  Zoom: {Math.round(zoom)}%
+                </span>
                 {selectedCount > 0 && (
-                  <span className="text-sm font-medium">({selectedCount})</span>
+                  <span className="text-sm text-gray-600">
+                    {selectedCount} asiento{selectedCount !== 1 ? 's' : ''} seleccionado{selectedCount !== 1 ? 's' : ''}
+                  </span>
                 )}
-              </button>
-            </Tooltip>
-          )}
+              </div>
+            </div>
 
-          {onSave && (
-            <>
-              <div className="w-px self-stretch bg-gray-200" />
-              <Tooltip content="Guardar cambios (Ctrl+S)">
-                <button
-                  onClick={onSave}
-                  className="p-2 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-                >
-                  <span className="text-xl">💾</span>
-                </button>
-              </Tooltip>
-            </>
+            {/* Controles secundarios */}
+            <div className="flex items-center gap-2">
+              {onSpacingClick && (
+                <Tooltip content="Configuración de espaciado">
+                  <button
+                    onClick={onSpacingClick}
+                    className="p-2 rounded-lg hover:bg-gray-100"
+                  >
+                    <Settings className="h-5 w-5 text-gray-600" />
+                  </button>
+                </Tooltip>
+              )}
+
+              {onToggleGrid && (
+                <Tooltip content="Mostrar/ocultar cuadrícula">
+                  <button
+                    onClick={onToggleGrid}
+                    className={`p-2 rounded-lg ${showGrid ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}
+                  >
+                    <Grid className="h-5 w-5" />
+                  </button>
+                </Tooltip>
+              )}
+
+              {onSave && (
+                <Tooltip content="Guardar cambios (Ctrl+S)">
+                  <button
+                    onClick={onSave}
+                    className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600"
+                  >
+                    <Save className="h-5 w-5" />
+                  </button>
+                </Tooltip>
+              )}
+            </div>
+          </div>
+
+          {/* Barra de contexto */}
+          {tool === 'DRAW' && (
+            <Card className="p-2 bg-blue-50 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-blue-600">Pro Tip:</span>
+                <p className="text-gray-600">
+                  Dibuja los límites de la sección y guarda para agregar asientos automáticamente
+                </p>
+              </div>
+            </Card>
           )}
         </div>
       </div>
-
-      {/* Opciones de dibujo */}
-      {tool === 'DRAW' && (
-        <div className="mt-2 bg-white rounded-lg shadow-lg p-2 animate-fadeIn">
-          <div className="text-xs text-gray-500 mb-2">Pro tip: Arrastra para dibujar múltiples asientos</div>
-          <div className="flex items-center space-x-2 text-sm">
-            <button className="px-3 py-1.5 rounded-md hover:bg-gray-100 flex items-center space-x-1">
-              <span>🔢</span>
-              <span>Auto-numerar</span>
-            </button>
-            <button className="px-3 py-1.5 rounded-md hover:bg-gray-100 flex items-center space-x-1">
-              <span>↔️</span>
-              <span>Espaciado</span>
-            </button>
-            <button className="px-3 py-1.5 rounded-md hover:bg-gray-100 flex items-center space-x-1">
-              <span>🔄</span>
-              <span>Rotación</span>
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

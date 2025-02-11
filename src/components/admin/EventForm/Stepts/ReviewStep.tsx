@@ -12,15 +12,18 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onEdit }) => {
   const eventStats = React.useMemo(() => {
     if (data.eventType === 'SEATED' && data.seatingChart) {
       const sectionStats = data.seatingChart.sections.map(section => {
+        // Filtrar asientos por el ID de la sección
         const sectionSeats = data.seatingChart!.seats.filter(
-          seat => seat.sectionId === section.name
+          seat => seat.sectionId === section.id
         );
         return {
+          id: section.id,
           name: section.name,
           seats: sectionSeats.length,
           price: section.price,
           type: section.type,
-          totalValue: sectionSeats.length * section.price
+          totalValue: sectionSeats.length * section.price,
+          color: section.color // Añadimos el color para mejor visualización
         };
       });
 
@@ -121,63 +124,83 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onEdit }) => {
             </span>
           </div>
 
-          {/* Sección para eventos con asientos */}
-          {data.eventType === 'SEATED' && data.seatingChart && eventStats && (
-            <div className="space-y-6">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-gray-700 mb-2">Dimensiones del Mapa</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-gray-500">Filas:</span>
-                    <span className="ml-2 font-medium">{data.seatingChart.rows}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Columnas:</span>
-                    <span className="ml-2 font-medium">{data.seatingChart.columns}</span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-gray-500">Total de Asientos:</span>
-                    <span className="ml-2 font-medium">{eventStats.totalSeats}</span>
+{/* Sección mejorada para eventos con asientos */}
+{data.eventType === 'SEATED' && data.seatingChart && eventStats && (
+  <div className="space-y-6">
+    <div className="bg-gray-50 rounded-lg p-4">
+      <h4 className="font-medium text-gray-700 mb-2">Resumen del Mapa</h4>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <span className="text-gray-500">Dimensiones:</span>
+          <span className="ml-2 font-medium">
+            {data.seatingChart.rows} × {data.seatingChart.columns}
+          </span>
+        </div>
+        <div>
+          <span className="text-gray-500">Total Asientos:</span>
+          <span className="ml-2 font-medium">{eventStats.totalSeats}</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h4 className="font-medium text-gray-700 mb-4">Secciones</h4>
+      <div className="grid gap-4">
+        {eventStats.sectionStats?.map((section) => (
+          <div 
+            key={section.id}
+            className="bg-white rounded-lg border p-4 transition-all hover:shadow-md"
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div 
+                  className="w-4 h-4 rounded-full" 
+                  style={{ backgroundColor: section.color }}
+                />
+                <div>
+                  <h5 className="font-medium text-gray-900">
+                    {section.name}
+                    <span className="ml-2 text-sm font-normal text-gray-500">
+                      ({section.type})
+                    </span>
+                  </h5>
+                  <div className="mt-2 space-y-1">
+                    <div className="flex items-center gap-6">
+                      <p className="text-sm text-gray-600">
+                        <span className="font-medium">{section.seats}</span> asientos
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        <span className="font-medium">${section.price.toLocaleString()}</span>/asiento
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
-
-              <div>
-                <h4 className="font-medium text-gray-700 mb-4">Secciones</h4>
-                <div className="grid gap-4">
-                  {eventStats.sectionStats?.map((section, index) => (
-                    <div 
-                      key={index}
-                      className="bg-white rounded-lg border p-4"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h5 className="font-medium text-gray-900">{section.name}</h5>
-                          <div className="mt-1 space-y-1">
-                            <p className="text-sm text-gray-600">
-                              Tipo: {section.type}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              Asientos: {section.seats}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              Precio por asiento: ${section.price.toLocaleString()}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-500">Valor Total</p>
-                          <p className="text-lg font-medium text-gray-900">
-                            ${section.totalValue.toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-500">Valor Total</p>
+                <p className="text-lg font-medium text-gray-900">
+                  ${section.totalValue.toLocaleString()}
+                </p>
               </div>
             </div>
-          )}
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* Total general con mejor visualización */}
+    <div className="mt-8 border-t pt-6">
+      <div className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+        <span className="text-lg font-medium text-gray-700">
+          Valor Total del Evento
+        </span>
+        <span className="text-2xl font-bold text-gray-900">
+          ${eventStats.totalValue.toLocaleString()}
+        </span>
+      </div>
+    </div>
+  </div>
+)}
 
           {/* Sección para eventos generales */}
           {data.eventType === 'GENERAL' && data.generalTickets && eventStats && (

@@ -1,15 +1,16 @@
 'use client';
-
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Alert } from '@/components/ui/Alert';
 import { ImageUpload } from '@/components/ui/ImageUpload';
 import { BasicInfoStep } from '@/components/admin/EventForm/Stepts/BasicInfoStep';
 import { EventTypeStep } from '@/components/admin/EventForm/Stepts/EventTypeStep';
 import { SeatingMapEditor } from '@/components/admin/EventForm/Stepts/SeatingMap/SeatingMapEditor';
 import { GeneralTicketsStep } from '@/components/admin/EventForm/Stepts/GeneralTicketsStep';
 import { ReviewStep } from '@/components/admin/EventForm/Stepts/ReviewStep';
+import { Layout, ArrowLeft, ArrowRight, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Seat, 
   Section, 
@@ -502,96 +503,109 @@ export default function NewEventPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">Crear Nuevo Evento</h1>
-
-      <Card className="p-6">
-        <h2 className="text-xl font-semibold mb-4">
-          {STEPS[currentStep].title}
-        </h2>
-        <p className="text-gray-600 mb-6">
+    <div className="space-y-8 p-4 md:p-8">
+      <div>
+        <div className="flex items-center gap-6">
+          <h1 className="text-3xl font-bold tracking-tight">Nuevo Evento</h1>
+          <div className="h-10 w-px bg-gray-200"></div>
+          <Layout className="h-8 w-8 text-[#0087ca]" />
+        </div>
+        <p className="text-gray-500 mt-2">
           {STEPS[currentStep].description}
         </p>
-        {renderStepContent()}
+      </div>
+ 
+      {/* Indicador de progreso */}
+      <div className="hidden md:block">
+        <div className="flex justify-between mb-4">
+          {['info', 'type', 'tickets', 'review'].map((step, index) => (
+            <div
+              key={step}
+              className={`flex items-center ${
+                index <= ['info', 'type', 'tickets', 'review'].indexOf(currentStep)
+                  ? 'text-[#0087ca]'
+                  : 'text-gray-400'
+              }`}
+            >
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  index <= ['info', 'type', 'tickets', 'review'].indexOf(currentStep)
+                    ? 'bg-[#0087ca] text-white'
+                    : 'bg-gray-100'
+                }`}
+              >
+                {index + 1}
+              </div>
+              <span className="ml-2 hidden lg:block">{STEPS[step as StepKey].title}</span>
+            </div>
+          ))}
+        </div>
+        <div className="relative h-2 bg-gray-100 rounded-full">
+          <div
+            className="absolute h-full bg-[#0087ca] rounded-full transition-all duration-300"
+            style={{
+              width: `${
+                ((['info', 'type', 'tickets', 'review'].indexOf(currentStep) + 1) / 4) * 100
+              }%`
+            }}
+          />
+        </div>
+      </div>
+ 
+      <Card className="bg-gradient-to-br from-[#a5dcfd]/20 to-white">
+        <div className="p-4 md:p-6">
+          {renderStepContent()}
+        </div>
       </Card>
-
-      <div className="mt-6 flex justify-between">
+ 
+      <div className="flex justify-between gap-4 mt-6">
         <Button
           variant="outline"
           onClick={() => moveToStep('prev')}
           disabled={currentStep === 'info' || isSubmitting}
+          className="flex items-center gap-2"
         >
+          <ArrowLeft className="h-4 w-4" />
           Atrás
         </Button>
-
+ 
         <Button
-onClick={() => {
-  if (!validateStep(currentStep)) {
-    return;
-  }
-
-  if (currentStep === 'review') {
-    handleSubmit();
-  } else {
-    moveToStep('next');
-  }
-}}
-disabled={isSubmitting}
->
-{isSubmitting 
-  ? 'Procesando...' 
-  : currentStep === 'review' 
-    ? 'Crear Evento' 
-    : 'Siguiente'
-}
-</Button>
-</div>
-
-{/* Indicador de progreso */}
-<div className="mt-6">
-<div className="flex justify-between mb-2">
-{['info', 'type', 'tickets', 'review'].map((step, index) => (
-  <div
-    key={step}
-    className={`flex items-center ${
-      index < ['info', 'type', 'tickets', 'review'].indexOf(currentStep)
-        ? 'text-blue-600'
-        : index === ['info', 'type', 'tickets', 'review'].indexOf(currentStep)
-        ? 'text-blue-600 font-bold'
-        : 'text-gray-400'
-    }`}
-  >
-    <div
-      className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${
-        index <= ['info', 'type', 'tickets', 'review'].indexOf(currentStep)
-          ? 'border-blue-600 bg-blue-50'
-          : 'border-gray-300'
-      }`}
-    >
-      {index + 1}
+          onClick={() => {
+            if (!validateStep(currentStep)) return;
+            if (currentStep === 'review') {
+              handleSubmit();
+            } else {
+              moveToStep('next');
+            }
+          }}
+          disabled={isSubmitting}
+          className="bg-[#0087ca] hover:bg-[#0087ca]/90 flex items-center gap-2"
+        >
+          {isSubmitting ? (
+            <>
+              <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent" />
+              Procesando...
+            </>
+          ) : currentStep === 'review' ? (
+            <>
+              <Plus className="h-4 w-4" />
+              Crear Evento
+            </>
+          ) : (
+            <>
+              Siguiente
+              <ArrowRight className="h-4 w-4" />
+            </>
+          )}
+        </Button>
+      </div>
+ 
+      {isSubmitting && (
+        <div className="fixed bottom-4 right-4 bg-[#0087ca] text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2">
+          <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent" />
+          Creando evento...
+        </div>
+      )}
     </div>
-    <div className="ml-2">{STEPS[step as StepKey].title}</div>
-  </div>
-))}
-</div>
-<div className="relative h-2 bg-gray-200 rounded-full">
-<div
-  className="absolute h-full bg-blue-600 rounded-full transition-all duration-300"
-  style={{
-    width: `${
-      ((['info', 'type', 'tickets', 'review'].indexOf(currentStep) + 1) / 4) * 100
-    }%`
-  }}
-/>
-</div>
-</div>
-
-{/* Toast o notificaciones */}
-{isSubmitting && (
-<div className="fixed bottom-4 right-4 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg">
-Creando evento...
-</div>
-)}
-</div>
-);
-}
+  );
+ }

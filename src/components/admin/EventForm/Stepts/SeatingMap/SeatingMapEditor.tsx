@@ -158,6 +158,7 @@ export const SeatingMapEditor: FC<SeatingMapEditorProps> = ({
   const handleDelete = useCallback(() => {
     if (selectedSeats.length === 0) return;
     
+    
     setSeats(prev => prev.filter(seat => !selectedSeats.includes(seat.id)));
     setSelectedSeats([]);
     setHasUnsavedChanges(true);

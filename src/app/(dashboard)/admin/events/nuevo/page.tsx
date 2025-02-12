@@ -16,7 +16,7 @@ import {
   Section, 
   SeatStatus, 
   SeatType 
-} from '@/types/index';  // Importa desde index.ts
+} from '@/types/index';  // Importa desde index.tss
 import type { 
   EditorSeat, 
   EditorSection 

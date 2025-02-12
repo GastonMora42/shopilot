@@ -7,10 +7,6 @@ import { AlertCircle, Move, ChevronLeft, ChevronRight, Maximize2, Grid } from 'l
 
 const GRID_SIZE = 30;
 // Definimos límites para el grid en móvil
-const MOBILE_GRID_LIMITS = {
-  maxRows: 20,
-  maxColumns: 15
-};
 
 export const EditorCanvas: React.FC<EditorCanvasProps> = ({
   state,

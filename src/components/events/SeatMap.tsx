@@ -1,4 +1,5 @@
 // components/events/SeatMap.tsx
+
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Seat } from '@/types';
@@ -40,22 +41,26 @@ export const SeatMap: React.FC<SeatMapProps> = ({
     viewBox,
     grid
   } = useMemo(() => {
-    const maxRow = mode === 'edit' ? 15 : Math.max(...seats.map(s => s.row));
-    const maxCol = mode === 'edit' ? 20 : Math.max(...seats.map(s => s.column));
-    const seatSize = 30;
-    const padding = 40;
-    
-    const grid = mode === 'edit' ? Array.from({ length: maxRow * maxCol }) : [];
-    
-    return {
-      maxRow,
-      maxCol,
-      seatSize,
-      padding,
-      viewBox: `0 0 ${(maxCol * seatSize) + (padding * 2)} ${(maxRow * seatSize) + (padding * 2)}`,
-      grid
-    };
-  }, [seats, mode]);
+    // Ya no limitamos artificialmente, usamos el máximo real
+    const maxRow = Math.max(...seats.map(s => s.row), 1);
+    const maxCol = Math.max(...seats.map(s => s.column), 1);  
+      // Ajustamos el tamaño del asiento según el número de columnas
+  const baseSeatSize = 30;
+  const adjustedSeatSize = maxCol > 20 ? 
+    Math.min(baseSeatSize, Math.floor(800 / maxCol)) : 
+    baseSeatSize;
+  const padding = 40;
+  const grid = mode === 'edit' ? Array.from({ length: maxRow * maxCol }) : [];
+  
+  return {
+    maxRow,
+    maxCol,
+    seatSize: adjustedSeatSize,
+    padding,
+    viewBox: `0 0 ${(maxCol * adjustedSeatSize) + (padding * 2)} ${(maxRow * adjustedSeatSize) + (padding * 2)}`,
+    grid
+  };
+}, [seats, mode]);
 
   const getSeatColor = (seat: Seat) => {
     if (mode === 'edit') {
@@ -161,12 +166,12 @@ export const SeatMap: React.FC<SeatMapProps> = ({
 
           return (
             <g key={seat._id}>
-              <motion.rect
-                x={x}
-                y={y}
-                width={25}
-                height={25}
-                rx={4}
+<motion.rect
+  x={x}
+  y={y}
+  width={seatSize * 0.833} // Ajustamos el tamaño del asiento proporcionalmente
+  height={seatSize * 0.833}
+  rx={4}
                 initial={false}
                 animate={{
                   fill: getSeatColor(seat),
@@ -186,14 +191,16 @@ export const SeatMap: React.FC<SeatMapProps> = ({
                   }
                 }}
               />
-              <text
-                x={x + 12.5}
-                y={y + 16}
-                textAnchor="middle"
-                className="text-[8px] fill-gray-700 pointer-events-none"
-              >
-                {seat.label}
-              </text>
+<text
+  x={x + (seatSize * 0.416)} // Ajustamos la posición del texto
+  y={y + (seatSize * 0.533)}
+  textAnchor="middle"
+  className={`text-[8px] fill-gray-700 pointer-events-none ${
+    seatSize < 25 ? 'text-[6px]' : 'text-[8px]' // Ajustamos el tamaño del texto
+  }`}
+>
+  {seat.label}
+</text>
             </g>
           );
         })}

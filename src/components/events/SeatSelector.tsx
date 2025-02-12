@@ -66,7 +66,7 @@ export const SeatSelector: React.FC<SeatSelectorProps> = ({
 
       // Verificar límite máximo de asientos
       if (selectedSeats.length >= maxSeats) {
-        setError(`No puedes seleccionar más de ${maxSeats} asientos`);
+        setError(`No puedes seleccionar más de ${maxSeats} asientos por compra`);
         setTimeout(() => setError(null), 3000);
         return;
       }

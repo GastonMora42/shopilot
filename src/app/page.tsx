@@ -19,6 +19,7 @@ import InteractiveImage from '@/components/ui/InteractiveImageLanding'
 import BackgroundImageSection from '@/components/ui/BackgroundImageLanding'
 import BrandCarousel from '@/components/ui/BrandCarrousel'
 
+
 interface Event {
   title: string;
   date: string;

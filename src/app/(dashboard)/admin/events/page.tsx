@@ -18,7 +18,11 @@ export default function EventosPage() {
 
 
  const handleShare = async (event: IEvent) => {
-  const eventUrl = `${window.location.origin}/e/${event.slug}`;
+  // Creamos una URL amigable usando el ID y el nombre del evento
+  const eventUrl = `${window.location.origin}/e/${event._id}-${event.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')}`;
 
   if (navigator.share) {
     try {
@@ -37,7 +41,10 @@ export default function EventosPage() {
 };
 
 const handleCopyLink = async (event: IEvent) => {
-  const eventUrl = `${window.location.origin}/e/${event.slug}`;
+  const eventUrl = `${window.location.origin}/e/${event._id}-${event.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')}`;
   await navigator.clipboard.writeText(eventUrl);
   toast.success('Enlace copiado al portapapeles');
 };

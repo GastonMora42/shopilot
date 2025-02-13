@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Button } from "@/components/ui/Button"
 import {
   Sheet,
@@ -305,7 +305,7 @@ export default function LandingPage() {
             </div>
           </div>
           <p className="text-gray-700 italic">
-  '{testimonial.quote}'
+  &lsquo;{testimonial.quote}&rsquo;
 </p>
         </motion.div>
       ))}

@@ -452,17 +452,17 @@ export default function LandingPage() {
     <div className="p-8 border-t">
       <p className="text-center text-sm text-gray-600">
         ¿No tienes una cuenta?{' '}
-        <Link href="/registro" className="text-[#FF5F1F] font-medium hover:underline">
-          Regístrate gratis
+        <Link href="/" className="text-[#FF5F1F] font-medium hover:underline">
+          Regístrate gratis con Google
         </Link>
       </p>
       <p className="text-center text-xs text-gray-500 mt-4">
         Al continuar, aceptas nuestros{' '}
-        <Link href="/terminos" className="underline hover:text-gray-700">
+        <Link href="/" className="underline hover:text-gray-700">
           Términos de servicio
         </Link>
         {' '}y{' '}
-        <Link href="/privacidad" className="underline hover:text-gray-700">
+        <Link href="/" className="underline hover:text-gray-700">
           Política de privacidad
         </Link>
       </p>

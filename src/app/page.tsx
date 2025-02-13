@@ -10,16 +10,15 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Ticket, Calendar, Shield, CreditCard, Map, Settings, Star, CheckCircle, LayoutDashboard } from 'lucide-react'
+import { Ticket, Shield, CreditCard, Map, Settings, Star, CheckCircle, LayoutDashboard } from 'lucide-react'
 import Link from 'next/link'
-import { motion, useAnimation, useInView } from "framer-motion"
+import { motion, useInView } from "framer-motion"
 import Image from "next/image"
 import InteractiveImage from '@/components/ui/InteractiveImageLanding'
 import BackgroundImageSection from '@/components/ui/BackgroundImageLanding'
 import BrandCarousel from '@/components/ui/BrandCarrousel'
 
-interface Event {
+interface _Event {
   title: string;
   date: string;
   image: string;
@@ -306,8 +305,8 @@ export default function LandingPage() {
             </div>
           </div>
           <p className="text-gray-700 italic">
-            "{testimonial.quote}"
-          </p>
+  '{testimonial.quote}'
+</p>
         </motion.div>
       ))}
     </div>

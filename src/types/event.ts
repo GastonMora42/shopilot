@@ -171,6 +171,7 @@ interface IBaseEvent {
   _id: string;
   name: string;
   description: string;
+  slug: string; // Añadimos el campo slug
   date: Date;
   location: string;
   imageUrl?: string;

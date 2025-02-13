@@ -1,16 +1,46 @@
 'use client';
 import { Card } from '@/components/ui/Card';
-import { Calendar, MapPin, Globe, Lock } from 'lucide-react';
+import { Calendar, MapPin, Globe, Lock, Share2, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { IEvent } from '@/types/event';
+import { toast } from "sonner";
+import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu';
+import { DropdownMenuItem } from '@/components/ui/drop-downmenu';
+import { DropdownMenuTrigger } from '@radix-ui/react-dropdown-menu';
 
 export default function EventosPage() {
  const [events, setEvents] = useState<IEvent[]>([]);
  const [loading, setLoading] = useState(true);
  const [alert, setAlert] = useState<{type: 'success' | 'error'; message: string} | null>(null);
+
+
+ const handleShare = async (event: IEvent) => {
+  const eventUrl = `${window.location.origin}/e/${event.slug}`;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: event.name,
+        text: `¡Mira este evento: ${event.name}!`,
+        url: eventUrl,
+      });
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  } else {
+    await navigator.clipboard.writeText(eventUrl);
+    toast.success('Enlace copiado al portapapeles');
+  }
+};
+
+const handleCopyLink = async (event: IEvent) => {
+  const eventUrl = `${window.location.origin}/e/${event.slug}`;
+  await navigator.clipboard.writeText(eventUrl);
+  toast.success('Enlace copiado al portapapeles');
+};
 
  useEffect(() => {
    fetchEvents();
@@ -124,13 +154,44 @@ return (
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-lg">{event.name}</h3>
-                {event.published ? (
-                  <Globe className="h-5 w-5 text-green-500" />
-                ) : (
-                  <Lock className="h-5 w-5 text-gray-400" />
-                )}
+                <div className="flex items-center gap-2">
+                  {event.published ? (
+                    <Globe className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <Lock className="h-5 w-5 text-gray-400" />
+                  )}
+                  
+                  {event.published && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                        >
+                          <Share2 className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-56">
+                        <DropdownMenuItem
+                          onClick={() => handleCopyLink(event)}
+                          className="cursor-pointer"
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          <span>Copiar enlace</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleShare(event)}
+                          className="cursor-pointer"
+                        >
+                          <Share2 className="mr-2 h-4 w-4" />
+                          <span>Compartir</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
               </div>
-
               <div className="space-y-3 mb-6">
                 <div className="flex items-center gap-2 text-gray-600">
                   <Calendar className="h-4 w-4" />

@@ -1,6 +1,6 @@
 'use client';
 import { Card } from '@/components/ui/Card';
-import { Calendar, MapPin, Globe, Lock, Share2, Copy } from 'lucide-react';
+import { Calendar, MapPin, Globe, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
 import Link from 'next/link';
@@ -10,19 +10,31 @@ import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu';
 import { DropdownMenuItem } from '@/components/ui/drop-downmenu';
 import { DropdownMenuTrigger } from '@radix-ui/react-dropdown-menu';
+import { 
+  Share2, 
+  Copy, 
+  Facebook, 
+  Twitter, 
+  MessageCircle,
+  Instagram,
+  Link as LinkIcon,
+  Check 
+} from 'lucide-react';
 
 export default function EventosPage() {
  const [events, setEvents] = useState<IEvent[]>([]);
  const [loading, setLoading] = useState(true);
  const [alert, setAlert] = useState<{type: 'success' | 'error'; message: string} | null>(null);
+ const [copiedEvents, setCopiedEvents] = useState<Record<string, boolean>>({});
 
+ const generateSlug = (name: string) => {
+  // Mantenemos las mayúsculas y minúsculas, solo reemplazamos espacios y caracteres especiales
+  return name.replace(/[^a-zA-Z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+};
 
- const handleShare = async (event: IEvent) => {
-  // Creamos una URL amigable usando el ID y el nombre del evento
-  const eventUrl = `${window.location.origin}/e/${event._id}-${event.name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')}`;
+const handleShare = async (event: IEvent) => {
+  // Generamos la URL solo con el slug, sin el ID
+  const eventUrl = `${window.location.origin}/e/${generateSlug(event.name)}`;
 
   if (navigator.share) {
     try {
@@ -41,10 +53,7 @@ export default function EventosPage() {
 };
 
 const handleCopyLink = async (event: IEvent) => {
-  const eventUrl = `${window.location.origin}/e/${event._id}-${event.name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')}`;
+  const eventUrl = `${window.location.origin}/e/${generateSlug(event.name)}`;
   await navigator.clipboard.writeText(eventUrl);
   toast.success('Enlace copiado al portapapeles');
 };
@@ -169,34 +178,111 @@ return (
                   )}
                   
                   {event.published && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                        >
-                          <Share2 className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-56">
-                        <DropdownMenuItem
-                          onClick={() => handleCopyLink(event)}
-                          className="cursor-pointer"
-                        >
-                          <Copy className="mr-2 h-4 w-4" />
-                          <span>Copiar enlace</span>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleShare(event)}
-                          className="cursor-pointer"
-                        >
-                          <Share2 className="mr-2 h-4 w-4" />
-                          <span>Compartir</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
+  <DropdownMenu>
+
+    <DropdownMenuTrigger asChild>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full transition-colors"
+      >
+        <Share2 className="h-4 w-4 text-gray-600" />
+      </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent 
+      align="end" 
+      sideOffset={5}
+      className="w-80 p-3 space-y-2"
+    >
+      {/* Eliminamos la IIFE y mantenemos el contenido directo */}
+      <div className="px-2 pb-2 mb-2 border-b">
+        <h3 className="text-sm font-medium">Compartir evento</h3>
+        <p className="text-xs text-gray-500 mt-1">
+          Comparte este evento con tus amigos y redes sociales
+        </p>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 mb-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex flex-col items-center gap-1 h-auto py-3 hover:bg-blue-50 transition-colors duration-200"
+          onClick={() => {
+            const eventUrl = `${window.location.origin}/e/${generateSlug(event.name)}`;
+            window.open(`https://facebook.com/sharer/sharer.php?u=${encodeURIComponent(eventUrl)}`, '_blank');
+          }}
+        >
+          <Facebook className="h-5 w-5 text-[#1877F2]" />
+          <span className="text-xs">Facebook</span>
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex flex-col items-center gap-1 h-auto py-3 hover:bg-sky-50 transition-colors duration-200"
+          onClick={() => {
+            const eventUrl = `${window.location.origin}/e/${generateSlug(event.name)}`;
+            window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(eventUrl)}`, '_blank');
+          }}
+        >
+          <Twitter className="h-5 w-5 text-[#1DA1F2]" />
+          <span className="text-xs">Twitter</span>
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex flex-col items-center gap-1 h-auto py-3 hover:bg-green-50 transition-colors duration-200"
+          onClick={() => {
+            const eventUrl = `${window.location.origin}/e/${generateSlug(event.name)}`;
+            window.open(`https://wa.me/?text=${encodeURIComponent(`¡Mira este evento: ${event.name}! ${eventUrl}`)}`, '_blank');
+          }}
+        >
+          <MessageCircle className="h-5 w-5 text-[#25D366]" />
+          <span className="text-xs">WhatsApp</span>
+        </Button>
+      </div>
+
+      <div className="relative flex items-center px-3 py-2 bg-gray-50 rounded-lg group">
+        <LinkIcon className="h-4 w-4 text-gray-400 absolute left-3" />
+        <input
+          type="text"
+          readOnly
+          value={`${window.location.origin}/e/${generateSlug(event.name)}`}
+          className="w-full pl-8 pr-20 py-1 text-sm bg-transparent border-none focus:outline-none"
+        />
+<Button
+  variant="ghost"
+  size="sm"
+  className="absolute right-2 hover:bg-gray-200 text-xs font-medium transition-all duration-200"
+  onClick={async () => {
+    const eventUrl = `${window.location.origin}/e/${generateSlug(event.name)}`;
+    await navigator.clipboard.writeText(eventUrl);
+    setCopiedEvents(prev => ({ ...prev, [event._id]: true }));
+    toast.success('Enlace copiado al portapapeles');
+    setTimeout(() => {
+      setCopiedEvents(prev => ({ ...prev, [event._id]: false }));
+    }, 2000);
+  }}
+>
+  <span className="flex items-center gap-1">
+    {copiedEvents[event._id] ? (
+      <>
+        <Check className="h-4 w-4 text-green-500" />
+        <span className="text-green-500">Copiado</span>
+      </>
+    ) : (
+      <>
+        <Copy className="h-4 w-4" />
+        <span>Copiar</span>
+      </>
+    )}
+  </span>
+</Button>
+      </div>
+    </DropdownMenuContent>
+  </DropdownMenu>
+)}
                 </div>
               </div>
               <div className="space-y-3 mb-6">

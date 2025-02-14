@@ -30,19 +30,25 @@ export function DropdownMenuTrigger({
   )
 }
 
-export function DropdownMenuContent({
-  children,
-  className = ''
-}: {
+interface DropdownMenuContentProps {
   children: React.ReactNode
   className?: string
-}) {
+  align?: 'start' | 'center' | 'end'  // Hacemos el align opcional
+  sideOffset?: number                  // También podemos hacer el sideOffset opcional
+}
+
+export function DropdownMenuContent({
+  children,
+  className = '',
+  align = 'end',    // Valor por defecto 'end'
+  sideOffset = 5    // Valor por defecto 5
+}: DropdownMenuContentProps) {
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         className={`min-w-[8rem] rounded-md border bg-white p-1 shadow-md ${className}`}
-        align="end"
-        sideOffset={5}
+        align={align}
+        sideOffset={sideOffset}
       >
         {children}
       </DropdownMenuPrimitive.Content>

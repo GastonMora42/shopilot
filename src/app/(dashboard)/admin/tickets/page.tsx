@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency } from '@/app/lib/utils';
+import { PendingTransferTickets } from '@/components/admin/PendingTransferTickets';
 
 interface TicketSummary {
   eventId: string;
@@ -48,6 +49,11 @@ export default function TicketsPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Resumen de Tickets</h1>
       </div>
+
+      <div className="mt-8">
+  <h2 className="text-xl font-bold mb-4">Pagos por transferencia pendientes</h2>
+  <PendingTransferTickets />
+</div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <Card className="p-4">

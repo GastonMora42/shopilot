@@ -16,6 +16,12 @@ declare module 'next-auth' {
         accessToken?: string;
         userId?: string;
       };
+      bankAccount?: {
+        accountName: string;
+        cbu: string;
+        bank: string;
+        additionalNotes?: string;
+      };
     }
   }
 
@@ -25,6 +31,29 @@ declare module 'next-auth' {
     mercadopago?: {
       accessToken?: string;
       userId?: string;
+    };
+    bankAccount?: {
+      accountName: string;
+      cbu: string;
+      bank: string;
+      additionalNotes?: string;
+    };
+  }
+}
+
+declare module 'next-auth/jwt' {
+  interface JWT {
+    id: string;
+    role: 'ORGANIZER' | 'ADMIN';
+    mercadopago?: {
+      accessToken?: string;
+      userId?: string;
+    };
+    bankAccount?: {
+      accountName: string;
+      cbu: string;
+      bank: string;
+      additionalNotes?: string;
     };
   }
 }
@@ -53,6 +82,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
         token.mercadopago = user.mercadopago;
+        token.bankAccount = user.bankAccount;
       }
       return token;
     },
@@ -61,6 +91,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string;
         session.user.role = token.role as 'ORGANIZER' | 'ADMIN';
         session.user.mercadopago = token.mercadopago;
+        session.user.bankAccount = token.bankAccount;
       }
       return session;
     },

@@ -162,7 +162,7 @@ const TicketSchema = new mongoose.Schema({
       generalInfo: {
         ticketType: String,
         index: Number
-      }
+      },
     }
   }],
   status: {
@@ -178,7 +178,14 @@ const TicketSchema = new mongoose.Schema({
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toObject: { virtuals: true },
+  
+  transferProof: {
+    imageUrl: String,
+    notes: String,
+    uploadedAt: Date
+  },
+  rejectionReason: String
 });
 
 // Índices

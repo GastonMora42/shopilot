@@ -1,5 +1,4 @@
 // app/api/events/create/route.ts
-
 import { NextResponse } from 'next/server';
 import dbConnect from '@/app/lib/mongodb';
 import { Event } from '@/app/models/Event';
@@ -10,11 +9,25 @@ import { authOptions } from '@/app/lib/auth';
 import mongoose from 'mongoose';
 import { 
   GeneralTicket, 
+  PaymentMethod
 } from '@/types/event';
 import { SeatingChart } from '@/types';
 import { creditCheck } from '@/app/middlewares/creditCheck';
 import { CreditService } from '@/app/services/creditService';
 
+// Interfaces para datos bancarios
+interface BankAccountData {
+  accountName: string;
+  cbu: string;
+  bank: string;
+  additionalNotes?: string;
+}
+
+// Interfaces para MercadoPago
+interface MercadoPagoData {
+  accessToken: string;
+  userId: string;
+}
 
 function validateGeneralEvent(tickets: GeneralTicket[]): string | null {
   if (!Array.isArray(tickets) || tickets.length === 0) {
@@ -109,8 +122,36 @@ function validateSeatingChart(seatingChart: SeatingChart): string | null {
   return null;
 }
 
+// Validar datos bancarios si es método de transferencia
+function validateBankData(paymentMethod: string, bankAccountData?: any, user?: any): string | null {
+  if (paymentMethod !== 'BANK_TRANSFER') {
+    return null;
+  }
+  
+  // Si hay datos personalizados, validarlos
+  if (bankAccountData) {
+    if (!bankAccountData.accountName || bankAccountData.accountName.trim() === '') {
+      return 'El nombre de la cuenta bancaria es requerido';
+    }
+    if (!bankAccountData.cbu || bankAccountData.cbu.trim() === '') {
+      return 'El CBU/CVU es requerido';
+    }
+    if (!bankAccountData.bank || bankAccountData.bank.trim() === '') {
+      return 'El nombre del banco es requerido';
+    }
+    return null;
+  }
+  
+  // Si no hay datos personalizados, verificar que el usuario tenga datos bancarios configurados
+  if (!user?.bankAccount?.accountName || !user?.bankAccount?.cbu || !user?.bankAccount?.bank) {
+    return 'No hay datos bancarios configurados. Configúralos en tu perfil o proporciónalos para este evento.';
+  }
+  
+  return null;
+}
+
 // En la función validateEvent
-function validateEvent(data: any): string | null {
+function validateEvent(data: any, user: any): string | null {
   // Validaciones básicas
   if (!data.name?.trim()) return 'El nombre del evento es requerido';
   if (!data.description?.trim()) return 'La descripción es requerida';
@@ -122,6 +163,20 @@ function validateEvent(data: any): string | null {
   if (!['SEATED', 'GENERAL'].includes(data.eventType)) {
     return 'Tipo de evento inválido';
   }
+  
+  // Validar método de pago
+  if (!['MERCADOPAGO', 'BANK_TRANSFER'].includes(data.paymentMethod)) {
+    return 'Método de pago inválido';
+  }
+  
+  // Si es MercadoPago, verificar que el usuario tenga una cuenta vinculada
+  if (data.paymentMethod === 'MERCADOPAGO' && (!user?.mercadopago?.accessToken || !user?.mercadopago?.userId)) {
+    return 'Debes vincular tu cuenta de MercadoPago para usar este método de pago';
+  }
+  
+  // Validar datos bancarios si es transferencia
+  const bankDataError = validateBankData(data.paymentMethod, data.bankAccountData, user);
+  if (bankDataError) return bankDataError;
 
   // Validaciones específicas por tipo
   return data.eventType === 'SEATED' 
@@ -130,13 +185,12 @@ function validateEvent(data: any): string | null {
 }
 
 // Función para generar los asientos
-// Corregir la función generateSeatsForEvent
 async function generateSeatsForEvent(eventId: string, seatingChart: SeatingChart): Promise<ISeat[]> {
   const seats: ISeat[] = [];
   const { sections } = seatingChart;
 
   sections.forEach(section => {
-    // No restar 1 aquí, mantener los índices originalessss
+    // No restar 1 aquí, mantener los índices originales
     const rowStart = section.rowStart;
     const rowEnd = section.rowEnd;
     const colStart = section.columnStart;
@@ -178,27 +232,28 @@ export async function POST(req: Request) {
     await dbConnect();
     
     const user = await User.findOne({ email: authSession.user.email });
-    if (!user?.mercadopago?.accessToken) {
+    if (!user) {
       return NextResponse.json(
-        { error: 'MercadoPago no está configurado' },
-        { status: 400 }
+        { error: 'Usuario no encontrado' },
+        { status: 404 }
       );
     }
 
     const data = await req.json();
     console.log('Received event data:', data);
 
-     const validationError = validateEvent(data);
-     if (validationError) {
-       return NextResponse.json({ error: validationError }, { status: 400 });
-     }
+    // Validar los datos del evento con el usuario
+    const validationError = validateEvent(data, user);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
+    }
  
-     mongoSession = await mongoose.startSession();
-     mongoSession.startTransaction();
+    mongoSession = await mongoose.startSession();
+    mongoSession.startTransaction();
 
     try {
       // Preparar datos base del evento
-      const baseEventData = {
+      const baseEventData: any = {
         name: data.name,
         description: data.description,
         date: new Date(data.date),
@@ -206,12 +261,57 @@ export async function POST(req: Request) {
         imageUrl: data.imageUrl || '',
         eventType: data.eventType,
         organizerId: user._id,
-        mercadopago: {
-          accessToken: user.mercadopago.accessToken,
-          userId: user.mercadopago.userId
-        },
+        paymentMethod: data.paymentMethod || 'MERCADOPAGO',
         published: false
       };
+
+      // Agregar datos específicos según el tipo de pago
+      if (data.paymentMethod === 'MERCADOPAGO') {
+        // Verificar que el usuario tiene datos de MercadoPago configurados
+        if (!user.mercadopago?.accessToken || !user.mercadopago?.userId) {
+          return NextResponse.json(
+            { error: 'No tienes configurada una cuenta de MercadoPago' },
+            { status: 400 }
+          );
+        }
+        
+        baseEventData.mercadopago = {
+          accessToken: user.mercadopago.accessToken,
+          userId: user.mercadopago.userId
+        };
+      } else if (data.paymentMethod === 'BANK_TRANSFER') {
+        // Usar datos bancarios personalizados o del perfil del usuario
+        let bankAccountData: BankAccountData | null = null;
+        
+        // Verificar si hay datos bancarios personalizados
+        if (data.bankAccountData?.accountName && data.bankAccountData?.cbu && data.bankAccountData?.bank) {
+          bankAccountData = {
+            accountName: data.bankAccountData.accountName,
+            cbu: data.bankAccountData.cbu,
+            bank: data.bankAccountData.bank,
+            additionalNotes: data.bankAccountData.additionalNotes || ''
+          };
+        } 
+        // Verificar si hay datos bancarios en el perfil
+        else if (user.bankAccount?.accountName && user.bankAccount?.cbu && user.bankAccount?.bank) {
+          bankAccountData = {
+            accountName: user.bankAccount.accountName,
+            cbu: user.bankAccount.cbu,
+            bank: user.bankAccount.bank,
+            additionalNotes: user.bankAccount.additionalNotes || ''
+          };
+        }
+        
+        // Verificar si se encontraron datos bancarios
+        if (!bankAccountData) {
+          return NextResponse.json(
+            { error: 'No hay datos bancarios disponibles para transferencia' },
+            { status: 400 }
+          );
+        }
+        
+        baseEventData.bankAccountData = bankAccountData;
+      }
 
       // Agregar datos específicos según el tipo de evento
       const eventData = data.eventType === 'SEATED' 
@@ -242,7 +342,7 @@ export async function POST(req: Request) {
         const seatsData = await generateSeatsForEvent(event._id.toString(), data.seatingChart);
         if (seatsData.length > 0) {
           try {
-            await Seat.insertMany(seatsData, { 
+            seats = await Seat.insertMany(seatsData, { 
               session: mongoSession,
               ordered: true // Para asegurar la inserción ordenada
             });
@@ -256,7 +356,6 @@ export async function POST(req: Request) {
       await mongoSession.commitTransaction();
 
       return NextResponse.json({
-        
         success: true,
         event: {
           ...event.toJSON(),
@@ -267,7 +366,7 @@ export async function POST(req: Request) {
 
     } catch (error) {
       console.error('Transaction error:', error);
-      await mongoSession.abortTransaction();
+      if (mongoSession) await mongoSession.abortTransaction();
       throw error;
     }
 

@@ -1,9 +1,11 @@
+// types/event.ts
 import { SeatingChart, SeatType } from ".";
 import { Seat } from "./seating";
 
 // Tipos básicos
-export type StepKey = 'info' | 'type' | 'tickets' | 'review' | 'BASIC_INFO' | 'EVENT_TYPE' | 'TICKETS' | 'REVIEW';
+export type StepKey = 'info' | 'type' | 'tickets' | 'payment' | 'review' | 'BASIC_INFO' | 'EVENT_TYPE' | 'TICKETS' | 'PAYMENT' | 'REVIEW';
 export type EventType = 'SEATED' | 'GENERAL';
+export type PaymentMethod = 'MERCADOPAGO' | 'BANK_TRANSFER';
 export type SectionType = 'REGULAR' | 'VIP' | 'DISABLED';
 export type SeatStatus = 'AVAILABLE' | 'RESERVED' | 'OCCUPIED' | 'ACTIVE' | 'DISABLED';
 
@@ -11,6 +13,20 @@ export type SeatStatus = 'AVAILABLE' | 'RESERVED' | 'OCCUPIED' | 'ACTIVE' | 'DIS
 export interface Point {
   x: number;
   y: number;
+}
+
+// Interfaces para datos bancarios
+export interface BankAccountData {
+  accountName: string;
+  cbu: string;
+  bank: string;
+  additionalNotes?: string;
+}
+
+// Interfaces para MercadoPago
+export interface MercadoPagoData {
+  accessToken: string;
+  userId: string;
 }
 
 // Interfaces para tickets
@@ -26,6 +42,7 @@ export interface GeneralTicket {
 }
 
 export interface SelectedGeneralTicket {
+  ticketType: any;
   ticketId: string;
   quantity: number;
   price: number;
@@ -86,12 +103,25 @@ export interface EventFormData {
   location: string;
   imageUrl: string;
   eventType: EventType;
+  paymentMethod: PaymentMethod;
+  bankAccountData?: BankAccountData;
   published: boolean;
   seatingChart?: SeatingChart;
   generalTickets?: GeneralTicket[];
   seating?: {
     sections: Section[];
   } | null;
+}
+
+export interface PaymentMethodStepProps {
+  paymentMethod: PaymentMethod;
+  bankAccountData?: BankAccountData;
+  onChange: (data: { 
+    paymentMethod: PaymentMethod, 
+    bankAccountData?: BankAccountData
+  }) => void;
+  hasMercadoPagoLinked: boolean;
+  hasBankAccountConfigured: boolean;
 }
 
 export interface SeatingMapEditorProps {
@@ -171,15 +201,18 @@ interface IBaseEvent {
   _id: string;
   name: string;
   description: string;
-  slug: string; // Añadimos el campo slug
+  slug: string;
   date: Date;
   location: string;
   imageUrl?: string;
   eventType: EventType;
+  paymentMethod: PaymentMethod;
   status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
   maxTicketsPerPurchase: number;
   organizerId: string;
   published: boolean;
+  mercadopago?: MercadoPagoData;
+  bankAccountData?: BankAccountData;
 }
 
 interface IGeneralEvent extends IBaseEvent {

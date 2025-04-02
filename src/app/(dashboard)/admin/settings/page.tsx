@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import { BankAccountForm } from '@/components/admin/BankAccountForm';
 
 export default function SettingsPage() {
   const { data: session, update: updateSession } = useSession();
@@ -80,6 +81,35 @@ export default function SettingsPage() {
       setIsDisconnecting(false);
     }
   };
+
+// En el componente settings/page.tsx
+const saveBankAccount = async (data: {
+  accountName: string;
+  cbu: string;
+  bank: string;
+  additionalNotes?: string;
+}): Promise<void> => {
+  try {
+    const response = await fetch('/api/user/bank-account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Error al guardar datos bancarios');
+    }
+
+    // Actualizar la sesión para reflejar los cambios
+    await updateSession();
+    
+    // No retornamos nada (void)
+  } catch (error) {
+    console.error('Error:', error);
+    throw error;
+  }
+};
 
   const getErrorMessage = (error: string) => {
     switch (error) {
@@ -164,6 +194,14 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+        <div className="bg-white p-6 rounded-lg shadow-sm mt-6">
+  <h2 className="text-lg font-semibold mb-4">Datos Bancarios para Transferencias</h2>
+  
+  <BankAccountForm 
+    initialData={session?.user?.bankAccount}
+    onSave={saveBankAccount}
+  />
+</div>
       </div>
     </div>
   );

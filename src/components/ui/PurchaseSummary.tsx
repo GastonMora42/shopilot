@@ -1,5 +1,5 @@
 // components/ui/PurchaseSummary.tsx
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { Seat, Section } from "@/types";
 import { BuyerForm } from "../events/BuyerForm";
 import { Button } from "./Button";
@@ -7,6 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "./Card";
 import { SelectedGeneralTicket } from "@/types/event";
 import { useAuthModal } from "@/contexts/AuthModalContext";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { v4 as uuidv4 } from "uuid";
+import { TransferProofForm } from "../tickets/TransferProofForm";
+
+interface BuyerInfo {
+  name: string;
+  email: string;
+  phone?: string;
+  dni?: string;
+}
 
 interface PurchaseSummaryProps {
   selectedSeats: Seat[];
@@ -18,6 +28,7 @@ interface PurchaseSummaryProps {
   setShowBuyerForm: (show: boolean) => void;
   onSubmit: (buyerInfo: any) => Promise<void>;
   onStartPurchase: () => Promise<void>;
+  event: any; // El evento completo
 }
 
 export const PurchaseSummary = memo(function PurchaseSummary({
@@ -29,11 +40,19 @@ export const PurchaseSummary = memo(function PurchaseSummary({
   showBuyerForm,
   setShowBuyerForm,
   onSubmit,
-  onStartPurchase
+  onStartPurchase,
+  event
 }: PurchaseSummaryProps) {
   const { data: session, status } = useSession();
   const { openAuthModal } = useAuthModal();
+  const router = useRouter();
   const isLoading = status === 'loading';
+  const [showTransferForm, setShowTransferForm] = useState(false);
+  const [buyerInfo, setBuyerInfo] = useState<BuyerInfo | null>(null);
+
+  // Obtener el método de pago y datos bancarios del evento
+  const paymentMethod = event?.paymentMethod || 'MERCADOPAGO';
+  const bankAccountData = event?.bankAccountData || event?.organizerId?.bankAccount;
 
   // Cálculos existentes
   const seatedTotal = useMemo(() => 
@@ -56,6 +75,77 @@ export const PurchaseSummary = memo(function PurchaseSummary({
       return;
     }
     await onStartPurchase();
+  };
+
+  // Manejador modificado para el formulario del comprador
+  const handleBuyerFormSubmit = async (formData: BuyerInfo) => {
+    try {
+      if (paymentMethod === 'BANK_TRANSFER') {
+        // Guardar la información del comprador y mostrar formulario de transferencia
+        setBuyerInfo(formData);
+        setShowTransferForm(true);
+        return;
+      }
+      
+      // Si es MercadoPago, continuar con el flujo normal
+      await onSubmit(formData);
+    } catch (error) {
+      console.error('Error en el proceso de compra:', error);
+    }
+  };
+
+  // Manejador para enviar el comprobante de transferencia
+  const handleTransferSubmit = async (transferData: { notes: string; proofImage: Blob }) => {
+    try {
+      // Convertir la imagen a base64
+      const reader = new FileReader();
+      return new Promise<void>((resolve, reject) => {
+        reader.onloadend = async () => {
+          try {
+            const imageBase64 = reader.result as string;
+            
+            // Enviar datos al endpoint
+            const response = await fetch('/api/tickets/bank-transfer', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventId: event._id,
+                eventType: event.eventType,
+                ...(event.eventType === 'SEATED'
+                  ? { seats: selectedSeats.map(s => s.seatId) }
+                  : { 
+                      ticketType: selectedTickets[0].ticketType,
+                      quantity: selectedTickets[0].quantity 
+                    }
+                ),
+                buyerInfo,
+                proofImage: imageBase64,
+                notes: transferData.notes,
+                sessionId: uuidv4()
+              })
+            });
+            
+            if (!response.ok) {
+              const error = await response.json();
+              throw new Error(error.error || 'Error al procesar el ticket');
+            }
+            
+            const data = await response.json();
+            
+            // Redirigir a página de éxito con el modo de transferencia
+            router.push(`/payment/transfer-success?ticketId=${data.ticketId}`);
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        };
+        reader.onerror = () => reject(new Error('Error al leer el archivo'));
+        reader.readAsDataURL(transferData.proofImage);
+      });
+    } catch (error) {
+      console.error('Error:', error);
+      // Mostrar error al usuario
+    }
   };
 
   const isDisabled = 
@@ -95,9 +185,30 @@ export const PurchaseSummary = memo(function PurchaseSummary({
           </div>
         )}
 
-        {showBuyerForm ? (
+        {/* Mostrar método de pago */}
+        <div className="py-2 border-t border-b border-gray-200">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">Método de pago:</span>
+            <span className="text-sm font-medium">
+              {paymentMethod === 'MERCADOPAGO' ? 'MercadoPago' : 'Transferencia Bancaria'}
+            </span>
+          </div>
+        </div>
+
+        {showTransferForm ? (
+          <TransferProofForm
+            bankData={bankAccountData || {
+              accountName: '',
+              cbu: '',
+              bank: '',
+              additionalNotes: ''
+            }}
+            onSubmit={handleTransferSubmit}
+            isLoading={isProcessing}
+          />
+        ) : showBuyerForm ? (
           <BuyerForm
-            onSubmit={onSubmit}
+            onSubmit={handleBuyerFormSubmit}
             isLoading={isProcessing}
           />
         ) : (
@@ -135,6 +246,16 @@ export const PurchaseSummary = memo(function PurchaseSummary({
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {/* Mensaje de método de pago */}
+        {paymentMethod === 'BANK_TRANSFER' && !showTransferForm && showBuyerForm && (
+          <div className="mt-4 text-sm bg-blue-50 p-3 rounded border border-blue-200">
+            <p className="font-medium text-blue-700">Pago por transferencia bancaria</p>
+            <p className="mt-1">
+              Una vez completados tus datos, podrás subir el comprobante de transferencia.
+            </p>
           </div>
         )}
 

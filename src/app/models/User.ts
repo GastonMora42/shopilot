@@ -5,12 +5,18 @@ export interface IUser {
   name: string;
   email: string;
   password: string;
-  credits?: mongoose.Types.ObjectId; // Añadimos credits a la interfaz
+  credits?: mongoose.Types.ObjectId;
   mercadopago?: {
     accessToken?: string;
     refreshToken?: string;
     userId?: string;
     publicKey?: string;
+  };
+  bankAccount?: {
+    accountName: string;
+    cbu: string;
+    bank: string;
+    additionalNotes?: string;
   };
 }
 
@@ -38,6 +44,12 @@ const UserSchema = new mongoose.Schema<IUser>({
     refreshToken: String,
     userId: String,
     publicKey: String
+  },
+  bankAccount: {
+    accountName: String,
+    cbu: String,
+    bank: String,
+    additionalNotes: String
   }
 }, {
   timestamps: true,

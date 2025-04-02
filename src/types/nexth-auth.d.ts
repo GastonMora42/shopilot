@@ -11,6 +11,12 @@ declare module 'next-auth' {
         userId?: string;
         publicKey?: string;
       };
+      bankAccount?: {
+        accountName: string;
+        cbu: string;
+        bank: string;
+        additionalNotes?: string;
+      };
     } & DefaultSession['user'];
   }
 
@@ -24,6 +30,12 @@ declare module 'next-auth' {
       userId?: string;
       publicKey?: string;
     };
+    bankAccount?: {
+      accountName: string;
+      cbu: string;
+      bank: string;
+      additionalNotes?: string;
+    };
   }
 }
 
@@ -35,6 +47,12 @@ declare module 'next-auth/jwt' {
       refreshToken?: string;
       userId?: string;
       publicKey?: string;
+    };
+    bankAccount?: {
+      accountName: string;
+      cbu: string;
+      bank: string;
+      additionalNotes?: string;
     };
   }
 }

@@ -24,12 +24,21 @@ const SeatingChartSchema = new mongoose.Schema({
     rowStart: Number,
     rowEnd: Number,
     columnStart: Number,
-    columnEnd: Number
+    columnEnd: Number,
+    color: String
   }],
   customLayout: {
     type: Boolean,
     default: false
   }
+}, { _id: false });
+
+// Esquema para datos bancarios sin validaciones complejas
+const BankAccountDataSchema = new mongoose.Schema({
+  accountName: String,
+  cbu: String,
+  bank: String,
+  additionalNotes: String
 }, { _id: false });
 
 const EventSchema = new mongoose.Schema({
@@ -72,16 +81,18 @@ const EventSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  mercadopago: {
-    accessToken: {
-      type: String,
-      required: true
-    },
-    userId: {
-      type: String,
-      required: true
-    }
+  paymentMethod: {
+    type: String,
+    enum: ['MERCADOPAGO', 'BANK_TRANSFER'],
+    default: 'MERCADOPAGO'
   },
+  // Datos de MercadoPago - esquema simple
+  mercadopago: {
+    accessToken: String,
+    userId: String
+  },
+  // Datos bancarios
+  bankAccountData: BankAccountDataSchema,
   seatingChart: {
     type: SeatingChartSchema,
     validate: {
@@ -124,6 +135,28 @@ EventSchema.index({ slug: 1 }, { unique: true });
 EventSchema.index({ organizerId: 1 });
 EventSchema.index({ status: 1 });
 EventSchema.index({ date: 1 });
+
+// Validador pre-save para validaciones cruzadas basadas en paymentMethod
+EventSchema.pre('validate', function(next) {
+  // Si el método de pago es MercadoPago, verificar datos requeridos
+  if (this.paymentMethod === 'MERCADOPAGO') {
+    if (!this.mercadopago || !this.mercadopago.accessToken || !this.mercadopago.userId) {
+      this.invalidate('mercadopago', 
+        'Los datos de MercadoPago son requeridos para eventos con pago por MercadoPago');
+    }
+  }
+  
+  // Si el método es transferencia bancaria, verificar datos requeridos
+  if (this.paymentMethod === 'BANK_TRANSFER') {
+    if (!this.bankAccountData || !this.bankAccountData.accountName || 
+        !this.bankAccountData.cbu || !this.bankAccountData.bank) {
+      this.invalidate('bankAccountData',
+        'Los datos bancarios son requeridos para eventos con pago por transferencia');
+    }
+  }
+  
+  next();
+});
 
 // Generación de slug
 EventSchema.pre('save', async function(next) {

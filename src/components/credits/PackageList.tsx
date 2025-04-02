@@ -22,6 +22,7 @@ const PACKAGE_IMAGES = {
 export function PackageList() {
  const [packages, setPackages] = useState<CreditPackage[]>([]);
  const [isLoading, setIsLoading] = useState(true);
+ const [error, setError] = useState<string | null>(null);
  const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
 
  useEffect(() => {
@@ -30,11 +31,27 @@ export function PackageList() {
 
  const fetchPackages = async () => {
    try {
+     setIsLoading(true);
+     setError(null);
+     
      const response = await fetch('/api/credits/packages');
      const data = await response.json();
-     setPackages(data);
+     
+     // Verificar que data es un array
+     if (Array.isArray(data)) {
+       setPackages(data);
+     } else if (data.packages && Array.isArray(data.packages)) {
+       // Si la API devuelve un objeto con una propiedad "packages"
+       setPackages(data.packages);
+     } else {
+       console.error('Formato de respuesta inesperado:', data);
+       setError('Error: La respuesta del servidor no tiene el formato esperado');
+       setPackages([]); // Establecer un array vacío como fallback
+     }
    } catch (error) {
-     console.error('Error:', error);
+     console.error('Error al cargar paquetes:', error);
+     setError('Error al cargar los paquetes. Por favor, intenta de nuevo más tarde.');
+     setPackages([]); // Establecer un array vacío como fallback
    } finally {
      setIsLoading(false);
    }
@@ -63,6 +80,14 @@ export function PackageList() {
 
  if (isLoading) {
    return <div className="p-8 text-center text-gray-500">Cargando paquetes...</div>;
+ }
+
+ if (error) {
+   return <div className="p-8 text-center text-red-500">{error}</div>;
+ }
+
+ if (!packages.length) {
+   return <div className="p-8 text-center text-gray-500">No hay paquetes disponibles</div>;
  }
 
  return (

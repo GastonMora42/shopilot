@@ -7,16 +7,18 @@ import { BasicInfoStep } from '@/components/admin/EventForm/Stepts/BasicInfoStep
 import { EventTypeStep } from '@/components/admin/EventForm/Stepts/EventTypeStep';
 import { SeatingMapEditor } from '@/components/admin/EventForm/Stepts/SeatingMap/SeatingMapEditor';
 import { GeneralTicketsStep } from '@/components/admin/EventForm/Stepts/GeneralTicketsStep';
+import { PaymentMethodStep } from '@/components/admin/EventForm/Stepts/PaymentMethodStep';
 import { ReviewStep } from '@/components/admin/EventForm/Stepts/ReviewStep';
 import { Layout, ArrowLeft, ArrowRight, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { 
   Seat, 
   Section, 
   SeatStatus, 
   SeatType 
-} from '@/types/index';  // Importa desde index.tss
+} from '@/types/index';
 import type { 
   EditorSeat, 
   EditorSection 
@@ -68,6 +70,8 @@ const INITIAL_FORM_DATA: EventFormData = {
   location: '',
   imageUrl: '',
   eventType: 'SEATED',
+  paymentMethod: 'MERCADOPAGO', 
+  bankAccountData: undefined,
   seatingChart: INITIAL_SEATING_CHART,
   generalTickets: [],
   seating: undefined,
@@ -87,6 +91,10 @@ const STEPS: Record<StepKey, { title: string; description: string }> = {
     title: 'Configuración de Entradas',
     description: 'Define los tipos de entradas y precios'
   },
+  payment: { 
+    title: 'Método de Pago',
+    description: 'Configura cómo recibirás los pagos'
+  },
   review: {
     title: 'Revisar y Crear',
     description: 'Verifica la información antes de crear'
@@ -100,6 +108,10 @@ const STEPS: Record<StepKey, { title: string; description: string }> = {
     description: ''
   },
   TICKETS: {
+    title: '',
+    description: ''
+  },
+  PAYMENT: {
     title: '',
     description: ''
   },
@@ -119,6 +131,7 @@ const showSuccess = () => {
 
 export default function NewEventPage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [currentStep, setCurrentStep] = useState<StepKey>('info');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -141,6 +154,30 @@ export default function NewEventPage() {
     setFormData(prev => ({ ...prev, generalTickets: tickets }));
   };
 
+const handlePaymentMethodChange = (data: { 
+  paymentMethod: 'MERCADOPAGO' | 'BANK_TRANSFER', 
+  bankAccountData?: {
+    accountName: string;
+    cbu: string;
+    bank: string;
+    additionalNotes?: string;
+  }
+}) => {
+  // Actualizar el estado con tipos seguros
+  setFormData(prev => ({
+    ...prev,
+    paymentMethod: data.paymentMethod,
+    // Solo incluir bankAccountData si está definido y viene de una transferencia
+    bankAccountData: data.paymentMethod === 'BANK_TRANSFER' && data.bankAccountData 
+      ? {
+          accountName: data.bankAccountData.accountName,
+          cbu: data.bankAccountData.cbu,
+          bank: data.bankAccountData.bank,
+          additionalNotes: data.bankAccountData.additionalNotes || ''
+        }
+      : undefined
+  }));
+};
   
   const handleSeatingChartChange = (layout: { 
     seats: EditorSeat[]; 
@@ -196,7 +233,6 @@ export default function NewEventPage() {
       return updatedData;
     });
   };
-  
 
   const validateSeatingConfiguration = (): boolean => {
     if (!formData.seatingChart) return false;
@@ -298,6 +334,28 @@ export default function NewEventPage() {
     return true;
   };
 
+  const validatePaymentMethod = (): boolean => {
+    if (formData.paymentMethod === 'MERCADOPAGO' && !session?.user?.mercadopago?.accessToken) {
+      showError('Debes vincular tu cuenta de MercadoPago para usar este método de pago');
+      return false;
+    }
+    if (formData.paymentMethod === 'BANK_TRANSFER') {
+      // Si usa datos personalizados, validarlos
+      if (formData.bankAccountData) {
+        if (!formData.bankAccountData.accountName || !formData.bankAccountData.cbu || !formData.bankAccountData.bank) {
+          showError('Debes completar todos los datos bancarios');
+          return false;
+        }
+      } 
+      // Si usa datos del perfil, verificar que existen
+      else if (!session?.user?.bankAccount?.cbu) {
+        showError('Debes configurar tus datos bancarios en tu perfil');
+        return false;
+      }
+    }
+    return true;
+  };
+
   const validateStep = (step: StepKey): boolean => {
     switch (step) {
       case 'info':
@@ -308,6 +366,8 @@ export default function NewEventPage() {
         return formData.eventType === 'SEATED'
           ? validateSeatingConfiguration()
           : validateGeneralTickets();
+      case 'payment':
+        return validatePaymentMethod();
       case 'review':
         return true;
       default:
@@ -327,6 +387,10 @@ export default function NewEventPage() {
       }
 
       if (formData.eventType === 'GENERAL' && !validateGeneralTickets()) {
+        return;
+      }
+
+      if (!validatePaymentMethod()) {
         return;
       }
 
@@ -357,6 +421,10 @@ export default function NewEventPage() {
         location: formData.location,
         imageUrl,
         eventType: formData.eventType,
+        paymentMethod: formData.paymentMethod,
+        ...(formData.paymentMethod === 'BANK_TRANSFER' && formData.bankAccountData ? {
+          bankAccountData: formData.bankAccountData
+        } : {}),
         ...(formData.eventType === 'SEATED' ? {
           seatingChart: {
             rows: formData.seatingChart!.rows,
@@ -411,6 +479,8 @@ export default function NewEventPage() {
     }
   };
 
+  const stepArray: StepKey[] = ['info', 'type', 'tickets', 'payment', 'review'];
+
   const renderStepContent = () => {
     switch (currentStep) {
       case 'type':
@@ -421,50 +491,61 @@ export default function NewEventPage() {
           />
         );
       
-        case 'tickets':
-          return formData.eventType === 'SEATED' ? (
-            <div className="h-[600px]">
-    <SeatingMapEditor
-  initialSections={formData.seatingChart?.sections ?? []}
-  initialSeats={formData.seatingChart?.seats.map(seat => ({
-    id: seat.id,
-    row: seat.row,
-    column: seat.column,
-    sectionId: seat.sectionId,
-    status: seat.status === 'AVAILABLE' ? 'AVAILABLE' : 'DISABLED' as SeatStatus, // Cambiado de 'ACTIVE' a 'AVAILABLE'
-    label: seat.label,
-    position: seat.position,
-    screenPosition: seat.position || {
-      x: seat.column * 30,
-      y: seat.row * 30
-    },
-    rotation: 0, // Agregamos las propiedades faltantes de EditorSeat
-    properties: {
-      isAisle: false,
-      isHandicap: false,
-      isReserved: false
-    }
-  })) ?? []}
-  onChange={handleSeatingChartChange}
-/>
-            </div>
-          ) : (
-            <GeneralTicketsStep
+      case 'tickets':
+        return formData.eventType === 'SEATED' ? (
+          <div className="h-[600px]">
+            <SeatingMapEditor
+              initialSections={formData.seatingChart?.sections ?? []}
+              initialSeats={formData.seatingChart?.seats.map(seat => ({
+                id: seat.id,
+                row: seat.row,
+                column: seat.column,
+                sectionId: seat.sectionId,
+                status: seat.status === 'AVAILABLE' ? 'AVAILABLE' : 'DISABLED' as SeatStatus,
+                label: seat.label,
+                position: seat.position,
+                screenPosition: seat.position || {
+                  x: seat.column * 30,
+                  y: seat.row * 30
+                },
+                rotation: 0,
+                properties: {
+                  isAisle: false,
+                  isHandicap: false,
+                  isReserved: false
+                }
+              })) ?? []}
+              onChange={handleSeatingChartChange}
+            />
+          </div>
+        ) : (
+          <GeneralTicketsStep
             tickets={formData.generalTickets?.map(ticket => ({
               ...ticket,
-              id: ticket.id || String(Date.now()) // Proporciona un id por defecto si es undefined
+              id: ticket.id || String(Date.now())
             })) ?? []}
             onChange={handleGeneralTicketsChange}
           />
-          );
-          
-        case 'review':
-          return (
-            <ReviewStep
-              data={formData}
-              onEdit={setCurrentStep}
-            />
-          );
+        );
+      
+      case 'payment':
+        return (
+          <PaymentMethodStep
+            paymentMethod={formData.paymentMethod}
+            bankAccountData={formData.bankAccountData}
+            onChange={handlePaymentMethodChange}
+            hasMercadoPagoLinked={!!session?.user?.mercadopago?.accessToken}
+            hasBankAccountConfigured={!!session?.user?.bankAccount?.cbu}
+          />
+        );
+        
+      case 'review':
+        return (
+          <ReviewStep
+            data={formData}
+            onEdit={setCurrentStep}
+          />
+        );
 
       default:
         return (
@@ -493,7 +574,6 @@ export default function NewEventPage() {
   };
 
   const moveToStep = (direction: 'next' | 'prev') => {
-    const stepArray: StepKey[] = ['info', 'type', 'tickets', 'review'];
     const currentIndex = stepArray.indexOf(currentStep);
     const newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
 
@@ -518,25 +598,25 @@ export default function NewEventPage() {
       {/* Indicador de progreso */}
       <div className="hidden md:block">
         <div className="flex justify-between mb-4">
-          {['info', 'type', 'tickets', 'review'].map((step, index) => (
+          {stepArray.map((step, index) => (
             <div
               key={step}
               className={`flex items-center ${
-                index <= ['info', 'type', 'tickets', 'review'].indexOf(currentStep)
+                index <= stepArray.indexOf(currentStep)
                   ? 'text-[#0087ca]'
                   : 'text-gray-400'
               }`}
             >
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  index <= ['info', 'type', 'tickets', 'review'].indexOf(currentStep)
+                  index <= stepArray.indexOf(currentStep)
                     ? 'bg-[#0087ca] text-white'
                     : 'bg-gray-100'
                 }`}
               >
                 {index + 1}
               </div>
-              <span className="ml-2 hidden lg:block">{STEPS[step as StepKey].title}</span>
+              <span className="ml-2 hidden lg:block">{STEPS[step].title}</span>
             </div>
           ))}
         </div>
@@ -545,7 +625,7 @@ export default function NewEventPage() {
             className="absolute h-full bg-[#0087ca] rounded-full transition-all duration-300"
             style={{
               width: `${
-                ((['info', 'type', 'tickets', 'review'].indexOf(currentStep) + 1) / 4) * 100
+                ((stepArray.indexOf(currentStep) + 1) / stepArray.length) * 100
               }%`
             }}
           />
@@ -608,4 +688,4 @@ export default function NewEventPage() {
       )}
     </div>
   );
- }
+}

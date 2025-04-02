@@ -8,6 +8,7 @@ import { useSearchParams } from 'next/navigation';
 export default function PaymentErrorPage() {
   const searchParams = useSearchParams();
   const error = searchParams.get('error');
+  
 
   return (
     <div className="max-w-lg mx-auto p-6">

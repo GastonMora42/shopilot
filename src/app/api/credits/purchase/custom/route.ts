@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       body: {
         items: [
           {
-              title: `${credits} créditos`,
+              title: `${credits} Créditos`,
               description: `Compra de ${credits} créditos SHOWSPOT`,
               quantity: 1,
               currency_id: "ARS",
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
           pending: `${process.env.NEXT_PUBLIC_BASE_URL}/credits/pending`
         },
         auto_return: "approved",
-        external_reference: `credits_custom_${user._id}_${credits}`,
+        external_reference: `credits_${user._id}_custom_${credits}`,
         notification_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/mercadopago-credits`
       }
     });

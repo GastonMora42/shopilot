@@ -17,6 +17,7 @@ type PaymentInfo = {
   external_reference: string;
 };
 
+// app/api/credits/webhook/route.ts
 export async function POST(req: Request) {
   let session = null;
 
@@ -47,52 +48,90 @@ export async function POST(req: Request) {
     session.startTransaction();
 
     // Extraer información del external_reference
-    const [type, userId, packageId] = paymentInfo.external_reference.split('_');
+    const refParts = paymentInfo.external_reference.split('_');
+    const type = refParts[0];
 
     if (type !== 'credits') {
       await session.abortTransaction();
       return NextResponse.json({ message: 'No es un pago de créditos' }, { status: 200 });
     }
 
-    // Buscar el paquete de créditos y el usuario
-    const creditPackage = await CreditPackage.findById(packageId).session(session);
-    const userCredits = await Credit.findOne({ userId }).session(session);
+    // Obtener el ID del usuario
+    const userId = refParts[1];
+    let credits = 0;
+    let packageId = null;
 
-    if (!creditPackage || !userCredits) {
+    // Determinar si es una compra de paquete o personalizada
+    if (refParts.length === 3) {
+      // Formato: credits_userId_packageId
+      packageId = refParts[2];
+      const creditPackage = await CreditPackage.findById(packageId).session(session);
+      if (!creditPackage) {
+        await session.abortTransaction();
+        return NextResponse.json({ message: 'Paquete no encontrado' }, { status: 200 });
+      }
+      credits = creditPackage.credits;
+    } else if (refParts.length === 4 && refParts[2] === 'custom') {
+      // Formato: credits_userId_custom_amount
+      credits = parseInt(refParts[3]);
+      if (isNaN(credits) || credits <= 0) {
+        await session.abortTransaction();
+        return NextResponse.json({ message: 'Cantidad de créditos inválida' }, { status: 200 });
+      }
+    } else {
       await session.abortTransaction();
-      return NextResponse.json({ message: 'Paquete o usuario no encontrado' }, { status: 200 });
+      return NextResponse.json({ message: 'Formato de referencia externa inválido' }, { status: 200 });
     }
 
-    if (type === 'credits') {
-      const [_, __, userId, creditsAmount] = paymentInfo.external_reference.split('_');
-      const credits = parseInt(creditsAmount);
-      
-      // Actualizar créditos del usuario
-      userCredits.balance += credits;
-      userCredits.transactions.push({
-        type: 'PURCHASE',
-        amount: credits,
-        paymentId: String(paymentInfo.id)
+    const userCredits = await Credit.findOne({ userId }).session(session);
+    if (!userCredits) {
+      // Si no existe, crear un registro de crédito para el usuario
+      const newUserCredits = new Credit({
+        userId,
+        balance: 0,
+        transactions: []
       });
+      await newUserCredits.save({ session });
     }
 
+    // Verificar si el pago ya fue procesado
+    const existingTransaction = await Credit.findOne({
+      userId,
+      'transactions.paymentId': String(paymentInfo.id)
+    }).session(session);
+
+    if (existingTransaction) {
+      console.log('Pago ya procesado anteriormente:', String(paymentInfo.id));
+      await session.commitTransaction();
+      return NextResponse.json({ success: true, message: 'Pago ya procesado' }, { status: 200 });
+    }
+
+    // Procesar el pago según su estado
     if (paymentInfo.status === "approved") {
       // Actualizar créditos del usuario
-      userCredits.balance += creditPackage.credits;
-      userCredits.transactions.push({
-        type: 'PURCHASE',
-        amount: creditPackage.credits,
-        packageId,
-        paymentId: String(paymentInfo.id)
-      });
+      await Credit.findOneAndUpdate(
+        { userId },
+        {
+          $inc: { balance: credits },
+          $push: {
+            transactions: {
+              type: 'PURCHASE',
+              amount: credits,
+              packageId,
+              paymentId: String(paymentInfo.id),
+              timestamp: new Date()
+            }
+          }
+        },
+        { session, new: true }
+      );
 
-      await userCredits.save({ session });
       await session.commitTransaction();
 
       console.log('Créditos acreditados:', {
         userId,
-        credits: creditPackage.credits,
-        newBalance: userCredits.balance
+        credits,
+        paymentId: String(paymentInfo.id)
       });
     } 
     // Manejar otros estados si es necesario
@@ -110,7 +149,7 @@ export async function POST(req: Request) {
       message: 'Webhook procesado exitosamente',
       data: {
         userId,
-        packageId,
+        credits,
         paymentId: String(paymentInfo.id),
         status: paymentInfo.status
       }

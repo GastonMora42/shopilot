@@ -188,11 +188,12 @@ const fetchEvent = useCallback(async () => {
         console.log('Found ticket:', ticket);
   
         if (ticket) {
-          // Retornar un array con solo el ticket seleccionado
+          // Asegurarse de incluir la propiedad ticketType para cumplir con SelectedGeneralTicket
           return [{
             ticketId,
             quantity,
-            price: ticket.price
+            price: ticket.price,
+            ticketType: ticket // Incluir el ticket completo como ticketType
           }];
         }
       }
@@ -554,16 +555,15 @@ const purchaseData = event.eventType === 'SEATED'
               >
                 {/* Resumen de compra */}
                 <PurchaseSummary
-  selectedSeats={event.eventType === 'SEATED' ? selectedSeats : []}
-  selectedTickets={event.eventType === 'GENERAL' ? selectedTickets : []}
-  sections={event.eventType === 'SEATED' ? event.seatingChart.sections : []}
-  eventType={event.eventType}
-  isProcessing={uiState.isProcessing}
-  showBuyerForm={uiState.showBuyerForm}
-  setShowBuyerForm={(show) => setUiState(prev => ({ ...prev, showBuyerForm: show }))}
-  onSubmit={handlePurchase}
-  onStartPurchase={handleStartPurchase}
-/>
+                  selectedSeats={event.eventType === 'SEATED' ? selectedSeats : []}
+                  selectedTickets={event.eventType === 'GENERAL' ? selectedTickets : []}
+                  sections={event.eventType === 'SEATED' ? event.seatingChart.sections : []}
+                  eventType={event.eventType}
+                  isProcessing={uiState.isProcessing}
+                  showBuyerForm={uiState.showBuyerForm}
+                  setShowBuyerForm={(show) => setUiState(prev => ({ ...prev, showBuyerForm: show }))}
+                  onSubmit={handlePurchase}
+                  onStartPurchase={handleStartPurchase} event={undefined}/>
 
                 {/* Compartir */}
                 <Card className="backdrop-blur-sm bg-white/90 mt-4">

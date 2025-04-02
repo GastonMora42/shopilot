@@ -12,13 +12,20 @@ export default function TransferSuccessPage() {
   const router = useRouter();
   const ticketId = searchParams.get('ticketId');
   
-  if (!ticketId) {
-    // Redirigir si no hay ticketId
-    useEffect(() => {
+  // Mover el useEffect al principio, fuera de cualquier condicional
+  useEffect(() => {
+    if (!ticketId) {
       router.push('/admin');
-    }, [router]);
-    
-    return null;
+    }
+  }, [router, ticketId]); // Incluir ticketId en las dependencias
+  
+  // Si no hay ticketId, puedes mostrar un componente de carga mientras la redirección ocurre
+  if (!ticketId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
+      </div>
+    );
   }
   
   return (

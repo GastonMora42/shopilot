@@ -23,14 +23,14 @@ interface PurchaseSummaryProps {
   selectedTickets: SelectedGeneralTicket[];
   sections: Section[];
   eventType: 'SEATED' | 'GENERAL';
+  isProcessing: boolean;
+  setIsProcessing?: (processing: boolean) => void; // Hacer opcional con '?'
   showBuyerForm: boolean;
   setShowBuyerForm: (show: boolean) => void;
   onSubmit: (buyerInfo: any) => Promise<void>;
   onStartPurchase: () => Promise<void>;
   paymentMethod?: 'MERCADOPAGO' | 'BANK_TRANSFER'; // Añadir esta propiedad
   event?: any; // Añadir esta propiedad - idealmente usa el tipo específico IEvent
-  isProcessing: boolean;
-  setIsProcessing: (processing: boolean) => void;
 }
 
 export const PurchaseSummary = memo(function PurchaseSummary({
@@ -39,8 +39,8 @@ export const PurchaseSummary = memo(function PurchaseSummary({
   sections,
   eventType,
   isProcessing,
-  setIsProcessing,
   showBuyerForm,
+  setIsProcessing,
   setShowBuyerForm,
   onSubmit,
   onStartPurchase,
@@ -98,10 +98,12 @@ export const PurchaseSummary = memo(function PurchaseSummary({
   };
 
   // Manejador para enviar el comprobante de transferencia
-// Modificación del método handleTransferSubmit en PurchaseSummary.tsx
+ // Y en handleTransferSubmit
 const handleTransferSubmit = async (transferData: { notes: string; proofImage: File }) => {
   try {
-    setIsProcessing(true);
+    // Si setIsProcessing está disponible, úsalo, de lo contrario, usa una función vacía
+    const setProcessing = setIsProcessing || (() => {});
+    setProcessing(true);
     
     // Convertir la imagen a base64
     const reader = new FileReader();
@@ -109,10 +111,10 @@ const handleTransferSubmit = async (transferData: { notes: string; proofImage: F
       reader.onloadend = async () => {
         try {
           const imageBase64 = reader.result as string;
-          console.log("Imagen convertida a base64 correctamente, tamaño:", 
+          console.log("Enviando imagen base64, tamaño:", 
               Math.round((imageBase64.length * 0.75) / 1024), "KB");
           
-          // Datos completos para la solicitud
+          // Asegúrate de que la estructura de datos coincida con lo que espera la API
           const requestData = {
             eventId: event._id,
             eventType: event.eventType,
@@ -124,46 +126,50 @@ const handleTransferSubmit = async (transferData: { notes: string; proofImage: F
                 }
             ),
             buyerInfo,
-            proofImage: imageBase64,
+            proofImage: imageBase64, // Asegúrate de que esto se está enviando correctamente
             notes: transferData.notes,
             sessionId: uuidv4()
           };
           
-          // Enviar datos al endpoint
+          console.log("Enviando solicitud con comprobante");
+          
           const response = await fetch('/api/tickets/bank-transfer', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestData)
           });
           
-          // Manejar la respuesta
-          const data = await response.json();
-          
           if (!response.ok) {
-            console.error("Error en la respuesta:", data);
-            throw new Error(data.error || 'Error al procesar el ticket');
+            const errorData = await response.json();
+            console.error("Error en respuesta:", errorData);
+            throw new Error(errorData.error || 'Error al procesar el ticket');
           }
           
-          console.log("Ticket creado exitosamente:", data);
+          const data = await response.json();
+          console.log("Respuesta exitosa:", data);
           
-          // Redirigir a página de éxito con el modo de transferencia
           router.push(`/payment/transfer-success?ticketId=${data.ticketId}`);
           resolve();
         } catch (error) {
-          console.error("Error en el procesamiento:", error);
+          console.error("Error en proceso:", error);
           reject(error);
+        } finally {
+          setProcessing(false);
         }
       };
-      reader.onerror = () => {
-        console.error("Error al leer el archivo");
+      
+      reader.onerror = (error) => {
+        console.error("Error al leer archivo:", error);
         reject(new Error('Error al leer el archivo del comprobante'));
+        setProcessing(false);
       };
+      
       reader.readAsDataURL(transferData.proofImage);
     });
   } catch (error) {
-    console.error('Error al procesar la transferencia:', error);
-    setIsProcessing(false);
-    throw error; // Propagar el error para que el formulario lo muestre
+    console.error('Error general:', error);
+    setIsProcessing && setIsProcessing(false);
+    throw error;
   }
 };
 

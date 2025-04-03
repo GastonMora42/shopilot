@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     session.startTransaction();
     
     // Validar datos básicos
-    
+
     if (!reqData.eventId || !reqData.buyerInfo) {
       throw new Error('Datos incompletos');
     }
@@ -124,22 +124,28 @@ export async function POST(req: Request) {
     }
     
     // Crear ticket con estado PENDING
-    const ticketData = {
-      eventId: reqData.eventId,
-      userId: userSession?.user?.id || null,
-      eventType: reqData.eventType,
-      ...(reqData.eventType === 'SEATED' 
-        ? { seats: reqData.seats }
-        : { 
-            ticketType: reqData.ticketType,
-            quantity: reqData.quantity
-          }
-      ),
-      buyerInfo: reqData.buyerInfo,
-      status: 'PENDING',
-      price: totalPrice,
-      paymentMethod: 'BANK_TRANSFER'
-    };
+const ticketData = {
+  eventId: reqData.eventId,
+  userId: userSession?.user?.id || null,
+  eventType: reqData.eventType,
+  ...(reqData.eventType === 'SEATED' 
+    ? { seats: reqData.seats }
+    : { 
+        ticketType: reqData.ticketType,
+        quantity: reqData.quantity
+      }
+  ),
+  buyerInfo: reqData.buyerInfo,
+  status: 'PENDING',
+  price: totalPrice,
+  paymentMethod: 'BANK_TRANSFER',
+  // AÑADIR ESTA PARTE:
+  transferProof: {
+    imageUrl: proofImageUrl,
+    notes: reqData.notes || '',
+    uploadedAt: new Date()
+  }
+};
     
     console.log("API bank-transfer: Creando ticket principal");
     

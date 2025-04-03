@@ -571,20 +571,19 @@ const handlePurchase = async (buyerInfo: {
               >
                 {/* Resumen de compra */}
                 <PurchaseSummary
-                  selectedSeats={event.eventType === 'SEATED' ? selectedSeats : []}
-                  selectedTickets={event.eventType === 'GENERAL' ? selectedTickets : []}
-                  sections={event.eventType === 'SEATED' ? event.seatingChart.sections : []}
-                  eventType={event.eventType}
-                  isProcessing={uiState.isProcessing}
-                  showBuyerForm={uiState.showBuyerForm}
-                  setShowBuyerForm={(show) => setUiState(prev => ({ ...prev, showBuyerForm: show }))}
-                  onSubmit={handlePurchase}
-                  onStartPurchase={handleStartPurchase}
-                  paymentMethod={event.paymentMethod} // Añadir esta línea
-                  event={event} // Pasar el evento completo para acceder a sus propiedades
-                  setIsProcessing={function (processing: boolean): void {
-                    throw new Error('Function not implemented.');
-                  } }/>
+  selectedSeats={event.eventType === 'SEATED' ? selectedSeats : []}
+  selectedTickets={event.eventType === 'GENERAL' ? selectedTickets : []}
+  sections={event.eventType === 'SEATED' ? event.seatingChart.sections : []}
+  eventType={event.eventType}
+  isProcessing={uiState.isProcessing}
+  setIsProcessing={(processing) => setUiState(prev => ({ ...prev, isProcessing: processing }))}
+  showBuyerForm={uiState.showBuyerForm}
+  setShowBuyerForm={(show) => setUiState(prev => ({ ...prev, showBuyerForm: show }))}
+  onSubmit={handlePurchase}
+  onStartPurchase={handleStartPurchase}
+  paymentMethod={event.paymentMethod}
+  event={event}
+/>
                 {/* Compartir */}
                 <Card className="backdrop-blur-sm bg-white/90 mt-4">
                   <CardHeader>

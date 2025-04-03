@@ -64,6 +64,12 @@ const nextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb' // Aumentar el límite de tamaño para solicitudes
+    },
+    responseLimit: '12mb' // También aumentar el límite de respuesta si es necesario
+  }
 }
 
 module.exports = nextConfig

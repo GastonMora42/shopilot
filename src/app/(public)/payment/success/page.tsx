@@ -68,12 +68,12 @@ export default function PaymentSuccessPage() {
   const verifyPayment = useCallback(async () => {
     try {
       const ticketId = searchParams.get('ticketId') || searchParams.get('external_reference');
-      const paymentId = searchParams.get('payment_id');
-
-      if (!ticketId || !paymentId) {
+      const paymentId = searchParams.get('payment_id') || searchParams.get('preference_id');
+  
+      if (!ticketId) {
         throw new Error('Información de pago incompleta');
       }
-
+  
       const response = await fetch('/api/payments/verify', {
         method: 'POST',
         headers: {
@@ -81,36 +81,43 @@ export default function PaymentSuccessPage() {
         },
         body: JSON.stringify({
           ticketId,
-          paymentId
+          paymentId: paymentId || 'redirect_success'
         }),
         cache: 'no-store'
       });
-
+  
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Error de red' }));
         throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
       }
-
+  
       const data = await response.json();
-
+  
+      // Si el ticket existe pero aún no está pagado, no considerarlo un error
+      // sino devolver false para seguir intentando
+      if (data.ticketExists && data.ticket.status === 'PENDING') {
+        console.log('Ticket encontrado pero aún pendiente. Esperando webhook...');
+        return false;
+      }
+  
       if (!data.success || !data.ticket) {
         throw new Error(data.error || 'Error en la verificación');
       }
-
+  
       if (!data.ticket.qrTickets?.length) {
         throw new Error('Estructura de ticket inválida');
       }
-
+  
       setTicket(data.ticket);
       return data.ticket.status === 'PAID';
-
+  
     } catch (error) {
       console.error('Error en verificación:', error);
       setError(error instanceof Error ? error.message : 'Error al procesar el pago');
       return false;
     }
   }, [searchParams]);
-
+  
   useEffect(() => {
     let isMounted = true;
     let timeoutId: NodeJS.Timeout;

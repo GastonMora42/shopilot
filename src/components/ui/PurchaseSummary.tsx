@@ -23,13 +23,14 @@ interface PurchaseSummaryProps {
   selectedTickets: SelectedGeneralTicket[];
   sections: Section[];
   eventType: 'SEATED' | 'GENERAL';
-  isProcessing: boolean;
   showBuyerForm: boolean;
   setShowBuyerForm: (show: boolean) => void;
   onSubmit: (buyerInfo: any) => Promise<void>;
   onStartPurchase: () => Promise<void>;
   paymentMethod?: 'MERCADOPAGO' | 'BANK_TRANSFER'; // Añadir esta propiedad
   event?: any; // Añadir esta propiedad - idealmente usa el tipo específico IEvent
+  isProcessing: boolean;
+  setIsProcessing: (processing: boolean) => void;
 }
 
 export const PurchaseSummary = memo(function PurchaseSummary({
@@ -38,6 +39,7 @@ export const PurchaseSummary = memo(function PurchaseSummary({
   sections,
   eventType,
   isProcessing,
+  setIsProcessing,
   showBuyerForm,
   setShowBuyerForm,
   onSubmit,
@@ -96,58 +98,74 @@ export const PurchaseSummary = memo(function PurchaseSummary({
   };
 
   // Manejador para enviar el comprobante de transferencia
-  const handleTransferSubmit = async (transferData: { notes: string; proofImage: Blob }) => {
-    try {
-      // Convertir la imagen a base64
-      const reader = new FileReader();
-      return new Promise<void>((resolve, reject) => {
-        reader.onloadend = async () => {
-          try {
-            const imageBase64 = reader.result as string;
-            
-            // Enviar datos al endpoint
-            const response = await fetch('/api/tickets/bank-transfer', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                eventId: event._id,
-                eventType: event.eventType,
-                ...(event.eventType === 'SEATED'
-                  ? { seats: selectedSeats.map(s => s.seatId) }
-                  : { 
-                      ticketType: selectedTickets[0].ticketType,
-                      quantity: selectedTickets[0].quantity 
-                    }
-                ),
-                buyerInfo,
-                proofImage: imageBase64,
-                notes: transferData.notes,
-                sessionId: uuidv4()
-              })
-            });
-            
-            if (!response.ok) {
-              const error = await response.json();
-              throw new Error(error.error || 'Error al procesar el ticket');
-            }
-            
-            const data = await response.json();
-            
-            // Redirigir a página de éxito con el modo de transferencia
-            router.push(`/payment/transfer-success?ticketId=${data.ticketId}`);
-            resolve();
-          } catch (error) {
-            reject(error);
+// Modificación del método handleTransferSubmit en PurchaseSummary.tsx
+const handleTransferSubmit = async (transferData: { notes: string; proofImage: File }) => {
+  try {
+    setIsProcessing(true);
+    
+    // Convertir la imagen a base64
+    const reader = new FileReader();
+    return new Promise<void>((resolve, reject) => {
+      reader.onloadend = async () => {
+        try {
+          const imageBase64 = reader.result as string;
+          console.log("Imagen convertida a base64 correctamente, tamaño:", 
+              Math.round((imageBase64.length * 0.75) / 1024), "KB");
+          
+          // Datos completos para la solicitud
+          const requestData = {
+            eventId: event._id,
+            eventType: event.eventType,
+            ...(event.eventType === 'SEATED'
+              ? { seats: selectedSeats.map(s => s.seatId) }
+              : { 
+                  ticketType: selectedTickets[0].ticketType,
+                  quantity: selectedTickets[0].quantity 
+                }
+            ),
+            buyerInfo,
+            proofImage: imageBase64,
+            notes: transferData.notes,
+            sessionId: uuidv4()
+          };
+          
+          // Enviar datos al endpoint
+          const response = await fetch('/api/tickets/bank-transfer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestData)
+          });
+          
+          // Manejar la respuesta
+          const data = await response.json();
+          
+          if (!response.ok) {
+            console.error("Error en la respuesta:", data);
+            throw new Error(data.error || 'Error al procesar el ticket');
           }
-        };
-        reader.onerror = () => reject(new Error('Error al leer el archivo'));
-        reader.readAsDataURL(transferData.proofImage);
-      });
-    } catch (error) {
-      console.error('Error:', error);
-      // Mostrar error al usuario
-    }
-  };
+          
+          console.log("Ticket creado exitosamente:", data);
+          
+          // Redirigir a página de éxito con el modo de transferencia
+          router.push(`/payment/transfer-success?ticketId=${data.ticketId}`);
+          resolve();
+        } catch (error) {
+          console.error("Error en el procesamiento:", error);
+          reject(error);
+        }
+      };
+      reader.onerror = () => {
+        console.error("Error al leer el archivo");
+        reject(new Error('Error al leer el archivo del comprobante'));
+      };
+      reader.readAsDataURL(transferData.proofImage);
+    });
+  } catch (error) {
+    console.error('Error al procesar la transferencia:', error);
+    setIsProcessing(false);
+    throw error; // Propagar el error para que el formulario lo muestre
+  }
+};
 
   const isDisabled = 
     isLoading || 

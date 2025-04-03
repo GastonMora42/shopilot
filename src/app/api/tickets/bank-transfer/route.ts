@@ -44,6 +44,7 @@ export async function POST(req: Request) {
     session.startTransaction();
     
     // Validar datos básicos
+    
     if (!reqData.eventId || !reqData.buyerInfo) {
       throw new Error('Datos incompletos');
     }

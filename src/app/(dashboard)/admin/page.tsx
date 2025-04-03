@@ -87,6 +87,7 @@ const fetchDashboardData = async () => {
                <p className="text-sm text-blue-600 mt-2 flex items-center">
                  <TrendingUp className="h-4 w-4 mr-1" />
                  Eventos en curso
+                 
                </p>
              </div>
              <Calendar className="h-12 w-12 text-blue-400" />

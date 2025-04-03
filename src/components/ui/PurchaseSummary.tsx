@@ -28,7 +28,8 @@ interface PurchaseSummaryProps {
   setShowBuyerForm: (show: boolean) => void;
   onSubmit: (buyerInfo: any) => Promise<void>;
   onStartPurchase: () => Promise<void>;
-  event: any; // El evento completo
+  paymentMethod?: 'MERCADOPAGO' | 'BANK_TRANSFER'; // Añadir esta propiedad
+  event?: any; // Añadir esta propiedad - idealmente usa el tipo específico IEvent
 }
 
 export const PurchaseSummary = memo(function PurchaseSummary({

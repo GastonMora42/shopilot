@@ -5,10 +5,11 @@ import dbConnect from '@/app/lib/mongodb';
 import { Ticket } from '@/app/models/Ticket';
 import { Event } from '@/app/models/Event';
 import { Seat } from '@/app/models/Seat';
+import { TransferTicket } from '@/app/models/TransferTicket'; 
 import { authOptions } from '@/app/lib/auth';
 import { generateTicketQRs } from '@/app/lib/qrGenerator';
 import mongoose from 'mongoose';
-import { uploadToS3 } from '@/app/lib/s3Upload'; // Necesitarás esta utilidad
+import { uploadToS3 } from '@/app/lib/s3Upload';
 
 interface TransferTicketRequest {
   eventId: string;
@@ -34,6 +35,7 @@ export async function POST(req: Request) {
   let session = null;
   
   try {
+    console.log('API bank-transfer: Iniciando procesamiento');
     const reqData = await req.json() as TransferTicketRequest;
     const userSession = await getServerSession(authOptions);
     
@@ -60,12 +62,25 @@ export async function POST(req: Request) {
     // Procesar y guardar la imagen
     let proofImageUrl = '';
     if (reqData.proofImage) {
-      // Convertir base64 a File y subir
-      const base64Data = reqData.proofImage.replace(/^data:image\/\w+;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
-      
-      // Subir a S3 o tu servicio de almacenamiento
-      proofImageUrl = await uploadToS3(buffer, `proof-${Date.now()}.jpg`);
+      try {
+        // Convertir base64 a archivo y subir
+        const base64Data = reqData.proofImage.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        // Subir a tu servicio de almacenamiento
+        proofImageUrl = await uploadToS3(buffer, `proof-${Date.now()}.jpg`);
+        
+        console.log("API bank-transfer: Imagen subida, URL:", proofImageUrl);
+        
+        if (!proofImageUrl) {
+          throw new Error('No se pudo subir el comprobante de pago');
+        }
+      } catch (uploadError) {
+        console.error('Error al subir imagen:', uploadError);
+        throw new Error('Error al procesar el comprobante de pago');
+      }
+    } else {
+      throw new Error('El comprobante de pago es obligatorio');
     }
     
     // Calcular precio total
@@ -108,7 +123,7 @@ export async function POST(req: Request) {
     }
     
     // Crear ticket con estado PENDING
-    const ticket = new Ticket({
+    const ticketData = {
       eventId: reqData.eventId,
       userId: userSession?.user?.id || null,
       eventType: reqData.eventType,
@@ -122,12 +137,12 @@ export async function POST(req: Request) {
       buyerInfo: reqData.buyerInfo,
       status: 'PENDING',
       price: totalPrice,
-      transferProof: {
-        imageUrl: proofImageUrl,
-        notes: reqData.notes || '',
-        uploadedAt: new Date()
-      }
-    });
+      paymentMethod: 'BANK_TRANSFER'
+    };
+    
+    console.log("API bank-transfer: Creando ticket principal");
+    
+    const ticket = new Ticket(ticketData);
     
     // Generar QRs pero con estado PENDING
     const qrTickets = await generateTicketQRs({
@@ -139,13 +154,56 @@ export async function POST(req: Request) {
     });
     
     ticket.qrTickets = qrTickets;
-    await ticket.save({ session });
+    
+    // Guardar el ticket principal
+    const savedTicket = await ticket.save({ session });
+    console.log("API bank-transfer: Ticket principal guardado con ID:", savedTicket._id);
+    
+    // Crear un registro específico para la transferencia
+    const transferTicketData = {
+      ticketId: savedTicket._id,
+      eventId: reqData.eventId,
+      buyerInfo: reqData.buyerInfo,
+      eventType: reqData.eventType,
+      ...(reqData.eventType === 'SEATED' 
+        ? { seats: reqData.seats }
+        : { 
+            ticketType: reqData.ticketType,
+            quantity: reqData.quantity
+          }
+      ),
+      price: totalPrice,
+      status: 'PENDING',
+      transferProof: {
+        imageUrl: proofImageUrl,
+        notes: reqData.notes || '',
+        uploadedAt: new Date()
+      }
+    };
+    
+    console.log("API bank-transfer: Creando registro de transferencia");
+    
+    const transferTicket = new TransferTicket(transferTicketData);
+    const savedTransferTicket = await transferTicket.save({ session });
+    
+    console.log("API bank-transfer: Registro de transferencia guardado con ID:", savedTransferTicket._id);
+    
+    // Verificar que el registro de transferencia se guardó correctamente
+    const verifyTransferTicket = await TransferTicket.findById(savedTransferTicket._id).session(session);
+    console.log("API bank-transfer: Verificación de registro de transferencia:", {
+      id: verifyTransferTicket._id,
+      ticketId: verifyTransferTicket.ticketId,
+      status: verifyTransferTicket.status,
+      hasTransferProof: !!verifyTransferTicket.transferProof,
+      transferProofImageUrl: verifyTransferTicket.transferProof?.imageUrl ? "URL válida" : "URL vacía"
+    });
     
     await session.commitTransaction();
     
     return NextResponse.json({
       success: true,
       ticketId: ticket._id,
+      transferTicketId: transferTicket._id,
       message: 'Ticket creado correctamente, pendiente de aprobación'
     });
     

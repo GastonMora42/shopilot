@@ -29,6 +29,7 @@ interface BaseTicketDocument extends Document {
   userId: mongoose.Types.ObjectId;
   qrTickets: QRTicket[];
   status: 'PENDING' | 'PAID' | 'USED' | 'CANCELLED';
+  paymentMethod: 'MERCADOPAGO' | 'BANK_TRANSFER';
   buyerInfo: {
     name: string;
     email: string;
@@ -37,6 +38,12 @@ interface BaseTicketDocument extends Document {
   };
   price: number;
   paymentId?: string;
+  transferProof?: {
+    imageUrl: string;
+    notes?: string;
+    uploadedAt: Date;
+  };
+  rejectionReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -170,22 +177,27 @@ const TicketSchema = new mongoose.Schema({
     enum: ['PENDING', 'PAID', 'USED', 'CANCELLED'],
     default: 'PENDING'
   },
+  paymentMethod: {
+    type: String,
+    enum: ['MERCADOPAGO', 'BANK_TRANSFER'],
+    default: 'MERCADOPAGO'
+  },
   paymentId: String,
   price: {
     type: Number,
     required: true
-  }
-}, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true },
-  
+  },
+  // ¡IMPORTANTE! Estos campos estaban definidos incorrectamente fuera del esquema principal
   transferProof: {
     imageUrl: String,
     notes: String,
     uploadedAt: Date
   },
   rejectionReason: String
+}, {
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
 // Índices
@@ -196,6 +208,7 @@ TicketSchema.index({ paymentId: 1 });
 TicketSchema.index({ 'qrTickets.qrMetadata.subTicketId': 1 }, { unique: true });
 TicketSchema.index({ 'qrTickets.qrCode': 1 }, { unique: true });
 TicketSchema.index({ 'qrTickets.qrValidation': 1 }, { unique: true });
+TicketSchema.index({ paymentMethod: 1, status: 1 }); // Nuevo índice para buscar tickets por método de pago
 
 // Middleware de validación
 TicketSchema.pre('validate', function(next) {
@@ -205,6 +218,11 @@ TicketSchema.pre('validate', function(next) {
 
   if (this.eventType === 'GENERAL' && (!this.ticketType || !this.quantity)) {
     next(new Error('El tipo de ticket y cantidad son requeridos para eventos generales'));
+  }
+
+  // Validación adicional para pagos por transferencia
+  if (this.paymentMethod === 'BANK_TRANSFER' && this.status === 'PENDING' && (!this.transferProof || !this.transferProof.imageUrl)) {
+    next(new Error('El comprobante de transferencia es obligatorio para pagos por transferencia'));
   }
 
   next();

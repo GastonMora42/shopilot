@@ -257,32 +257,37 @@ const handlePurchase = async (buyerInfo: {
     if (!event?._id) throw new Error('Evento no válido');
 
     // Construir los datos del ticket según el tipo de evento
-// En handlePurchase de tu page.tsx
-const purchaseData = event.eventType === 'SEATED' 
-  ? {
-      eventId: event._id,
-      eventType: 'SEATED',
-      seats: selectedSeats.map(s => s.seatId),
-      buyerInfo,
-      sessionId: controlState.sessionId
-    }
-  : {
-      eventId: event._id,
-      eventType: 'GENERAL',
-      ticketType: {
-        // Encontrar el ticket seleccionado en generalTickets
-        name: event.generalTickets.find(t => t._id === selectedTickets[0]?.ticketId)?.name,
-        price: event.generalTickets.find(t => t._id === selectedTickets[0]?.ticketId)?.price || 0,
-        description: event.generalTickets.find(t => t._id === selectedTickets[0]?.ticketId)?.description
-      },
-      quantity: selectedTickets[0]?.quantity || 0,
-      buyerInfo,
-      sessionId: controlState.sessionId
-    };
+    const purchaseData = event.eventType === 'SEATED' 
+      ? {
+          eventId: event._id,
+          eventType: 'SEATED',
+          seats: selectedSeats.map(s => s.seatId),
+          buyerInfo,
+          sessionId: controlState.sessionId,
+          paymentMethod: event.paymentMethod // Añadir el método de pago
+        }
+      : {
+          eventId: event._id,
+          eventType: 'GENERAL',
+          ticketType: {
+            name: event.generalTickets.find(t => t._id === selectedTickets[0]?.ticketId)?.name,
+            price: event.generalTickets.find(t => t._id === selectedTickets[0]?.ticketId)?.price || 0,
+            description: event.generalTickets.find(t => t._id === selectedTickets[0]?.ticketId)?.description
+          },
+          quantity: selectedTickets[0]?.quantity || 0,
+          buyerInfo,
+          sessionId: controlState.sessionId,
+          paymentMethod: event.paymentMethod // Añadir el método de pago
+        };
 
     console.log('Creating ticket request:', purchaseData);
 
-    const response = await fetch('/api/tickets', {
+    // Seleccionar el endpoint según el método de pago
+    const endpoint = event.paymentMethod === 'BANK_TRANSFER' 
+      ? '/api/tickets/bank-transfer' 
+      : '/api/tickets';
+
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(purchaseData),
@@ -293,22 +298,33 @@ const purchaseData = event.eventType === 'SEATED'
       throw new Error(error.error || 'Error al procesar la compra');
     }
 
-    const { checkoutUrl } = await response.json();
+    const responseData = await response.json();
     
-    if (checkoutUrl) {
-      // Guardar información de compra
-      localStorage.setItem('lastPurchaseAttempt', JSON.stringify({
-        eventId: event._id,
-        eventType: event.eventType,
-        selectedSeats: event.eventType === 'SEATED' ? selectedSeats.map(s => s.seatId) : undefined,
-        selectedTickets: event.eventType === 'GENERAL' ? selectedTickets : undefined,
-        sessionId: controlState.sessionId,
-        timestamp: new Date().toISOString()
-      }));
+    // Manejar diferentes respuestas según el método de pago
+    if (event.paymentMethod === 'MERCADOPAGO') {
+      const { checkoutUrl } = responseData;
+      if (checkoutUrl) {
+        // Guardar información de compra
+        localStorage.setItem('lastPurchaseAttempt', JSON.stringify({
+          eventId: event._id,
+          eventType: event.eventType,
+          selectedSeats: event.eventType === 'SEATED' ? selectedSeats.map(s => s.seatId) : undefined,
+          selectedTickets: event.eventType === 'GENERAL' ? selectedTickets : undefined,
+          sessionId: controlState.sessionId,
+          timestamp: new Date().toISOString()
+        }));
 
-      window.location.href = checkoutUrl;
-    } else {
-      throw new Error('No se pudo obtener el link de pago');
+        window.location.href = checkoutUrl;
+      } else {
+        throw new Error('No se pudo obtener el link de pago');
+      }
+    } else if (event.paymentMethod === 'BANK_TRANSFER') {
+      // Para transferencia bancaria, redirigir a la página de éxito de transferencia
+      if (responseData.ticketId) {
+        router.push(`/payment/transfer-success?ticketId=${responseData.ticketId}`);
+      } else {
+        throw new Error('No se pudo procesar la solicitud de transferencia');
+      }
     }
   } catch (error) {
     console.error('Purchase error:', error);
@@ -555,16 +571,18 @@ const purchaseData = event.eventType === 'SEATED'
               >
                 {/* Resumen de compra */}
                 <PurchaseSummary
-                  selectedSeats={event.eventType === 'SEATED' ? selectedSeats : []}
-                  selectedTickets={event.eventType === 'GENERAL' ? selectedTickets : []}
-                  sections={event.eventType === 'SEATED' ? event.seatingChart.sections : []}
-                  eventType={event.eventType}
-                  isProcessing={uiState.isProcessing}
-                  showBuyerForm={uiState.showBuyerForm}
-                  setShowBuyerForm={(show) => setUiState(prev => ({ ...prev, showBuyerForm: show }))}
-                  onSubmit={handlePurchase}
-                  onStartPurchase={handleStartPurchase} event={undefined}/>
-
+  selectedSeats={event.eventType === 'SEATED' ? selectedSeats : []}
+  selectedTickets={event.eventType === 'GENERAL' ? selectedTickets : []}
+  sections={event.eventType === 'SEATED' ? event.seatingChart.sections : []}
+  eventType={event.eventType}
+  isProcessing={uiState.isProcessing}
+  showBuyerForm={uiState.showBuyerForm}
+  setShowBuyerForm={(show) => setUiState(prev => ({ ...prev, showBuyerForm: show }))}
+  onSubmit={handlePurchase}
+  onStartPurchase={handleStartPurchase}
+  paymentMethod={event.paymentMethod} // Añadir esta línea
+  event={event} // Pasar el evento completo para acceder a sus propiedades
+/>
                 {/* Compartir */}
                 <Card className="backdrop-blur-sm bg-white/90 mt-4">
                   <CardHeader>

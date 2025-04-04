@@ -196,25 +196,37 @@ export default function MyTicketsPage() {
   const handleDownloadPDF = async (ticket: Ticket) => {
     try {
       setDownloadingPdf(ticket.id)
+      
+      // Solicitud más específica al backend
       const response = await fetch('/api/tickets/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticketId: ticket.id })
+        body: JSON.stringify({ 
+          ticketId: ticket.id,
+          format: 'pdf',
+          includeQR: true
+        })
       })
-
+  
       if (!response.ok) throw new Error('Error downloading ticket')
-
+  
+      // Obtener el blob directamente
       const blob = await response.blob()
+      
+      // Crear un enlace de descarga directo
       const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `ticket-${ticket.eventName}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `ticket-${ticket.id}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      
+      // Limpiar recursos
       window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
     } catch (error) {
       console.error('Error downloading ticket:', error)
+      alert('No se pudo descargar el ticket. Por favor, intenta de nuevo.')
     } finally {
       setDownloadingPdf(null)
     }
@@ -453,44 +465,26 @@ export default function MyTicketsPage() {
 </div>
 </div>
 
-<div className="mt-4 flex gap-2">
-<Button 
-  onClick={() => handlePrint(ticket)} 
-  variant="outline" 
-  className="w-full"
-  disabled={printingTicket === ticket.id}
->
-  {printingTicket === ticket.id ? (
-    <span className="flex items-center">
-      <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
-      Preparando...
-    </span>
-  ) : (
-    <>
-      <PrinterIcon className="w-4 h-4 mr-2" />
-      Imprimir
-    </>
+<div className="mt-4">
+  {ticket.status === 'PAID' && (
+    <Button 
+      onClick={() => handleDownloadPDF(ticket)}
+      className="w-full"
+      disabled={downloadingPdf === ticket.id}
+    >
+      {downloadingPdf === ticket.id ? (
+        <span className="flex items-center justify-center">
+          <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+          Descargando...
+        </span>
+      ) : (
+        <>
+          <DownloadIcon className="w-4 h-4 mr-2" />
+          Descargar PDF
+        </>
+      )}
+    </Button>
   )}
-</Button>
-{ticket.status === 'PAID' && (
-  <Button 
-    onClick={() => handleDownloadPDF(ticket)}
-    className="w-full"
-    disabled={downloadingPdf === ticket.id}
-  >
-    {downloadingPdf === ticket.id ? (
-      <span className="flex items-center">
-        <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
-        Descargando...
-      </span>
-    ) : (
-      <>
-        <DownloadIcon className="w-4 h-4 mr-2" />
-        Descargar PDF
-      </>
-    )}
-  </Button>
-)}
 </div>
 </div>
 </Card>

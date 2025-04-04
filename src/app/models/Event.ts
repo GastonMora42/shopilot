@@ -59,6 +59,15 @@ const EventSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
+  endDate: {
+    type: Date,
+    validate: {
+      validator: function(this: any) {
+        return !this.endDate || this.endDate > this.date;
+      },
+      message: 'La fecha de finalización debe ser posterior a la fecha de inicio'
+    }
+  },
   imageUrl: {
     type: String,
     default: ''
@@ -121,8 +130,12 @@ const EventSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['DRAFT', 'PUBLISHED', 'CANCELLED'],
+    enum: ['DRAFT', 'PUBLISHED', 'FINISHED', 'CANCELLED'],
     default: 'DRAFT'
+  },
+  maxTicketsPerPurchase: {
+    type: Number,
+    default: 10
   }
 }, {
   timestamps: true,
@@ -135,6 +148,7 @@ EventSchema.index({ slug: 1 }, { unique: true });
 EventSchema.index({ organizerId: 1 });
 EventSchema.index({ status: 1 });
 EventSchema.index({ date: 1 });
+EventSchema.index({ endDate: 1 }); // Nuevo índice para consultas por fecha de finalización
 
 // Validador pre-save para validaciones cruzadas basadas en paymentMethod
 EventSchema.pre('validate', function(next) {
@@ -153,6 +167,13 @@ EventSchema.pre('validate', function(next) {
       this.invalidate('bankAccountData',
         'Los datos bancarios son requeridos para eventos con pago por transferencia');
     }
+  }
+
+  // Si no hay fecha de finalización, establecerla automáticamente 24 horas después
+  if (this.date && !this.endDate) {
+    const endDate = new Date(this.date);
+    endDate.setHours(endDate.getHours() + 24);
+    this.endDate = endDate;
   }
   
   next();
@@ -182,6 +203,27 @@ EventSchema.virtual('isSeated').get(function() {
 
 EventSchema.virtual('isGeneral').get(function() {
   return this.eventType === 'GENERAL';
+});
+
+EventSchema.virtual('isActive').get(function() {
+  const now = new Date();
+  return this.published && this.status === 'PUBLISHED' && 
+    (this.endDate ? now <= this.endDate : now <= this.date);
+});
+
+EventSchema.virtual('hasStarted').get(function() {
+  return new Date() >= this.date;
+});
+
+EventSchema.virtual('hasEnded').get(function() {
+  return this.endDate ? new Date() > this.endDate : new Date() > this.date;
+});
+
+EventSchema.virtual('duration').get(function() {
+  if (!this.endDate) return 24; // Default 24 hours
+  const start = new Date(this.date);
+  const end = new Date(this.endDate);
+  return (end.getTime() - start.getTime()) / (1000 * 60 * 60); // Duration in hours
 });
 
 export const Event = mongoose.models.Event || mongoose.model<IEvent>('Event', EventSchema);

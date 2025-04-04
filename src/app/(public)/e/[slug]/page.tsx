@@ -465,24 +465,58 @@ const handlePurchase = async (buyerInfo: {
     )}
   </CardHeader>
   <CardContent className="space-y-8">
-    <div className="flex items-center space-x-2 text-gray-500 pt-6">
-      <Calendar className="h-5 w-5" />
+  <div className="flex flex-wrap items-center gap-2 text-gray-500 pt-6">
+  <div className="flex items-center">
+    <Calendar className="h-5 w-5 mr-2" />
+    <span>
+      {new Date(event.date).toLocaleDateString('es-ES', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })}
+    </span>
+  </div>
+  
+  <div className="flex items-center">
+    <Clock className="h-5 w-5 mr-2" />
+    <span>
+      {new Date(event.date).toLocaleTimeString('es-ES', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })}
+    </span>
+  </div>
+  
+  {/* Mostrar fecha de finalización si existe */}
+  {event.endDate && (
+    <div className="flex items-center">
+      <span className="mx-1">-</span>
       <span>
         {new Date(event.date).toLocaleDateString('es-ES', {
-          weekday: 'long',
-          year: 'numeric',
+          day: 'numeric',
           month: 'long',
-          day: 'numeric'
-        })}
-      </span>
-      <Clock className="h-5 w-5 ml-4" />
-      <span>
-        {new Date(event.date).toLocaleTimeString('es-ES', {
+        }) !== new Date(event.endDate).toLocaleDateString('es-ES', {
+          day: 'numeric',
+          month: 'long',
+        }) ? (
+          // Si la fecha es diferente, mostrar fecha completa
+          new Date(event.endDate).toLocaleDateString('es-ES', {
+            day: 'numeric',
+            month: 'long',
+          }) + ' '
+        ) : (
+          // Si es el mismo día, solo mostrar la hora
+          ''
+        )}
+        {new Date(event.endDate).toLocaleTimeString('es-ES', {
           hour: '2-digit',
           minute: '2-digit'
         })}
       </span>
     </div>
+  )}
+</div>
 
                     <div className="flex items-center space-x-2 text-gray-500">
                       <MapPin className="h-5 w-5" />

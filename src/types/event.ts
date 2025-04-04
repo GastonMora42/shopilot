@@ -203,6 +203,7 @@ interface IBaseEvent {
   description: string;
   slug: string;
   date: Date;
+  endDate: Date; 
   location: string;
   imageUrl?: string;
   eventType: EventType;

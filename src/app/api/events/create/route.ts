@@ -257,12 +257,14 @@ export async function POST(req: Request) {
         name: data.name,
         description: data.description,
         date: new Date(data.date),
+        endDate: data.endDate ? new Date(data.endDate) : undefined, // Añadimos la fecha de finalización
         location: data.location,
         imageUrl: data.imageUrl || '',
         eventType: data.eventType,
         organizerId: user._id,
         paymentMethod: data.paymentMethod || 'MERCADOPAGO',
-        published: false
+        published: false,
+        maxTicketsPerPurchase: data.maxTicketsPerPurchase || 10
       };
 
       // Agregar datos específicos según el tipo de pago

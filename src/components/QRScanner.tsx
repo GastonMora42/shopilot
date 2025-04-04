@@ -23,12 +23,16 @@ interface BaseTicketInfo {
   status: string;
   eventType: 'SEATED' | 'GENERAL';
   validatedAt?: Date;
+  date?: string;        // Añadir esta propiedad
+  endDate?: string;     // Añadir esta propiedad
+  eventDate?: string;   // Alternativa si la API usa esta nomenclatura
   qrMetadata: QRMetadata;
   buyerInfo: {
     name: string;
     dni: string;
   };
 }
+
 
 interface SeatedTicketInfo extends BaseTicketInfo {
   eventType: 'SEATED';
@@ -192,9 +196,15 @@ export function QrScanner() {
             </h2>
 
             {result.ticket && (
-              <div className="mb-6">
-                <Card className="bg-white/90 backdrop-blur p-4 space-y-2">
-                  <p><strong>Evento:</strong> {result.ticket.eventName}</p>
+  <div className="mb-6">
+    <Card className="bg-white/90 backdrop-blur p-4 space-y-2">
+      <p><strong>Evento:</strong> {result.ticket.eventName}</p>
+      {result.ticket.date && (
+  <p><strong>Fecha:</strong> {new Date(result.ticket.date).toLocaleString()}</p>
+)}
+      {result.ticket.endDate && (
+        <p><strong>Finaliza:</strong> {new Date(result.ticket.endDate).toLocaleString()}</p>
+      )}
                   <p><strong>Comprador:</strong> {result.ticket.buyerInfo.name}</p>
                   <p><strong>DNI:</strong> {result.ticket.buyerInfo.dni}</p>
                   {result.ticket.eventType === 'SEATED' ? (

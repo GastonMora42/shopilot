@@ -58,21 +58,22 @@ export function PackageList() {
  };
 
  const handlePurchase = async (packageId: string) => {
-   try {
-     setSelectedPackage(packageId);
-     const response = await fetch('/api/credits/purchase', {
-       method: 'POST',
-       headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify({ packageId })
-     });
-     const data = await response.json();
-     if (data.init_point) window.location.href = data.init_point;
-   } catch (error) {
-     console.error('Error:', error);
-   } finally {
-     setSelectedPackage(null);
-   }
- };
+  try {
+    setSelectedPackage(packageId);
+    const response = await fetch('/api/credits/purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packageId })
+    });
+    const data = await response.json();
+    // Redireccionar al checkout de MercadoPago
+    if (data.init_point) window.location.href = data.init_point;
+  } catch (error) {
+    console.error('Error:', error);
+  } finally {
+    setSelectedPackage(null);
+  }
+};
 
  const getPackageImage = (name: string): string => {
    return PACKAGE_IMAGES[name as keyof typeof PACKAGE_IMAGES] || PACKAGE_IMAGES.default;

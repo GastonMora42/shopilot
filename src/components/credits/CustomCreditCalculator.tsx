@@ -15,20 +15,20 @@ export function CustomCreditCalculator() {
  }, [credits]);
 
  const handlePurchase = async () => {
-   if (credits <= 0) return;
-   try {
-     const response = await fetch('/api/credits/purchase/custom', {
-       method: 'POST',
-       headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify({ credits, totalPrice })
-     });
-     const data = await response.json();
-     if (data.init_point) window.location.href = data.init_point;
-   } catch (error) {
-     console.error('Error:', error);
-   }
- };
-
+  if (credits <= 0) return;
+  try {
+    const response = await fetch('/api/credits/purchase/custom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credits })
+    });
+    const data = await response.json();
+    // Redireccionar al checkout de MercadoPago
+    if (data.init_point) window.location.href = data.init_point;
+  } catch (error) {
+    console.error('Error:', error);
+  }
+};
  return (
    <Card className="bg-gradient-to-br from-purple-50 to-white">
      <div className="p-6">

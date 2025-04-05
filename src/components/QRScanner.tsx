@@ -1,9 +1,10 @@
 // components/QrScanner.tsx
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Check, X, Loader2, Camera, CameraOff, QrCode, AlertCircle } from 'lucide-react';
+import { Input } from '@/components/ui/Input';
+import { Check, X, Loader2, Camera, CameraOff, QrCode, AlertCircle, Keyboard } from 'lucide-react';
 
 interface QRMetadata {
   subTicketId: string;
@@ -23,16 +24,15 @@ interface BaseTicketInfo {
   status: string;
   eventType: 'SEATED' | 'GENERAL';
   validatedAt?: Date;
-  date?: string;        // Añadir esta propiedad
-  endDate?: string;     // Añadir esta propiedad
-  eventDate?: string;   // Alternativa si la API usa esta nomenclatura
+  date?: string;
+  endDate?: string;
+  eventDate?: string;
   qrMetadata: QRMetadata;
   buyerInfo: {
     name: string;
     dni: string;
   };
 }
-
 
 interface SeatedTicketInfo extends BaseTicketInfo {
   eventType: 'SEATED';
@@ -67,6 +67,9 @@ export function QrScanner() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualId, setManualId] = useState('');
+  const manualInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const html5QrCode = new Html5Qrcode("qr-reader", {
@@ -129,28 +132,12 @@ export function QrScanner() {
         parsed: JSON.parse(decodedText)
       });
 
-      const response = await fetch('/api/tickets/validate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ qrString: decodedText })
-      });
-
-      const data = await response.json();
-
-      setResult({
-        success: data.success,
-        message: data.message,
-        ticket: data.ticket
-      });
-
-      setShowModal(true);
+      await validateTicket(decodedText, 'qr');
     } catch (error) {
-      console.error('Error en validación:', error);
+      console.error('Error en validación por escaneo:', error);
       setResult({
         success: false,
-        message: 'Error al validar el ticket. Por favor, intenta nuevamente.'
+        message: 'Error al validar el ticket. Por favor, intenta nuevamente o usa el modo manual.'
       });
       setShowModal(true);
     } finally {
@@ -164,11 +151,73 @@ export function QrScanner() {
     }
   };
 
+  const handleManualSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualId.trim() || isProcessing) return;
+    
+    try {
+      setIsProcessing(true);
+      await validateTicket(manualId.trim(), 'manual');
+    } catch (error) {
+      console.error('Error en validación manual:', error);
+      setResult({
+        success: false,
+        message: 'Error al validar el ID ingresado. Por favor, verifica el ID e intenta nuevamente.'
+      });
+      setShowModal(true);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const validateTicket = async (data: string, type: 'qr' | 'manual') => {
+    const payload = type === 'qr' 
+      ? { qrString: data }
+      : { manualId: data };
+    
+    const response = await fetch('/api/tickets/validate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const responseData = await response.json();
+
+    setResult({
+      success: responseData.success,
+      message: responseData.message,
+      ticket: responseData.ticket
+    });
+
+    setShowModal(true);
+  };
+
   const handleCloseResult = useCallback(() => {
     setShowModal(false);
     setResult(null);
-    startScanning();
-  }, [startScanning]);
+    setManualId('');
+    if (!manualMode) {
+      startScanning();
+    } else if (manualInputRef.current) {
+      manualInputRef.current.focus();
+    }
+  }, [startScanning, manualMode]);
+
+  const toggleMode = useCallback(() => {
+    stopScanning();
+    setManualMode(prev => !prev);
+    setError(null);
+    // Focus en el input cuando cambiamos a modo manual
+    if (!manualMode) {
+      setTimeout(() => {
+        if (manualInputRef.current) {
+          manualInputRef.current.focus();
+        }
+      }, 100);
+    }
+  }, [stopScanning, manualMode, manualInputRef]);
 
   const ResultModal = () => {
     if (!showModal || !result) return null;
@@ -196,15 +245,15 @@ export function QrScanner() {
             </h2>
 
             {result.ticket && (
-  <div className="mb-6">
-    <Card className="bg-white/90 backdrop-blur p-4 space-y-2">
-      <p><strong>Evento:</strong> {result.ticket.eventName}</p>
-      {result.ticket.date && (
-  <p><strong>Fecha:</strong> {new Date(result.ticket.date).toLocaleString()}</p>
-)}
-      {result.ticket.endDate && (
-        <p><strong>Finaliza:</strong> {new Date(result.ticket.endDate).toLocaleString()}</p>
-      )}
+              <div className="mb-6">
+                <Card className="bg-white/90 backdrop-blur p-4 space-y-2">
+                  <p><strong>Evento:</strong> {result.ticket.eventName}</p>
+                  {result.ticket.date && (
+                    <p><strong>Fecha:</strong> {new Date(result.ticket.date).toLocaleString()}</p>
+                  )}
+                  {result.ticket.endDate && (
+                    <p><strong>Finaliza:</strong> {new Date(result.ticket.endDate).toLocaleString()}</p>
+                  )}
                   <p><strong>Comprador:</strong> {result.ticket.buyerInfo.name}</p>
                   <p><strong>DNI:</strong> {result.ticket.buyerInfo.dni}</p>
                   {result.ticket.eventType === 'SEATED' ? (
@@ -253,63 +302,145 @@ export function QrScanner() {
 
   return (
     <div className="space-y-4 max-w-md mx-auto">
-      <Card className="p-4 bg-gradient-to-b from-gray-50 to-white">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <QrCode className="w-5 h-5" />
-            Scanner de Tickets
-          </h2>
-          <div className={`h-2 w-2 rounded-full ${scanning ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
-        </div>
-
-        <div className="relative">
-          <div id="qr-reader" className="w-full aspect-square rounded-lg overflow-hidden" />
-          {error && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
-              <div className="bg-white p-4 rounded-lg text-center max-w-xs">
-                <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
-                <p className="text-sm text-gray-700">{error}</p>
-                <Button 
-                  onClick={startScanning}
-                  className="mt-3"
-                  size="sm"
-                >
-                  Reintentar
-                </Button>
-              </div>
-            </div>
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <QrCode className="w-5 h-5" />
+          Scanner de Tickets
+        </h2>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={toggleMode}
+          className="flex items-center gap-2"
+        >
+          {manualMode ? (
+            <>
+              <Camera className="w-4 h-4" />
+              Modo Cámara
+            </>
+          ) : (
+            <>
+              <Keyboard className="w-4 h-4" />
+              Modo Manual
+            </>
           )}
-        </div>
+        </Button>
+      </div>
 
-        <p className="mt-4 text-center text-sm text-gray-500 flex items-center justify-center gap-2">
-          <Camera className="w-4 h-4" />
-          Apunta la cámara al código QR del ticket
-        </p>
-      </Card>
+      {manualMode ? (
+        <Card className="p-6 bg-gradient-to-b from-gray-50 to-white">
+          <h3 className="font-medium mb-4 flex items-center gap-2">
+            <Keyboard className="w-5 h-5 text-blue-500" />
+            Ingreso Manual de ID
+          </h3>
+          
+          <form onSubmit={handleManualSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="manual-id" className="block text-sm font-medium text-gray-700 mb-1">
+                ID del Ticket
+              </label>
+              <Input
+                id="manual-id"
+                ref={manualInputRef}
+                value={manualId}
+                onChange={(e) => setManualId(e.target.value)}
+                placeholder="Ingresa el ID del ticket"
+                className="w-full"
+                disabled={isProcessing}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Puedes encontrar este ID en la parte inferior del código QR impreso
+              </p>
+            </div>
+            
+            <Button 
+              type="submit" 
+              className="w-full"
+              disabled={!manualId.trim() || isProcessing}
+            >
+              {isProcessing ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Procesando...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Check className="w-4 h-4" />
+                  Verificar Ticket
+                </span>
+              )}
+            </Button>
+          </form>
+        </Card>
+      ) : (
+        <Card className="p-4 bg-gradient-to-b from-gray-50 to-white">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-medium flex items-center gap-2">
+              <Camera className="w-5 h-5 text-blue-500" />
+              Escanear con Cámara
+            </h3>
+            <div className={`h-2 w-2 rounded-full ${scanning ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
+          </div>
 
-      <Button
-        variant={scanning ? "destructive" : "default"}
-        onClick={scanning ? stopScanning : startScanning}
-        className="w-full transition-all duration-200"
-        disabled={showModal || isProcessing}
-      >
-        {isProcessing ? (
-          <span className="flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Procesando...
-          </span>
-        ) : scanning ? (
-          <span className="flex items-center gap-2">
-            <CameraOff className="w-4 h-4" />
-            Detener Scanner
-          </span>
-        ) : (
-          <span className="flex items-center gap-2">
+          <div className="relative">
+            <div id="qr-reader" className="w-full aspect-square rounded-lg overflow-hidden" />
+            {error && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
+                <div className="bg-white p-4 rounded-lg text-center max-w-xs">
+                  <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
+                  <p className="text-sm text-gray-700">{error}</p>
+                  <div className="flex gap-2 mt-3 justify-center">
+                    <Button 
+                      onClick={startScanning}
+                      size="sm"
+                    >
+                      Reintentar
+                    </Button>
+                    <Button 
+                      onClick={toggleMode}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Modo Manual
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <p className="mt-4 text-center text-sm text-gray-500 flex items-center justify-center gap-2">
             <Camera className="w-4 h-4" />
-            Iniciar Scanner
-          </span>
-        )}
-      </Button>
+            Apunta la cámara al código QR del ticket
+          </p>
+        </Card>
+      )}
+
+      {!manualMode && (
+        <Button
+          variant={scanning ? "destructive" : "default"}
+          onClick={scanning ? stopScanning : startScanning}
+          className="w-full transition-all duration-200"
+          disabled={showModal || isProcessing}
+        >
+          {isProcessing ? (
+            <span className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Procesando...
+            </span>
+          ) : scanning ? (
+            <span className="flex items-center gap-2">
+              <CameraOff className="w-4 h-4" />
+              Detener Scanner
+            </span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <Camera className="w-4 h-4" />
+              Iniciar Scanner
+            </span>
+          )}
+        </Button>
+      )}
 
       <ResultModal />
     </div>

@@ -10,38 +10,84 @@ export async function POST(req: Request) {
   const session = await mongoose.startSession();
   
   try {
-    const { qrString } = await req.json();
+    const data = await req.json();
+    const { qrString, manualId } = data;
     
-    console.log('QR Recibido para validación:', {
-      qrString,
-      parsed: JSON.parse(qrString)
-    });
-
-    const qrValidation = validateQR(qrString);
-    console.log('Resultado de validación:', {
-      isValid: qrValidation.isValid,
-      error: qrValidation.error,
-      validationData: qrValidation.data
-    });
+    // Modo de operación: QR escaneado o ID manual
+    const isManualMode = !!manualId;
     
-    if (!qrValidation.isValid || !qrValidation.data) {
+    if (!qrString && !manualId) {
       return NextResponse.json({
         success: false,
-        message: qrValidation.error || 'QR inválido'
+        message: 'Se requiere un código QR o un ID de ticket'
       }, { status: 400 });
     }
-
-    // Ya sabemos que qrValidation.data existe
-    const validationData = qrValidation.data;
-
+    
     await session.startTransaction();
 
-    const ticket = await Ticket.findById(validationData.ticketId)
-      .populate('eventId')
-      .session(session);
+    // Buscar el ticket según el modo
+    let ticket;
+    let qrTicket;
+    
+    if (isManualMode) {
+      console.log('Validación manual con ID:', manualId);
+      
+      // Buscar por ID parcial (permitir búsquedas parciales)
+      ticket = await Ticket.findOne({
+        'qrTickets.qrMetadata.subTicketId': { $regex: manualId, $options: 'i' }
+      }).populate('eventId').session(session);
+      
+      if (!ticket) {
+        throw new Error('Ticket no encontrado');
+      }
+      
+      // Encontrar el QR específico
+      qrTicket = ticket.qrTickets.find(
+        (qt: { qrMetadata: { subTicketId: string; }; }) => 
+          qt.qrMetadata.subTicketId.includes(manualId)
+      );
+      
+      if (!qrTicket) {
+        throw new Error('QR no encontrado en el ticket');
+      }
+    } else {
+      // Validación normal por QR escaneado
+      console.log('QR Recibido para validación:', {
+        qrString,
+        parsed: JSON.parse(qrString)
+      });
 
-    if (!ticket) {
-      throw new Error('Ticket no encontrado');
+      const qrValidation = validateQR(qrString);
+      console.log('Resultado de validación:', {
+        isValid: qrValidation.isValid,
+        error: qrValidation.error,
+        validationData: qrValidation.data
+      });
+      
+      if (!qrValidation.isValid || !qrValidation.data) {
+        return NextResponse.json({
+          success: false,
+          message: qrValidation.error || 'QR inválido'
+        }, { status: 400 });
+      }
+
+      const validationData = qrValidation.data;
+      ticket = await Ticket.findById(validationData.ticketId)
+        .populate('eventId')
+        .session(session);
+
+      if (!ticket) {
+        throw new Error('Ticket no encontrado');
+      }
+      
+      qrTicket = ticket.qrTickets.find(
+        (qt: { qrMetadata: { subTicketId: string; }; }) => 
+          qt.qrMetadata.subTicketId === validationData.subTicketId
+      );
+      
+      if (!qrTicket) {
+        throw new Error('QR no encontrado en el ticket');
+      }
     }
 
     // Verificar fecha del evento y fecha de finalización
@@ -58,21 +104,6 @@ export async function POST(req: Request) {
     // Verificar que el evento haya iniciado (solo si no hay fecha de finalización)
     if (!eventEndDate && now < eventDate) {
       throw new Error('El evento aún no ha comenzado');
-    }
-
-    // Buscar el QR específico usando validationData
-    const qrTicket = ticket.qrTickets.find(
-      (qt: { qrMetadata: { subTicketId: string; }; }) => 
-        qt.qrMetadata.subTicketId === validationData.subTicketId
-    );
-
-    if (!qrTicket) {
-      console.log('QR no encontrado en ticket:', {
-        ticketId: ticket._id,
-        subTicketId: validationData.subTicketId,
-        availableQRs: ticket.qrTickets.map((qt: { qrMetadata: { subTicketId: any; }; }) => qt.qrMetadata.subTicketId)
-      });
-      throw new Error('QR no encontrado en el ticket');
     }
 
     // Verificar estado del QR
@@ -130,12 +161,6 @@ export async function POST(req: Request) {
       );
 
       if (!seatResult) {
-        console.log('Error al actualizar asiento:', {
-          eventId: ticket.eventId._id,
-          seatId: qrTicket.qrMetadata.seatInfo.seat,
-          ticketId: ticket._id
-        });
-        // No lanzamos error, continuamos con la validación aunque no se actualice el asiento
         console.warn('No se pudo actualizar el estado del asiento, pero el ticket se validó correctamente');
       }
     }

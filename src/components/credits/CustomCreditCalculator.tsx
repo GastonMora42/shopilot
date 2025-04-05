@@ -23,12 +23,17 @@ export function CustomCreditCalculator() {
       body: JSON.stringify({ credits })
     });
     const data = await response.json();
-    // Redireccionar al checkout de MercadoPago
-    if (data.init_point) window.location.href = data.init_point;
+    // Verificar si la respuesta contiene la URL de checkout
+    if (data.init_point) {
+      window.location.href = data.init_point;
+    } else {
+      console.error('Error: No se recibió la URL de checkout');
+    }
   } catch (error) {
     console.error('Error:', error);
   }
 };
+
  return (
    <Card className="bg-gradient-to-br from-purple-50 to-white">
      <div className="p-6">

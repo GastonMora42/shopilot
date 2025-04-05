@@ -120,30 +120,51 @@ export function QrScanner() {
     }
   }, [scanner]);
 
-  const handleScanSuccess = async (decodedText: string) => {
-    if (isProcessing) return;
-    
+ // En QrScanner.tsx, modifica la función handleScanSuccess
+
+const handleScanSuccess = async (decodedText: string) => {
+  if (isProcessing) return;
+  
+  try {
+    setIsProcessing(true);
+    await stopScanning();
+
+    console.log('QR Escaneado:', {
+      rawText: decodedText,
+      parsed: JSON.parse(decodedText)
+    });
+
+    // Usar try-catch específico para el parseo JSON
+    let parsedData;
     try {
-      setIsProcessing(true);
-      await stopScanning();
-
-      console.log('QR Escaneado:', {
-        rawText: decodedText,
-        parsed: JSON.parse(decodedText)
-      });
-
-      await validateTicket(decodedText, 'qr');
-    } catch (error) {
-      console.error('Error en validación por escaneo:', error);
-      setResult({
-        success: false,
-        message: 'Error al validar el ticket. Por favor, intenta nuevamente o usa el modo manual.'
-      });
-      setShowModal(true);
-    } finally {
-      setIsProcessing(false);
+      parsedData = JSON.parse(decodedText);
+    } catch (parseError) {
+      throw new Error('Formato de QR inválido. Por favor, escanea un QR válido o usa el modo manual.');
     }
-  };
+
+    // Verificar formato básico del QR
+    if (!parsedData.ticketId || !parsedData.subTicketId) {
+      throw new Error('QR incompleto o inválido. Por favor, intenta nuevamente.');
+    }
+
+    await validateTicket(decodedText, 'qr');
+  } catch (error) {
+    console.error('Error en validación por escaneo:', error);
+    
+    // Mostrar mensaje de error específico en caso de error
+    setResult({
+      success: false,
+      message: error instanceof Error 
+        ? error.message 
+        : 'Error al validar el ticket. Intenta usar el modo manual.',
+      ticket: null
+    });
+    
+    setShowModal(true);
+  } finally {
+    setIsProcessing(false);
+  }
+};
 
   const handleScanError = (error: string) => {
     if (!error.includes('No QR code found')) {
@@ -175,23 +196,43 @@ export function QrScanner() {
       ? { qrString: data }
       : { manualId: data };
     
-    const response = await fetch('/api/tickets/validate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const responseData = await response.json();
-
-    setResult({
-      success: responseData.success,
-      message: responseData.message,
-      ticket: responseData.ticket
-    });
-
-    setShowModal(true);
+    try {
+      const response = await fetch('/api/tickets/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+  
+      // Manejo mejorado de respuestas no-OK
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Error del servidor: ${response.status}`);
+      }
+  
+      const responseData = await response.json();
+  
+      setResult({
+        success: responseData.success,
+        message: responseData.message,
+        ticket: responseData.ticket
+      });
+  
+      setShowModal(true);
+    } catch (error) {
+      console.error(`Error en validación ${type}:`, error);
+      
+      setResult({
+        success: false,
+        message: error instanceof Error 
+          ? error.message 
+          : `Error al procesar el ${type === 'qr' ? 'código QR' : 'ID ingresado'}`,
+        ticket: null
+      });
+      
+      setShowModal(true);
+    }
   };
 
   const handleCloseResult = useCallback(() => {

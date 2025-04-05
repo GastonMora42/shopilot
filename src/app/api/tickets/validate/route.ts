@@ -53,9 +53,19 @@ export async function POST(req: Request) {
     } else {
       // Validación normal por QR escaneado
       console.log('QR Recibido para validación:', {
-        qrString,
-        parsed: JSON.parse(qrString)
+        qrString
       });
+
+      let parsedQR;
+      try {
+        parsedQR = JSON.parse(qrString);
+        console.log('QR parseado:', parsedQR);
+      } catch (e) {
+        return NextResponse.json({
+          success: false,
+          message: 'Formato de QR inválido. No es un JSON válido.'
+        }, { status: 400 });
+      }
 
       const qrValidation = validateQR(qrString);
       console.log('Resultado de validación:', {
@@ -107,7 +117,7 @@ export async function POST(req: Request) {
     }
 
     // Verificar estado del QR
-    if (qrTicket.qrMetadata.status !== 'PAID') {
+    if (qrTicket.qrMetadata.status !== 'PAID' && qrTicket.qrMetadata.status !== 'USED') {
       return NextResponse.json({
         success: false,
         message: `Ticket no válido - Estado: ${qrTicket.qrMetadata.status}`,
@@ -117,21 +127,49 @@ export async function POST(req: Request) {
           status: qrTicket.qrMetadata.status,
           eventStart: eventDate.toISOString(),
           eventEnd: eventEndDate ? eventEndDate.toISOString() : undefined,
-          usedAt: qrTicket.qrMetadata.status === 'USED' ? ticket.updatedAt : undefined
+          usedAt: qrTicket.qrMetadata.status === 'USED' ? ticket.updatedAt : undefined,
+          eventType: ticket.eventType,
+          buyerInfo: {
+            name: ticket.buyerInfo.name,
+            dni: ticket.buyerInfo.dni
+          }
         }
       }, { status: 400 });
     }
 
     // Verificar si el QR ya fue utilizado
     if (qrTicket.qrMetadata.status === 'USED') {
+      const usedDate = qrTicket.qrMetadata.usedAt || ticket.updatedAt;
+      
       return NextResponse.json({
         success: false,
         message: 'Este ticket ya ha sido utilizado',
         ticket: {
           eventName: ticket.eventId.name,
           buyerName: ticket.buyerInfo.name,
+          eventType: ticket.eventType,
           status: 'USED',
-          usedAt: ticket.updatedAt
+          validatedAt: usedDate,
+          usedAt: usedDate,
+          eventDate: eventDate.toISOString(),
+          eventEndDate: eventEndDate ? eventEndDate.toISOString() : undefined,
+          qrMetadata: {
+            subTicketId: qrTicket.qrMetadata.subTicketId,
+            type: qrTicket.qrMetadata.type
+          },
+          buyerInfo: {
+            name: ticket.buyerInfo.name,
+            dni: ticket.buyerInfo.dni
+          },
+          ...(ticket.eventType === 'SEATED' 
+            ? { 
+                seat: qrTicket.qrMetadata.seatInfo?.seat,
+                seatInfo: qrTicket.qrMetadata.seatInfo
+              }
+            : { 
+                ticketType: ticket.ticketType?.name,
+                generalInfo: qrTicket.qrMetadata.generalInfo
+              })
         }
       }, { status: 400 });
     }

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Check, X, Loader2, Camera, CameraOff, QrCode, AlertCircle, Keyboard } from 'lucide-react';
+import { ErrorBoundary } from 'react-error-boundary';
 
 interface QRMetadata {
   subTicketId: string;
@@ -25,9 +26,10 @@ interface BaseTicketInfo {
   eventType: 'SEATED' | 'GENERAL';
   validatedAt?: Date;
   date?: string;
-  endDate?: string;
-  eventDate?: string;
-  qrMetadata: QRMetadata;
+  eventDate?: string; 
+  eventEndDate?: string;
+  usedAt?: Date | string;
+  qrMetadata?: QRMetadata;
   buyerInfo: {
     name: string;
     dni: string;
@@ -56,7 +58,19 @@ type TicketInfo = SeatedTicketInfo | GeneralTicketInfo;
 interface ScanResult {
   success: boolean;
   message: string;
-  ticket?: TicketInfo;
+  ticket?: TicketInfo | null;
+}
+
+function ErrorFallback({ error, resetErrorBoundary }: { error: Error, resetErrorBoundary: () => void }) {
+  return (
+    <div className="p-6 bg-red-50 rounded-lg text-center">
+      <h2 className="text-xl font-bold text-red-700 mb-2">¡Algo salió mal!</h2>
+      <p className="text-red-600 mb-4">{error.message}</p>
+      <Button onClick={resetErrorBoundary}>
+        Reintentar
+      </Button>
+    </div>
+  );
 }
 
 export function QrScanner() {
@@ -82,7 +96,7 @@ export function QrScanner() {
 
     return () => {
       if (html5QrCode.isScanning) {
-        html5QrCode.stop();
+        html5QrCode.stop().catch(console.error);
       }
     };
   }, []);
@@ -115,56 +129,57 @@ export function QrScanner() {
 
   const stopScanning = useCallback(async () => {
     if (scanner?.isScanning) {
-      await scanner.stop();
+      try {
+        await scanner.stop();
+      } catch (error) {
+        console.error("Error stopping scanner:", error);
+      }
       setScanning(false);
     }
   }, [scanner]);
 
- // En QrScanner.tsx, modifica la función handleScanSuccess
-
-const handleScanSuccess = async (decodedText: string) => {
-  if (isProcessing) return;
-  
-  try {
-    setIsProcessing(true);
-    await stopScanning();
-
-    console.log('QR Escaneado:', {
-      rawText: decodedText,
-      parsed: JSON.parse(decodedText)
-    });
-
-    // Usar try-catch específico para el parseo JSON
-    let parsedData;
+  const handleScanSuccess = async (decodedText: string) => {
+    if (isProcessing) return;
+    
     try {
-      parsedData = JSON.parse(decodedText);
-    } catch (parseError) {
-      throw new Error('Formato de QR inválido. Por favor, escanea un QR válido o usa el modo manual.');
-    }
+      setIsProcessing(true);
+      await stopScanning();
 
-    // Verificar formato básico del QR
-    if (!parsedData.ticketId || !parsedData.subTicketId) {
-      throw new Error('QR incompleto o inválido. Por favor, intenta nuevamente.');
-    }
+      console.log('QR Escaneado:', { rawText: decodedText });
 
-    await validateTicket(decodedText, 'qr');
-  } catch (error) {
-    console.error('Error en validación por escaneo:', error);
-    
-    // Mostrar mensaje de error específico en caso de error
-    setResult({
-      success: false,
-      message: error instanceof Error 
-        ? error.message 
-        : 'Error al validar el ticket. Intenta usar el modo manual.',
-      ticket: null
-    });
-    
-    setShowModal(true);
-  } finally {
-    setIsProcessing(false);
-  }
-};
+      // Usar try-catch específico para el parseo JSON
+      let parsedData;
+      try {
+        parsedData = JSON.parse(decodedText);
+        console.log('Datos parseados:', parsedData);
+      } catch (parseError) {
+        console.error('Error al parsear QR:', parseError);
+        throw new Error('Formato de QR inválido. Por favor, escanea un QR válido o usa el modo manual.');
+      }
+
+      // Verificar formato básico del QR
+      if (!parsedData.ticketId || !parsedData.subTicketId) {
+        throw new Error('QR incompleto o inválido. Por favor, intenta nuevamente.');
+      }
+
+      await validateTicket(decodedText, 'qr');
+    } catch (error) {
+      console.error('Error en validación por escaneo:', error);
+      
+      // Mostrar mensaje de error específico en caso de error
+      setResult({
+        success: false,
+        message: error instanceof Error 
+          ? error.message 
+          : 'Error al validar el ticket. Intenta usar el modo manual.',
+        ticket: undefined  // Cambiado de null a undefined
+      });
+      
+      setShowModal(true);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleScanError = (error: string) => {
     if (!error.includes('No QR code found')) {
@@ -183,7 +198,10 @@ const handleScanSuccess = async (decodedText: string) => {
       console.error('Error en validación manual:', error);
       setResult({
         success: false,
-        message: 'Error al validar el ID ingresado. Por favor, verifica el ID e intenta nuevamente.'
+        message: error instanceof Error 
+          ? error.message 
+          : 'Error al validar el ID ingresado. Por favor, verifica el ID e intenta nuevamente.',
+        ticket: null
       });
       setShowModal(true);
     } finally {
@@ -197,6 +215,8 @@ const handleScanSuccess = async (decodedText: string) => {
       : { manualId: data };
     
     try {
+      console.log(`Enviando solicitud ${type}:`, payload);
+      
       const response = await fetch('/api/tickets/validate', {
         method: 'POST',
         headers: {
@@ -204,32 +224,39 @@ const handleScanSuccess = async (decodedText: string) => {
         },
         body: JSON.stringify(payload)
       });
-  
+
       // Manejo mejorado de respuestas no-OK
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Error del servidor: ${response.status}`);
-      }
-  
       const responseData = await response.json();
-  
+      
+      console.log(`Respuesta ${type}:`, responseData);
+      
+      if (!response.ok) {
+        throw new Error(responseData.message || `Error del servidor: ${response.status}`);
+      }
+
       setResult({
         success: responseData.success,
         message: responseData.message,
-        ticket: responseData.ticket
+        ticket: responseData.ticket || null
       });
-  
+
       setShowModal(true);
     } catch (error) {
       console.error(`Error en validación ${type}:`, error);
       
-      setResult({
-        success: false,
-        message: error instanceof Error 
-          ? error.message 
-          : `Error al procesar el ${type === 'qr' ? 'código QR' : 'ID ingresado'}`,
-        ticket: null
-      });
+      if (error instanceof Error) {
+        setResult({
+          success: false,
+          message: error.message,
+          ticket: null
+        });
+      } else {
+        setResult({
+          success: false,
+          message: `Error al procesar el ${type === 'qr' ? 'código QR' : 'ID ingresado'}`,
+          ticket: null
+        });
+      }
       
       setShowModal(true);
     }
@@ -258,7 +285,7 @@ const handleScanSuccess = async (decodedText: string) => {
         }
       }, 100);
     }
-  }, [stopScanning, manualMode, manualInputRef]);
+  }, [stopScanning, manualMode]);
 
   const ResultModal = () => {
     if (!showModal || !result) return null;
@@ -289,11 +316,14 @@ const handleScanSuccess = async (decodedText: string) => {
               <div className="mb-6">
                 <Card className="bg-white/90 backdrop-blur p-4 space-y-2">
                   <p><strong>Evento:</strong> {result.ticket.eventName}</p>
-                  {result.ticket.date && (
+                  {result.ticket.eventDate && (
+                    <p><strong>Fecha:</strong> {new Date(result.ticket.eventDate).toLocaleString()}</p>
+                  )}
+                  {result.ticket.date && !result.ticket.eventDate && (
                     <p><strong>Fecha:</strong> {new Date(result.ticket.date).toLocaleString()}</p>
                   )}
-                  {result.ticket.endDate && (
-                    <p><strong>Finaliza:</strong> {new Date(result.ticket.endDate).toLocaleString()}</p>
+                  {result.ticket.eventEndDate && (
+                    <p><strong>Finaliza:</strong> {new Date(result.ticket.eventEndDate).toLocaleString()}</p>
                   )}
                   <p><strong>Comprador:</strong> {result.ticket.buyerInfo.name}</p>
                   <p><strong>DNI:</strong> {result.ticket.buyerInfo.dni}</p>
@@ -302,7 +332,9 @@ const handleScanSuccess = async (decodedText: string) => {
                   ) : (
                     <>
                       <p><strong>Tipo:</strong> {result.ticket.ticketType}</p>
-                      <p><strong>Número:</strong> {(result.ticket.generalInfo.index + 1)}</p>
+                      {result.ticket.generalInfo && (
+                        <p><strong>Número:</strong> {(result.ticket.generalInfo.index + 1)}</p>
+                      )}
                     </>
                   )}
                   <div className={`mt-2 py-1 px-2 rounded-full text-sm font-medium inline-block ${
@@ -317,11 +349,16 @@ const handleScanSuccess = async (decodedText: string) => {
                       Validado: {new Date(result.ticket.validatedAt).toLocaleString()}
                     </p>
                   )}
+                  {result.ticket.usedAt && (
+                    <p className="text-sm text-gray-500">
+                      Usado: {new Date(result.ticket.usedAt).toLocaleString()}
+                    </p>
+                  )}
                 </Card>
               </div>
             )}
 
-            {!result.success && (
+            {!result.ticket && (
               <div className="mb-6 flex items-center justify-center gap-2 text-red-600">
                 <AlertCircle className="w-5 h-5" />
                 <p>{result.message}</p>
@@ -341,7 +378,7 @@ const handleScanSuccess = async (decodedText: string) => {
     );
   };
 
-  return (
+  const WrappedContent = () => (
     <div className="space-y-4 max-w-md mx-auto">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -486,4 +523,22 @@ const handleScanSuccess = async (decodedText: string) => {
       <ResultModal />
     </div>
   );
+
+  return (
+    <ErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onReset={() => {
+        setScanning(false);
+        setResult(null);
+        setShowModal(false);
+        setIsProcessing(false);
+        setError(null);
+        setManualMode(false);
+      }}
+    >
+      <WrappedContent />
+    </ErrorBoundary>
+  );
 }
+
+export default QrScanner;
